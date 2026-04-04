@@ -194,7 +194,7 @@ export async function warmCacheForLocation(
   try {
     // Warm all three datasets for this location
     const datasets = [
-      { pathname: "/api", r2Key: "federalridings-2024.geojson" },
+      { pathname: "/api/federal", r2Key: "federalridings-2024.geojson" },
       { pathname: "/api/qc", r2Key: "quebecridings-2025.geojson" },
       { pathname: "/api/on", r2Key: "ontarioridings-2022.geojson" }
     ];
@@ -243,7 +243,7 @@ export async function warmCacheForPostalCode(
     
     // Also warm lookup cache by postal code directly
     const datasets = [
-      { pathname: "/api", r2Key: "federalridings-2024.geojson" },
+      { pathname: "/api/federal", r2Key: "federalridings-2024.geojson" },
       { pathname: "/api/qc", r2Key: "quebecridings-2025.geojson" },
       { pathname: "/api/on", r2Key: "ontarioridings-2022.geojson" }
     ];

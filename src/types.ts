@@ -214,6 +214,8 @@ export interface BatchLookupResponse {
   query: QueryParams;
   point?: { lon: number; lat: number };
   properties: Record<string, unknown> | null;
+  riding?: string;
+  province_data?: { riding: string; properties: Record<string, unknown>; dataset: string } | null;
   normalizedAddress?: string;
   addressComponents?: GoogleAddressComponents;
   error?: string;

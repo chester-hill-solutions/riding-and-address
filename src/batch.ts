@@ -2,7 +2,9 @@ import { Env, BatchLookupRequest, BatchLookupResponse, BatchJob } from './types'
 import { geocodeBatch, normalizeAddressWithGoogle, type GeocodeBatchResult } from './geocoding';
 import { incrementMetric, recordTiming } from './metrics';
 import { generateLookupCacheKey, getCachedLookupResult, setCachedLookupResult } from './cache';
-import { pickDataset } from './utils';
+import { pickDataset, provincePathFromFederalProperties } from './utils';
+
+const FEDERAL_PATH = '/api/federal';
 
 // Default batch size
 const DEFAULT_BATCH_SIZE = 10;
@@ -126,10 +128,98 @@ export async function processBatchLookupWithBatchGeocoding(
       return v ?? undefined;
     };
 
+    const runCombined = async (
+      batchReq: BatchLookupRequest,
+      lon: number,
+      lat: number
+    ): Promise<Pick<BatchLookupResponse, 'point' | 'properties' | 'riding' | 'province_data' | 'normalizedAddress' | 'addressComponents'>> => {
+      const cacheQueryFed = { ...batchReq.query, lon, lat };
+      const federalCacheKey = generateLookupCacheKey(cacheQueryFed, FEDERAL_PATH);
+      const federalCached = await getCachedLookupResult(env, federalCacheKey);
+      let normalizedAddress: string | undefined = federalCached?.normalizedAddress;
+      let addressComponents = federalCached?.addressComponents;
+      if (hasGoogleKey()) {
+        const googleResult = await resolveNormalized(lat, lon);
+        if (googleResult) {
+          normalizedAddress = googleResult.formattedAddress;
+          addressComponents = googleResult.components;
+        }
+      }
+
+      let properties: Record<string, unknown> | null;
+      let riding: string | undefined;
+      if (federalCached) {
+        properties = federalCached.properties as Record<string, unknown> | null;
+        riding = federalCached.riding;
+      } else {
+        const fed = await lookupRiding(env, FEDERAL_PATH, lon, lat);
+        properties = fed.properties as Record<string, unknown> | null;
+        riding = fed.riding;
+        const { r2Key } = pickDataset(FEDERAL_PATH);
+        const dataset = r2Key.replace('.geojson', '');
+        const toCache = {
+          properties: fed.properties,
+          riding: fed.riding,
+          ...(normalizedAddress && { normalizedAddress }),
+          ...(addressComponents && { addressComponents }),
+        };
+        await setCachedLookupResult(env, federalCacheKey, toCache, dataset, { lon, lat });
+      }
+
+      const provincePath = provincePathFromFederalProperties(properties);
+      let province_data: { riding: string; properties: Record<string, unknown>; dataset: string } | null = null;
+      if (provincePath) {
+        const provinceCacheKey = generateLookupCacheKey(cacheQueryFed, provincePath);
+        const cachedProv = await getCachedLookupResult(env, provinceCacheKey);
+        if (cachedProv) {
+          province_data = {
+            riding: cachedProv.riding ?? '',
+            properties: (cachedProv.properties || {}) as Record<string, unknown>,
+            dataset: pickDataset(provincePath).r2Key.replace('.geojson', ''),
+          };
+        } else {
+          try {
+            const provLookup = await lookupRiding(env, provincePath, lon, lat);
+            const { r2Key } = pickDataset(provincePath);
+            const dataset = r2Key.replace('.geojson', '');
+            const toCache = { properties: provLookup.properties, riding: provLookup.riding };
+            await setCachedLookupResult(env, provinceCacheKey, toCache, dataset, { lon, lat });
+            province_data = {
+              riding: provLookup.riding ?? '',
+              properties: (provLookup.properties || {}) as Record<string, unknown>,
+              dataset,
+            };
+          } catch {
+            province_data = null;
+          }
+        }
+      }
+
+      return {
+        point: { lon, lat },
+        properties,
+        riding,
+        province_data,
+        ...(normalizedAddress && { normalizedAddress }),
+        ...(addressComponents && { addressComponents }),
+      };
+    };
+
     // Process coordinates-provided requests immediately
     for (const { request, index, lon, lat } of coordinatesProvided) {
       const startTime = Date.now();
       try {
+        if (request.pathname === '/api/combined') {
+          const payload = await runCombined(request, lon, lat);
+          results[index] = {
+            id: request.id,
+            query: request.query,
+            ...payload,
+            processingTime: Date.now() - startTime,
+          };
+          continue;
+        }
+
         const cacheKey = generateLookupCacheKey({ ...request.query, lon, lat }, request.pathname);
         const cachedResult = await getCachedLookupResult(env, cacheKey);
         let normalizedAddress: string | undefined = cachedResult?.normalizedAddress;
@@ -206,6 +296,21 @@ export async function processBatchLookupWithBatchGeocoding(
         
         if (geocodingResult.success) {
           try {
+            if (request.pathname === '/api/combined') {
+              const payload = await runCombined(
+                request,
+                geocodingResult.lon,
+                geocodingResult.lat
+              );
+              results[index] = {
+                id: request.id,
+                query: request.query,
+                ...payload,
+                processingTime: Date.now() - startTime,
+              };
+              continue;
+            }
+
             const cacheKey = generateLookupCacheKey(
               { ...request.query, lon: geocodingResult.lon, lat: geocodingResult.lat },
               request.pathname

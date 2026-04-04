@@ -563,15 +563,33 @@ print(data)</code></pre>
                 <div class="endpoint-header">
                     <span class="method">GET</span>
                     <span class="url">/api</span>
-                    <span class="description">Federal Riding Lookup</span>
+                    <span class="description">Federal Riding Lookup (alias)</span>
                 </div>
-                <p>Find the federal riding for any location in Canada. Supports postal codes, addresses, and coordinates. Returns riding information including FED_NUM, FED_NAME, and PROV_TERR.</p>
+                <p>Alias of <code>/api/federal</code>. Find the federal riding for any location in Canada. Supports postal codes, addresses, and coordinates. Returns riding information including FED_NUM, FED_NAME, and PROV_TERR.</p>
                 <div class="param-list">
                     <div class="param"><strong>postal</strong> - Canadian postal code (e.g., "K1A 0A6")</div>
                     <div class="param"><strong>address</strong> - Full address to geocode</div>
                     <div class="param"><strong>lat/lon</strong> - Latitude and longitude coordinates</div>
                     <div class="param"><strong>city/state/country</strong> - Location components</div>
                 </div>
+            </div>
+
+            <div class="endpoint-section">
+                <div class="endpoint-header">
+                    <span class="method">GET</span>
+                    <span class="url">/api/federal</span>
+                    <span class="description">Federal Riding Lookup</span>
+                </div>
+                <p>Canonical federal riding lookup (2024 boundaries). Same behavior as <code>/api</code>.</p>
+            </div>
+
+            <div class="endpoint-section">
+                <div class="endpoint-header">
+                    <span class="method">GET</span>
+                    <span class="url">/api/combined</span>
+                    <span class="description">Federal + Ontario or Quebec Provincial</span>
+                </div>
+                <p>Returns federal riding data plus <code>province_data</code> when the federal feature’s PROV_TERR is Ontario or Quebec (supports abbreviations and full names).</p>
             </div>
 
             <div class="endpoint-section">
@@ -809,7 +827,8 @@ print(data)</code></pre>
         <div class="section">
             <h2>Datasets</h2>
             <ul class="datasets">
-                <li><strong>/api</strong> — Federal ridings (338 ridings)</li>
+                <li><strong>/api/federal</strong> (alias <strong>/api</strong>) — Federal ridings (338 ridings)</li>
+                <li><strong>/api/combined</strong> — Federal plus matching ON/QC provincial result</li>
                 <li><strong>/api/qc</strong> — Quebec provincial ridings (125 ridings)</li>
                 <li><strong>/api/on</strong> — Ontario provincial ridings (124 ridings)</li>
             </ul>
@@ -1081,6 +1100,147 @@ export function createOpenAPISpec(baseUrl: string) {
     paths: {
       "/api": {
         get: {
+          summary: "Lookup federal riding by location (alias)",
+          description:
+            "Alias of /api/federal. Find the federal riding for a given location using postal code, address, or coordinates",
+          tags: ["Federal Ridings"],
+          parameters: [
+            {
+              name: "postal",
+              in: "query",
+              description: "Canadian postal code (e.g., K1A 0A6)",
+              required: false,
+              schema: { type: "string", example: "K1A 0A6" },
+            },
+            {
+              name: "address",
+              in: "query",
+              description: "Street address",
+              required: false,
+              schema: { type: "string", example: "123 Main St, Toronto, ON" },
+            },
+            {
+              name: "lat",
+              in: "query",
+              description: "Latitude",
+              required: false,
+              schema: { type: "number", example: 45.4215 },
+            },
+            {
+              name: "lon",
+              in: "query",
+              description: "Longitude",
+              required: false,
+              schema: { type: "number", example: -75.6972 },
+            },
+            {
+              name: "city",
+              in: "query",
+              description: "City name",
+              required: false,
+              schema: { type: "string", example: "Toronto" },
+            },
+            {
+              name: "state",
+              in: "query",
+              description: "Province or state",
+              required: false,
+              schema: { type: "string", example: "Ontario" },
+            },
+            {
+              name: "country",
+              in: "query",
+              description: "Country",
+              required: false,
+              schema: { type: "string", example: "Canada" },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Successful lookup",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      query: {
+                        type: "object",
+                        description: "The query parameters used",
+                      },
+                      point: {
+                        type: "object",
+                        properties: {
+                          lon: { type: "number" },
+                          lat: { type: "number" },
+                        },
+                        description: "Geocoded coordinates",
+                      },
+                      properties: {
+                        type: "object",
+                        description:
+                          "Riding properties including FED_NUM, FED_NAME, etc.",
+                        nullable: true,
+                      },
+                    },
+                  },
+                  example: {
+                    query: { postal: "K1A 0A6" },
+                    point: { lon: -75.6972, lat: 45.4215 },
+                    properties: {
+                      FED_NUM: "35047",
+                      FED_NAME: "Ottawa Centre",
+                      PROV_TERR: "Ontario",
+                    },
+                  },
+                },
+              },
+            },
+            "400": {
+              description: "Bad request - invalid parameters",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      error: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            "401": {
+              description: "Unauthorized - missing or invalid authentication",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      error: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            "429": {
+              description: "Rate limit exceeded",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      error: { type: "string" },
+                      retryAfter: { type: "number" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          security: [{ basicAuth: [] }, { apiKey: [] }],
+        },
+      },
+      "/api/federal": {
+        get: {
           summary: "Lookup federal riding by location",
           description:
             "Find the federal riding for a given location using postal code, address, or coordinates",
@@ -1171,6 +1331,155 @@ export function createOpenAPISpec(baseUrl: string) {
                       FED_NUM: "35047",
                       FED_NAME: "Ottawa Centre",
                       PROV_TERR: "Ontario",
+                    },
+                  },
+                },
+              },
+            },
+            "400": {
+              description: "Bad request - invalid parameters",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      error: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            "401": {
+              description: "Unauthorized - missing or invalid authentication",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      error: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            "429": {
+              description: "Rate limit exceeded",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      error: { type: "string" },
+                      retryAfter: { type: "number" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          security: [{ basicAuth: [] }, { apiKey: [] }],
+        },
+      },
+      "/api/combined": {
+        get: {
+          summary: "Lookup federal and provincial ridings in one call",
+          description:
+            "Returns the federal result plus the matching provincial result (Ontario or Quebec) in `province_data` when PROV_TERR maps to those provinces.",
+          tags: ["Combined Lookup"],
+          parameters: [
+            {
+              name: "postal",
+              in: "query",
+              description: "Canadian postal code (e.g., K1A 0A6)",
+              required: false,
+              schema: { type: "string", example: "K1A 0A6" },
+            },
+            {
+              name: "address",
+              in: "query",
+              description: "Street address",
+              required: false,
+              schema: { type: "string", example: "123 Main St, Toronto, ON" },
+            },
+            {
+              name: "lat",
+              in: "query",
+              description: "Latitude",
+              required: false,
+              schema: { type: "number", example: 45.4215 },
+            },
+            {
+              name: "lon",
+              in: "query",
+              description: "Longitude",
+              required: false,
+              schema: { type: "number", example: -75.6972 },
+            },
+            {
+              name: "city",
+              in: "query",
+              description: "City name",
+              required: false,
+              schema: { type: "string", example: "Toronto" },
+            },
+            {
+              name: "state",
+              in: "query",
+              description: "Province or state",
+              required: false,
+              schema: { type: "string", example: "Ontario" },
+            },
+            {
+              name: "country",
+              in: "query",
+              description: "Country",
+              required: false,
+              schema: { type: "string", example: "Canada" },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Successful lookup (federal + optional provincial)",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      query: { type: "object" },
+                      point: {
+                        type: "object",
+                        properties: {
+                          lon: { type: "number" },
+                          lat: { type: "number" },
+                        },
+                      },
+                      riding: { type: "string" },
+                      properties: { type: "object", nullable: true },
+                      province_data: {
+                        type: "object",
+                        nullable: true,
+                        properties: {
+                          riding: { type: "string" },
+                          properties: { type: "object" },
+                          dataset: {
+                            type: "string",
+                            enum: ["ontarioridings-2022", "quebecridings-2025"],
+                          },
+                        },
+                      },
+                      normalizedAddress: { type: "string" },
+                      addressComponents: { type: "object" },
+                    },
+                  },
+                  example: {
+                    query: { address: "123 Main St, Toronto" },
+                    point: { lon: -79.3832, lat: 43.6532 },
+                    riding: "Toronto Centre",
+                    properties: { FED_NUM: "35075", PROV_TERR: "Ontario" },
+                    province_data: {
+                      riding: "Toronto Centre",
+                      properties: { PR_NUM: "082" },
+                      dataset: "ontarioridings-2022",
                     },
                   },
                 },
@@ -1372,7 +1681,7 @@ export function createOpenAPISpec(baseUrl: string) {
                           id: { type: "string" },
                           pathname: {
                             type: "string",
-                            enum: ["/api", "/api/qc", "/api/on"],
+                            enum: ["/api", "/api/federal", "/api/combined", "/api/qc", "/api/on"],
                           },
                           query: {
                             type: "object",
@@ -1448,7 +1757,7 @@ export function createOpenAPISpec(baseUrl: string) {
                           id: { type: "string" },
                           pathname: {
                             type: "string",
-                            enum: ["/api", "/api/qc", "/api/on"],
+                            enum: ["/api", "/api/federal", "/api/combined", "/api/qc", "/api/on"],
                           },
                           query: {
                             type: "object",
@@ -2409,6 +2718,10 @@ export function createOpenAPISpec(baseUrl: string) {
       {
         name: "Federal Ridings",
         description: "Operations for federal riding lookups",
+      },
+      {
+        name: "Combined Lookup",
+        description: "Federal plus Ontario or Quebec provincial riding in one request",
       },
       {
         name: "Quebec Ridings",
