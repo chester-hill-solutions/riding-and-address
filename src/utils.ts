@@ -437,10 +437,37 @@ export function getCorrelationId(request: Request): string {
 // Dataset selection
 export function pickDataset(pathname: string): { r2Key: string } {
   // Map routes to R2 object keys
+  if (pathname === "/api/federal" || pathname === "/api") return { r2Key: "federalridings-2024.geojson" };
   if (pathname === "/api/qc") return { r2Key: "quebecridings-2025.geojson" };
   if (pathname === "/api/on") return { r2Key: "ontarioridings-2022.geojson" };
-  // default federal
+  // default federal (unknown /api/* path)
   return { r2Key: "federalridings-2024.geojson" };
+}
+
+const PROV_TERR_TO_PROVINCE_PATH: Record<string, "/api/on" | "/api/qc"> = {
+  ON: "/api/on",
+  ONT: "/api/on",
+  ONTARIO: "/api/on",
+  QC: "/api/qc",
+  QUE: "/api/qc",
+  QUEBEC: "/api/qc",
+};
+
+/**
+ * Maps federal feature PROV_TERR (abbreviation or full name, EN/FR) to a provincial lookup path.
+ */
+export function provincePathFromFederalProperties(
+  properties: Record<string, unknown> | null | undefined
+): "/api/on" | "/api/qc" | null {
+  if (!properties) return null;
+  const raw = properties.PROV_TERR;
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const key = raw
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+  return PROV_TERR_TO_PROVINCE_PATH[key] ?? null;
 }
 
 // Query parsing
