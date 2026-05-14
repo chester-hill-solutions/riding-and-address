@@ -171,6 +171,8 @@ export const spatialIndexCacheLRU = new LRUCache<string, SpatialIndex>(CACHE_CON
 export const cacheWarmingState: CacheWarmingState = {
   isRunning: false,
   lastWarmed: 0,
+  warmingCount: 0,
+  errorCount: 0,
   currentBatch: 0,
   totalBatches: 0,
   successCount: 0,

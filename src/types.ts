@@ -150,8 +150,8 @@ export interface GoogleBatchGeocodeResponse {
 
 // GeoJSON interfaces
 export interface GeoJSONGeometry {
-  type: "Polygon" | "MultiPolygon";
-  coordinates: number[][][] | number[][][][];
+  type: "Polygon" | "MultiPolygon" | "LineString" | "Point";
+  coordinates: number[][][] | number[][][][] | number[][] | number[];
 }
 
 export interface GeoJSONFeature {
@@ -347,6 +347,11 @@ export interface CacheWarmingState {
   warmingCount: number;
   errorCount: number;
   lastError?: string;
+  currentBatch: number;
+  totalBatches: number;
+  successCount: number;
+  failureCount: number;
+  nextWarmingTime: number;
 }
 
 // Spatial index interfaces

@@ -316,8 +316,8 @@ export class QueueManager {
           return new Response('Not found', { status: 404 });
       }
     } catch (error) {
-      console.error('Queue manager error:', error);
-      return new Response(JSON.stringify({ error: error.message }), {
+        console.error('Queue manager error:', error);
+        return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -610,7 +610,7 @@ export class QueueManager {
         results.push({ jobId, status: 'completed', result, processingTime: job.processingTime });
       } catch (error) {
         job.errorCount++;
-        job.lastError = error.message;
+        job.lastError = error instanceof Error ? error.message : String(error);
         job.completedAt = Date.now();
 
         // Check if we should retry
@@ -627,14 +627,14 @@ export class QueueManager {
         const batch = this.batches.get(job.batchId);
         if (batch) {
           batch.failedJobs++;
-          batch.errors.push(`${jobId}: ${error.message}`);
+          batch.errors.push(`${jobId}: ${error instanceof Error ? error.message : String(error)}`);
           if (batch.completedJobs + batch.failedJobs >= batch.totalJobs) {
             batch.status = batch.completedJobs > 0 ? 'partially_completed' : 'failed';
             batch.completedAt = Date.now();
           }
         }
 
-        results.push({ jobId, status: 'failed', error: error.message, attempts: job.attempts });
+        results.push({ jobId, status: 'failed', error: error instanceof Error ? error.message : String(error), attempts: job.attempts });
       }
     }
 
