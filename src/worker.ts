@@ -72,7 +72,7 @@ import { createLandingPage, createSwaggerUI, createOpenAPISpec } from './docs';
 import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS } from './config';
 
 // Global state
-let cacheWarmingInitialized = false;
+const cacheWarmingInitialized = false;
 
 const FEDERAL_PATH = "/api/federal";
 
