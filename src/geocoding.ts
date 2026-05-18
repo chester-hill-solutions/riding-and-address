@@ -2,12 +2,7 @@ import {
   Env, 
   QueryParams, 
   MapboxResponse, 
-  NominatimResult, 
-  GoogleGeocodeResponse,
   GoogleBatchGeocodeRequest,
-  GoogleBatchGeocodeResponse,
-  GeoGratisResponse,
-  GeoGratisResult,
   GoogleAddressComponents
 } from './types';
 import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS, TIME_CONSTANTS_SECONDS, QUALITY_THRESHOLDS } from './config';
@@ -15,8 +10,7 @@ import {
   safeValidateGeoGratis,
   safeValidateGoogleGeocode,
   safeValidateGoogleBatchGeocode,
-  safeValidateNominatim,
-  safeValidateMapbox
+  safeValidateNominatim
 } from './validation';
 
 // Geocoding cache entry interface
@@ -390,7 +384,7 @@ export async function normalizeAddressWithGoogle(
     });
     const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
     const resp = await fetch(url, { headers: { 'User-Agent': 'riding-lookup/1.0' } });
-    if (!resp.ok) return null;
+    if (!resp.ok) throw new Error(`Google reverse geocode HTTP error: ${resp.status}`);
     const rawData = await resp.json();
     const validation = safeValidateGoogleGeocode(rawData);
     if (!validation.success) return null;
@@ -418,7 +412,8 @@ export async function normalizeAddressWithGoogle(
   try {
     const timeoutConfig = getTimeoutConfig(env);
     const timeoutMs = Math.min(timeoutConfig.geocoding, 5000);
-    const fn = () => withTimeout(doReverse(), timeoutMs, 'Google reverse geocode');
+    const retryConfig = getRetryConfig();
+    const fn = () => withRetry(() => withTimeout(doReverse(), timeoutMs, 'Google reverse geocode'), retryConfig, 'Google reverse geocode');
     const out = circuitBreaker
       ? await circuitBreaker.execute('geocoding:google-reverse', fn)
       : await fn();
@@ -447,79 +442,81 @@ export async function normalizeAddressWithGoogle(
  * - Returns null on API errors, empty results, or invalid coordinates
  */
 async function geocodeWithGeoGratis(qp: QueryParams): Promise<{ lon: number; lat: number; qualifier?: string; score?: number } | null> {
+  const retryConfig = getRetryConfig();
   try {
-    // Build query string from available parameters
-    const queryParts: string[] = [];
-    if (qp.address) queryParts.push(qp.address);
-    if (qp.postal) queryParts.push(qp.postal);
-    if (qp.city) queryParts.push(qp.city);
-    if (qp.state) queryParts.push(qp.state);
-    if (qp.country) queryParts.push(qp.country);
-    
-    // Fallback to any available query if no structured parts
-    if (queryParts.length === 0) {
-      const query = qp.address || qp.postal || qp.city || qp.state || qp.country;
-      if (!query) return null;
-      queryParts.push(query);
-    }
-    
-    const queryString = queryParts.join(', ');
-    const params = new URLSearchParams({ 
-      q: queryString,
-      expand: 'score,component' // Request score and component for quality assessment
-    });
-    
-    const url = `https://geogratis.gc.ca/services/geolocation/en/locate?${params.toString()}`;
-    const resp = await fetch(url, { 
-      headers: { "User-Agent": "riding-lookup/1.0" } 
-    });
-    
-    if (!resp.ok) {
-      console.warn(`[GEOCODING] GeoGratis API error: ${resp.status}`);
-      return null;
-    }
-    
-    const rawData = await resp.json();
-    
-    // Validate response structure with zod
-    const validation = safeValidateGeoGratis(rawData);
-    if (!validation.success) {
-      console.warn(`[GEOCODING] GeoGratis response validation failed:`, validation.error.errors);
-      return null;
-    }
-    
-    const data = validation.data;
-    
-    // Check if we have results
-    if (data.length === 0) {
-      console.warn(`[GEOCODING] GeoGratis returned no results`);
-      return null;
-    }
-    
-    // Get the first result (best match)
-    const firstResult = data[0];
-    
-    // Extract coordinates from geometry
-    if (!firstResult.geometry || !firstResult.geometry.coordinates || firstResult.geometry.coordinates.length < 2) {
-      console.warn(`[GEOCODING] GeoGratis result missing valid coordinates`);
-      return null;
-    }
-    
-    // GeoJSON coordinates are [lon, lat] format
-    const lon = firstResult.geometry.coordinates[0];
-    const lat = firstResult.geometry.coordinates[1];
-    
-    if (typeof lon !== 'number' || typeof lat !== 'number' || isNaN(lon) || isNaN(lat)) {
-      console.warn(`[GEOCODING] GeoGratis result has invalid coordinates`);
-      return null;
-    }
-    
-    return {
-      lon,
-      lat,
-      qualifier: firstResult.qualifier,
-      score: firstResult.score
-    };
+    return await withRetry(async () => {
+      // Build query string from available parameters
+      const queryParts: string[] = [];
+      if (qp.address) queryParts.push(qp.address);
+      if (qp.postal) queryParts.push(qp.postal);
+      if (qp.city) queryParts.push(qp.city);
+      if (qp.state) queryParts.push(qp.state);
+      if (qp.country) queryParts.push(qp.country);
+      
+      // Fallback to any available query if no structured parts
+      if (queryParts.length === 0) {
+        const query = qp.address || qp.postal || qp.city || qp.state || qp.country;
+        if (!query) throw new NonRetriableError('Missing query parameters for GeoGratis');
+        queryParts.push(query);
+      }
+      
+      const queryString = queryParts.join(', ');
+      const params = new URLSearchParams({ 
+        q: queryString,
+        expand: 'score,component' // Request score and component for quality assessment
+      });
+      
+      const url = `https://geogratis.gc.ca/services/geolocation/en/locate?${params.toString()}`;
+      const resp = await fetch(url, { 
+        headers: { "User-Agent": "riding-lookup/1.0" } 
+      });
+      
+      if (!resp.ok) {
+        throw new Error(`GeoGratis API error: ${resp.status}`);
+      }
+      
+      const rawData = await resp.json();
+      
+      // Validate response structure with zod
+      const validation = safeValidateGeoGratis(rawData);
+      if (!validation.success) {
+        console.warn(`[GEOCODING] GeoGratis response validation failed:`, validation.error.errors);
+        throw new NonRetriableError('GeoGratis response validation failed');
+      }
+      
+      const data = validation.data;
+      
+      // Check if we have results
+      if (data.length === 0) {
+        console.warn(`[GEOCODING] GeoGratis returned no results`);
+        throw new NonRetriableError('GeoGratis returned no results');
+      }
+      
+      // Get the first result (best match)
+      const firstResult = data[0];
+      
+      // Extract coordinates from geometry
+      if (!firstResult.geometry || !firstResult.geometry.coordinates || firstResult.geometry.coordinates.length < 2) {
+        console.warn(`[GEOCODING] GeoGratis result missing valid coordinates`);
+        throw new NonRetriableError('GeoGratis result missing valid coordinates');
+      }
+      
+      // GeoJSON coordinates are [lon, lat] format
+      const lon = firstResult.geometry.coordinates[0];
+      const lat = firstResult.geometry.coordinates[1];
+      
+      if (typeof lon !== 'number' || typeof lat !== 'number' || isNaN(lon) || isNaN(lat)) {
+        console.warn(`[GEOCODING] GeoGratis result has invalid coordinates`);
+        throw new NonRetriableError('GeoGratis result has invalid coordinates');
+      }
+      
+      return {
+        lon,
+        lat,
+        qualifier: firstResult.qualifier,
+        score: firstResult.score
+      };
+    }, retryConfig, 'GeoGratis geocode');
   } catch (error) {
     console.warn(`[GEOCODING] GeoGratis geocoding failed:`, error instanceof Error ? error.message : 'Unknown error');
     return null;

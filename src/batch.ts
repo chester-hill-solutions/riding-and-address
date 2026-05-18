@@ -1,5 +1,5 @@
 import { Env, BatchLookupRequest, BatchLookupResponse, BatchJob } from './types';
-import { geocodeBatch, normalizeAddressWithGoogle, type GeocodeBatchResult } from './geocoding';
+import { normalizeAddressWithGoogle, type GeocodeBatchResult } from './geocoding';
 import { incrementMetric, recordTiming } from './metrics';
 import { generateLookupCacheKey, getCachedLookupResult, setCachedLookupResult } from './cache';
 import { pickDataset, provincePathFromFederalProperties } from './utils';
