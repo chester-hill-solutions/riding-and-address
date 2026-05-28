@@ -1,4 +1,4 @@
-import { Env, QueryParams, GeoJSONGeometry, GeoJSONFeature } from './types';
+import { Env, QueryParams, GeoJSONGeometry } from './types';
 import { TIMEOUT_CONFIG, RETRY_CONFIG, getRetryConfig } from './config';
 
 // Re-export for backward compatibility

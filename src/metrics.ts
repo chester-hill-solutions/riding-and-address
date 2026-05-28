@@ -2,7 +2,6 @@ import { Metrics } from './types';
 import { TIME_CONSTANTS } from './config';
 
 // Metrics window configuration (24 hours)
-const METRICS_WINDOW_MS = TIME_CONSTANTS.TWENTY_FOUR_HOURS_MS;
 const METRICS_RESET_INTERVAL_MS = TIME_CONSTANTS.TWENTY_FOUR_HOURS_MS;
 
 // Track when metrics were last reset

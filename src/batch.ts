@@ -92,9 +92,6 @@ export async function processBatchLookupWithBatchGeocoding(
   }
   
   const results: BatchLookupResponse[] = [];
-  // Validate and clamp batch size from environment
-  const rawBatchSize = env.BATCH_SIZE || DEFAULT_BATCH_SIZE;
-  const batchSize = Math.max(1, Math.min(Math.floor(rawBatchSize), MAX_BATCH_SIZE));
   
   incrementMetric('batchRequests');
   const startTime = Date.now();

@@ -1,4 +1,4 @@
-import { Env, GeoJSONFeature, GeoJSONFeatureCollection, GeoJSONGeometry, SpatialDatabaseFeature } from './types';
+import { Env, GeoJSONFeature, GeoJSONFeatureCollection, GeoJSONGeometry } from './types';
 import { isPointInPolygon } from './utils';
 
 // Spatial database configuration

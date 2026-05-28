@@ -1,16 +1,12 @@
 /// <reference types="@cloudflare/workers-types" />
 
-import { Env, QueryParams, LookupResult, GeoJSONFeatureCollection, SpatialIndex } from './types';
+import { Env, LookupResult, GeoJSONFeatureCollection, SpatialIndex } from './types';
 import { geocodeIfNeeded, geocodeBatch, normalizeAddressWithGoogle } from './geocoding';
 import { 
   geoCacheLRU, 
   spatialIndexCacheLRU, 
-  getCachedGeoJSON, 
   setCachedGeoJSON, 
-  getCachedSpatialIndex, 
   setCachedSpatialIndex,
-  getCachedSimplifiedBoundary,
-  setCachedSimplifiedBoundary,
   performCacheWarming,
   getCacheWarmingStatus,
   generateLookupCacheKey,
@@ -32,7 +28,6 @@ import {
   rateLimitExceededResponse,
   checkRateLimit,
   getClientId,
-  simplifyGeometry,
   getCorrelationId
 } from './utils';
 import { 
@@ -41,30 +36,22 @@ import {
   isPointInBoundingBox,
   queryRidingFromDatabase,
   initializeSpatialDatabase,
-  insertFeaturesIntoDatabase,
   getAllFeaturesFromDatabase,
   syncGeoJSONToDatabase,
   getSpatialDbConfig
 } from './spatial';
 import { 
   initializeWebhookProcessing, 
-  triggerBatchCompletionWebhook,
   getAllWebhooks,
   getWebhookEvents,
   getWebhookDeliveries,
-  generateWebhookId,
-  createWebhook,
-  updateWebhook,
-  deleteWebhook,
-  getWebhook
+  createWebhook
 } from './webhooks';
 import { 
-  processBatchLookup, 
   processBatchLookupWithBatchGeocoding,
   submitBatchToQueue,
   getBatchStatus,
-  processQueueJobs,
-  BATCH_CONFIG
+  processQueueJobs
 } from './batch';
 import { QueueManagerDO } from './queue-manager';
 import { CircuitBreakerDO } from './circuit-breaker-do';
@@ -72,7 +59,6 @@ import { createLandingPage, createSwaggerUI, createOpenAPISpec } from './docs';
 import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS } from './config';
 
 // Global state
-const cacheWarmingInitialized = false;
 
 const FEDERAL_PATH = "/api/federal";
 
@@ -84,7 +70,7 @@ function normalizeLookupPathname(pathname: string): string {
 /**
  * Handle scheduled events (Cron Triggers) for cache warming.
  */
-async function handleScheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+async function handleScheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
   console.log(`[Cron] Scheduled event triggered: ${event.cron}`);
   
   // Perform cache warming
@@ -583,7 +569,6 @@ export default {
         if (pathname === '/api/boundaries/lookup' && request.method === 'GET') {
           const lat = parseFloat(url.searchParams.get('lat') || '');
           const lon = parseFloat(url.searchParams.get('lon') || '');
-          const dataset = url.searchParams.get('dataset') || 'federalridings-2024.geojson';
           
           if (isNaN(lat) || isNaN(lon)) {
             return badRequest('Invalid lat/lon parameters', 400);
@@ -1057,7 +1042,7 @@ export default {
         }
         
         try {
-          const { query, validation } = parseQuery(request);
+          const { validation } = parseQuery(request);
           
           // Check validation result
           if (!validation.valid) {
