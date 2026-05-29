@@ -1,6 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 
-import { Env, LookupResult, GeoJSONFeatureCollection, SpatialIndex } from './types';
+import { Env, LookupResult, GeoJSONFeatureCollection, SpatialIndex, GeoJSONFeature, BatchLookupRequest, QueryParams } from './types';
 import { geocodeIfNeeded, geocodeBatch, normalizeAddressWithGoogle } from './geocoding';
 import { 
   geoCacheLRU, 
@@ -252,7 +252,7 @@ function lookupRidingWithIndex(spatialIndex: SpatialIndex, lon: number, lat: num
 }
 
 // Check if point is in polygon and return properties
-function featurePropertiesIfContains(ridingFeature: any, lon: number, lat: number): Record<string, unknown> | null {
+function featurePropertiesIfContains(ridingFeature: GeoJSONFeature, lon: number, lat: number): Record<string, unknown> | null {
   const geom = ridingFeature?.geometry;
   if (!geom) return null;
   if (isPointInPolygon(lon, lat, geom)) {
@@ -812,12 +812,12 @@ export default {
               return badRequest('Request body too large. Maximum size is 10MB', 413);
             }
             
-            const body = await request.json() as { requests: any[] };
+            const body = await request.json() as { requests: Record<string, unknown>[] };
             const requests = body.requests.map((req, index) => ({
-              id: req.id || `req_${index}`,
-              query: req.query,
-              pathname: normalizeLookupPathname(req.pathname || '/api')
-            }));
+              id: String(req.id || `req_${index}`),
+              query: req.query as QueryParams,
+              pathname: normalizeLookupPathname(String(req.pathname || '/api'))
+            })) as BatchLookupRequest[];
             
             const cb = geocodingCircuitBreaker ? { execute: (k: string, fn: () => Promise<any>) => geocodingCircuitBreaker!.execute(k, fn) } : undefined;
             const results = await processBatchLookupWithBatchGeocoding(
@@ -881,13 +881,13 @@ export default {
             return badRequest('Request body too large. Maximum size is 10MB', 413);
           }
           
-          const body = await request.json() as { requests: any[] };
+          const body = await request.json() as { requests: Record<string, unknown>[] };
           
           if (!body.requests || !Array.isArray(body.requests)) {
             return badRequest("Invalid request body. Expected 'requests' array.", 400);
           }
           
-          const result = await submitBatchToQueue(env, body.requests);
+          const result = await submitBatchToQueue(env, body.requests as unknown as BatchLookupRequest[]);
           return new Response(JSON.stringify(result), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",

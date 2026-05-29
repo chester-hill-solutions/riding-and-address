@@ -133,7 +133,7 @@ export interface GoogleBatchGeocodeResponse {
     place_id: string;
     postcode_localities: string[];
     types: string[];
-    address_components?: any[];
+    address_components?: Record<string, unknown>[];
     geometry: {
       location: {
         lat: number;
@@ -257,7 +257,7 @@ export interface WebhookEvent {
   webhookId: string;
   eventType: string;
   batchId: string;
-  payload: any;
+  payload: Record<string, unknown>;
   createdAt: number;
   attempts: number;
   maxAttempts: number;

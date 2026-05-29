@@ -1,5 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 
+import { Env } from './types';
+
 export interface QueueJob {
   id: string;
   batchId: string;
@@ -79,7 +81,7 @@ export interface QueueStats {
 
 export class QueueManager {
   private state: DurableObjectState;
-  private env: any;
+  private env: Env;
   private jobs: Map<string, QueueJob> = new Map();
   private batches: Map<string, BatchJob> = new Map();
   private processingQueue: string[] = [];
@@ -109,7 +111,7 @@ export class QueueManager {
   private stateLoaded: boolean = false;
   private stateLoadError: Error | null = null;
 
-  constructor(state: DurableObjectState, env: any) {
+  constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
     // Load persisted state on initialization and store the promise
