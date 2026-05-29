@@ -1,4 +1,4 @@
-import { CircuitBreakerState } from './types';
+import { CircuitBreakerState, Env } from './types';
 
 /**
  * Durable Object for sharing circuit breaker state across worker instances.
@@ -6,13 +6,13 @@ import { CircuitBreakerState } from './types';
  */
 export class CircuitBreakerDO {
   private state: DurableObjectState;
-  private env: any;
+  private env: Env;
   private states: Map<string, CircuitBreakerState>;
   private failureThreshold: number;
   private recoveryTimeout: number;
   private successThreshold: number;
 
-  constructor(state: DurableObjectState, env: any) {
+  constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
     this.failureThreshold = 5;
