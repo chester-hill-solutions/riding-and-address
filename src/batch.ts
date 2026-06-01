@@ -1,10 +1,15 @@
-import { Env, BatchLookupRequest, BatchLookupResponse, BatchJob } from './types';
+import { Env, BatchLookupRequest, BatchLookupResponse, BatchJob, QueryParams, LookupResult } from './types';
 import { normalizeAddressWithGoogle, type GeocodeBatchResult } from './geocoding';
 import { incrementMetric, recordTiming } from './metrics';
 import { generateLookupCacheKey, getCachedLookupResult, setCachedLookupResult } from './cache';
 import { pickDataset, provincePathFromFederalProperties } from './utils';
 
 const FEDERAL_PATH = '/api/federal';
+
+// Type aliases for callback functions to avoid explicit any
+type GeocodeFunction = (env: Env, query: QueryParams, request?: Request) => Promise<{ lon: number; lat: number }>;
+type LookupRidingFunction = (env: Env, pathname: string, lon: number, lat: number) => Promise<LookupResult>;
+type CircuitBreakerExecutor = { execute: (key: string, fn: () => Promise<unknown>) => Promise<unknown> };
 
 // Default batch size
 const DEFAULT_BATCH_SIZE = 10;
@@ -17,8 +22,8 @@ export const MAX_REQUEST_BODY_SIZE = 10 * 1024 * 1024; // 10MB
 export async function processBatchLookup(
   env: Env, 
   requests: BatchLookupRequest[],
-  geocodeIfNeeded: (env: Env, query: any, request?: Request) => Promise<{ lon: number; lat: number }>,
-  lookupRiding: (env: Env, pathname: string, lon: number, lat: number) => Promise<any>
+  geocodeIfNeeded: GeocodeFunction,
+  lookupRiding: LookupRidingFunction
 ): Promise<BatchLookupResponse[]> {
   // Validate batch size
   if (requests.length > MAX_BATCH_SIZE) {
@@ -80,11 +85,11 @@ export async function processBatchLookup(
 export async function processBatchLookupWithBatchGeocoding(
   env: Env,
   requests: BatchLookupRequest[],
-  geocodeIfNeeded: (env: Env, query: any, request?: Request) => Promise<{ lon: number; lat: number; normalizedAddress?: string; addressComponents?: import('./types').GoogleAddressComponents }>,
-  lookupRiding: (env: Env, pathname: string, lon: number, lat: number) => Promise<any>,
-  geocodeBatchFn: (env: Env, queries: any[], request?: Request, circuitBreaker?: { execute: (key: string, fn: () => Promise<any>) => Promise<any> }) => Promise<GeocodeBatchResult[]>,
+  geocodeIfNeeded: (env: Env, query: QueryParams, request?: Request) => Promise<{ lon: number; lat: number; normalizedAddress?: string; addressComponents?: import('./types').GoogleAddressComponents }>,
+  lookupRiding: LookupRidingFunction,
+  geocodeBatchFn: (env: Env, queries: QueryParams[], request?: Request, circuitBreaker?: CircuitBreakerExecutor) => Promise<GeocodeBatchResult[]>,
   request?: Request,
-  circuitBreaker?: { execute: (key: string, fn: () => Promise<any>) => Promise<any> }
+  circuitBreaker?: CircuitBreakerExecutor
 ): Promise<BatchLookupResponse[]> {
   // Validate batch size
   if (requests.length > MAX_BATCH_SIZE) {
@@ -416,7 +421,7 @@ export async function submitBatchToQueue(env: Env, requests: BatchLookupRequest[
   return await response.json();
 }
 
-export async function getBatchStatus(env: Env, batchId: string): Promise<any> {
+export async function getBatchStatus(env: Env, batchId: string): Promise<unknown> {
   if (!env.QUEUE_MANAGER) {
     throw new Error("Queue manager not configured");
   }
@@ -434,7 +439,7 @@ export async function getBatchStatus(env: Env, batchId: string): Promise<any> {
   return await response.json();
 }
 
-export async function processQueueJobs(env: Env, maxJobs: number = 10): Promise<any> {
+export async function processQueueJobs(env: Env, maxJobs: number = 10): Promise<unknown> {
   if (!env.QUEUE_MANAGER) {
     throw new Error("Queue manager not configured");
   }
