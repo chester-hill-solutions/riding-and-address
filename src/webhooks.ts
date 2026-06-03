@@ -102,7 +102,7 @@ async function addDeliveryToIndex(env: Env, deliveryId: string): Promise<void> {
 }
 
 // Create webhook event
-export async function createWebhookEvent(env: Env, webhookId: string, eventType: string, batchId: string, payload: any): Promise<string> {
+export async function createWebhookEvent(env: Env, webhookId: string, eventType: string, batchId: string, payload: Record<string, unknown>): Promise<string> {
   const eventId = generateEventId();
   const event: WebhookEvent = {
     id: eventId,
@@ -369,7 +369,7 @@ export function initializeWebhookProcessing(env: Env): void {
 }
 
 // Trigger webhook for batch completion
-export async function triggerBatchCompletionWebhook(env: Env, batchId: string, batchStatus: any): Promise<void> {
+export async function triggerBatchCompletionWebhook(env: Env, batchId: string, batchStatus: Record<string, unknown>): Promise<void> {
   if (!WEBHOOK_CONFIG.ENABLED) {
     return;
   }
@@ -381,7 +381,7 @@ export async function triggerBatchCompletionWebhook(env: Env, batchId: string, b
     status: batchStatus.status,
     results: batchStatus.results,
     errors: batchStatus.errors,
-    processingTime: batchStatus.completedAt - batchStatus.createdAt
+    processingTime: (batchStatus.completedAt as number) - (batchStatus.createdAt as number)
   };
   
   // Create events for all enabled webhooks

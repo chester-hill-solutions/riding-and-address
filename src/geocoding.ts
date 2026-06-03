@@ -3,7 +3,8 @@ import {
   QueryParams, 
   MapboxResponse, 
   GoogleBatchGeocodeRequest,
-  GoogleAddressComponents
+  GoogleAddressComponents,
+  GoogleGeocodeLocation
 } from './types';
 import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS, TIME_CONSTANTS_SECONDS, QUALITY_THRESHOLDS } from './config';
 import { 
@@ -231,7 +232,7 @@ async function withRetry<T>(
       lastError = error as Error;
       
       // Do not retry non-retriable errors
-      if ((lastError as any)?.nonRetriable) {
+      if ((lastError as { nonRetriable?: boolean })?.nonRetriable) {
         console.error(`[GEOCODING] ${operation} failed with non-retriable error:`, lastError.message);
         throw lastError;
       }
@@ -272,8 +273,8 @@ export type GeocodeBatchResult = { lon: number; lat: number; success: boolean; e
  * Parses Google address_components array into structured address components object.
  * Extracts all available address parts from Google's response.
  */
-function parseGoogleAddressComponents(result: any): GoogleAddressComponents | undefined {
-  if (!result || !result.address_components || !Array.isArray(result.address_components)) {
+function parseGoogleAddressComponents(result: Record<string, unknown>): GoogleAddressComponents | undefined {
+  if (!result || !Array.isArray(result.address_components)) {
     return undefined;
   }
 
@@ -281,10 +282,10 @@ function parseGoogleAddressComponents(result: any): GoogleAddressComponents | un
   
   // Helper to find component by type
   const getComponent = (types: string[]): string | undefined => {
-    const component = result.address_components.find((comp: any) => 
-      comp.types && Array.isArray(comp.types) && types.some(type => comp.types.includes(type))
+    const component = (result.address_components as Array<Record<string, unknown>>).find((comp) => 
+      Array.isArray(comp.types) && types.some(type => (comp.types as string[]).includes(type))
     );
-    return component?.long_name || component?.short_name;
+    return (component?.long_name as string) || (component?.short_name as string);
   };
 
   // Extract all address components
@@ -318,28 +319,29 @@ function parseGoogleAddressComponents(result: any): GoogleAddressComponents | un
   components.ward = getComponent(['ward']);
 
   // Add formatted address and other metadata
-  if (result.formatted_address) {
+  if (typeof result.formatted_address === 'string') {
     components.formatted_address = result.formatted_address;
   }
-  if (result.place_id) {
+  if (typeof result.place_id === 'string') {
     components.place_id = result.place_id;
   }
-  if (result.types && Array.isArray(result.types)) {
+  if (Array.isArray(result.types)) {
     components.types = result.types;
   }
-  if (result.plus_code) {
-    components.plus_code = result.plus_code;
+  if (result.plus_code && typeof result.plus_code === 'object') {
+    components.plus_code = result.plus_code as Record<string, string>;
   }
-  if (result.geometry?.viewport) {
+  const geometry = result.geometry as Record<string, unknown> | undefined;
+  if (geometry?.viewport && typeof geometry.viewport === 'object') {
     components.viewport = {
-      northeast: result.geometry.viewport.northeast,
-      southwest: result.geometry.viewport.southwest
+      northeast: (geometry.viewport as Record<string, unknown>).northeast as GoogleGeocodeLocation,
+      southwest: (geometry.viewport as Record<string, unknown>).southwest as GoogleGeocodeLocation
     };
   }
-  if (result.geometry?.bounds) {
+  if (geometry?.bounds && typeof geometry.bounds === 'object') {
     components.bounds = {
-      northeast: result.geometry.bounds.northeast,
-      southwest: result.geometry.bounds.southwest
+      northeast: (geometry.bounds as Record<string, unknown>).northeast as GoogleGeocodeLocation,
+      southwest: (geometry.bounds as Record<string, unknown>).southwest as GoogleGeocodeLocation
     };
   }
 
@@ -363,7 +365,7 @@ export async function normalizeAddressWithGoogle(
   lat: number,
   lon: number,
   request?: Request,
-  circuitBreaker?: { execute: (key: string, fn: () => Promise<any>) => Promise<any> }
+  circuitBreaker?: { execute: (key: string, fn: () => Promise<unknown>) => Promise<unknown> }
 ): Promise<{ formattedAddress: string; components: GoogleAddressComponents } | null> {
   const headerKey = request?.headers.get('X-Google-API-Key');
   const key = headerKey || env.GOOGLE_MAPS_KEY;
@@ -415,7 +417,7 @@ export async function normalizeAddressWithGoogle(
     const retryConfig = getRetryConfig();
     const fn = () => withRetry(() => withTimeout(doReverse(), timeoutMs, 'Google reverse geocode'), retryConfig, 'Google reverse geocode');
     const out = circuitBreaker
-      ? await circuitBreaker.execute('geocoding:google-reverse', fn)
+      ? await circuitBreaker.execute('geocoding:google-reverse', fn) as { formattedAddress: string; components: GoogleAddressComponents } | null
       : await fn();
     
     // Cache the result if successful
@@ -545,7 +547,7 @@ export async function geocodeIfNeeded(
     recordTiming: (key: keyof import('./types').Metrics, duration: number) => void;
   },
   circuitBreaker?: {
-    execute: (key: string, fn: () => Promise<any>) => Promise<any>;
+    execute: (key: string, fn: () => Promise<unknown>) => Promise<unknown>;
   }
 ): Promise<GeocodeResult> {
   if (typeof qp.lat === "number" && typeof qp.lon === "number") {
@@ -756,7 +758,7 @@ export async function geocodeIfNeeded(
       if (circuitBreaker) {
         result = await circuitBreaker.execute(`geocoding:${provider}`, async () => {
           return await withRetry(geocodeFn, retryConfig, `Geocoding ${provider}`);
-        });
+        }) as GeocodeResult;
       } else {
         result = await withRetry(geocodeFn, retryConfig, `Geocoding ${provider}`);
       }
@@ -967,7 +969,7 @@ export async function geocodeBatch(
     recordTiming: (key: keyof import('./types').Metrics, duration: number) => void;
   },
   circuitBreaker?: {
-    execute: (key: string, fn: () => Promise<any>) => Promise<any>;
+    execute: (key: string, fn: () => Promise<unknown>) => Promise<unknown>;
   }
 ): Promise<GeocodeBatchResult[]> {
   if (!BATCH_GEOCODING_CONFIG.ENABLED || queries.length === 0) {
