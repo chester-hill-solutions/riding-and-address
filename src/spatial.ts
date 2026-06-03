@@ -168,7 +168,7 @@ export function findCandidateFeatures(lon: number, lat: number, spatialIndex: Sp
 }
 
 // Calculate centroid of a geometry
-export function calculateCentroid(geometry: any): { lon: number; lat: number } {
+export function calculateCentroid(geometry: GeoJSONGeometry): { lon: number; lat: number } {
   if (geometry.type === 'Point') {
     return { lon: geometry.coordinates[0] as number, lat: geometry.coordinates[1] as number };
   }
@@ -186,10 +186,11 @@ export function calculateCentroid(geometry: any): { lon: number; lat: number } {
   
   if (geometry.type === 'MultiPolygon') {
     // Calculate centroid of the largest polygon
-    let largestPolygon = geometry.coordinates[0];
+    const coordinates = geometry.coordinates as number[][][][];
+    let largestPolygon = coordinates[0];
     let largestVertexCount = 0;
     
-    for (const polygon of geometry.coordinates) {
+    for (const polygon of coordinates) {
       const vertexCount = polygon[0].length;
       if (vertexCount > largestVertexCount) {
         largestVertexCount = vertexCount;
@@ -341,7 +342,7 @@ export async function queryRidingFromDatabase(env: Env, dataset: string, lon: nu
   try {
     // Use R-tree index for initial spatial filtering if available
     let query = '';
-    let params: any[] = [];
+    let params: unknown[] = [];
 
     if (dbConfig.USE_RTREE_INDEX) {
       query = `

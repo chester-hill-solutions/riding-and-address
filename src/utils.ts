@@ -592,7 +592,7 @@ export function checkBasicAuth(request: Request, env: Env): boolean {
 }
 
 // Geometry simplification
-export function simplifyGeometry(geometry: any, tolerance: number, maxVertices: number): GeoJSONGeometry {
+export function simplifyGeometry(geometry: GeoJSONGeometry, tolerance: number, maxVertices: number): GeoJSONGeometry {
   // Handle Point geometry (no simplification needed)
   if (geometry.type === 'Point') {
     return geometry;
@@ -602,7 +602,7 @@ export function simplifyGeometry(geometry: any, tolerance: number, maxVertices: 
   if (geometry.type === 'LineString') {
     return {
       type: 'LineString',
-      coordinates: simplifyLineString(geometry.coordinates, tolerance, maxVertices)
+      coordinates: simplifyLineString(geometry.coordinates as number[][], tolerance, maxVertices)
     };
   }
   
@@ -610,7 +610,7 @@ export function simplifyGeometry(geometry: any, tolerance: number, maxVertices: 
   if (geometry.type === 'Polygon') {
     return {
       type: 'Polygon',
-      coordinates: geometry.coordinates.map((ring: number[][]) => 
+      coordinates: (geometry.coordinates as number[][][]).map((ring: number[][]) => 
         simplifyLineString(ring, tolerance, maxVertices)
       )
     };
@@ -620,7 +620,7 @@ export function simplifyGeometry(geometry: any, tolerance: number, maxVertices: 
   if (geometry.type === 'MultiPolygon') {
     return {
       type: 'MultiPolygon',
-      coordinates: geometry.coordinates.map((polygon: number[][][]) =>
+      coordinates: (geometry.coordinates as number[][][][]).map((polygon: number[][][]) =>
         polygon.map((ring: number[][]) => 
           simplifyLineString(ring, tolerance, maxVertices)
         )

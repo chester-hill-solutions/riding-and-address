@@ -1,4 +1,4 @@
-import { Env, GeoJSONFeatureCollection, SpatialIndex, CacheWarmingState, QueryParams, LookupResult, LookupCacheEntry } from './types';
+import { Env, GeoJSONFeatureCollection, GeoJSONGeometry, SpatialIndex, CacheWarmingState, QueryParams, LookupResult, LookupCacheEntry } from './types';
 import { geocodeIfNeeded } from './geocoding';
 import { TIME_CONSTANTS, TIME_CONSTANTS_SECONDS } from './config';
 import { geocodingCircuitBreaker } from './circuit-breaker';
@@ -191,7 +191,7 @@ export async function warmCacheForLocation(
   lon: number, 
   locationName: string,
   loadGeo: (env: Env, r2Key: string) => Promise<void>,
-  lookupRiding: (env: Env, pathname: string, lon: number, lat: number) => Promise<any>
+  lookupRiding: (env: Env, pathname: string, lon: number, lat: number) => Promise<LookupResult>
 ): Promise<boolean> {
   try {
     // Warm all three datasets for this location
@@ -231,13 +231,13 @@ export async function warmCacheForPostalCode(
   env: Env, 
   postalCode: string,
   loadGeo: (env: Env, r2Key: string) => Promise<void>,
-  lookupRiding: (env: Env, pathname: string, lon: number, lat: number) => Promise<any>
+  lookupRiding: (env: Env, pathname: string, lon: number, lat: number) => Promise<LookupResult>
 ): Promise<boolean> {
   try {
     // Geocode the postal code first
     const query: QueryParams = { postal: postalCode };
     const { lon, lat } = await geocodeIfNeeded(env, query, undefined, undefined, geocodingCircuitBreaker ? {
-      execute: (key: string, fn: () => Promise<any>) => geocodingCircuitBreaker.execute(key, fn)
+      execute: (key: string, fn: () => Promise<unknown>) => geocodingCircuitBreaker.execute(key, fn)
     } : undefined);
     
     // Warm cache for all datasets (includes lookup cache)
@@ -271,7 +271,7 @@ export async function warmCacheForPostalCode(
 export async function performCacheWarming(
   env: Env,
   loadGeo: (env: Env, r2Key: string) => Promise<void>,
-  lookupRiding: (env: Env, pathname: string, lon: number, lat: number) => Promise<any>
+  lookupRiding: (env: Env, pathname: string, lon: number, lat: number) => Promise<LookupResult>
 ): Promise<void> {
   if (!CACHE_WARMING_CONFIG.ENABLED) {
     return;
@@ -371,7 +371,7 @@ export async function performCacheWarming(
 export async function initializeCacheWarming(
   env: Env,
   loadGeo: (env: Env, r2Key: string) => Promise<void>,
-  lookupRiding: (env: Env, pathname: string, lon: number, lat: number) => Promise<any>
+  lookupRiding: (env: Env, pathname: string, lon: number, lat: number) => Promise<LookupResult>
 ): Promise<void> {
   if (!CACHE_WARMING_CONFIG.ENABLED) {
     return;
@@ -413,13 +413,13 @@ export function setCachedSpatialIndex(key: string, data: SpatialIndex): void {
 }
 
 // LRU cache for simplified boundaries
-export const simplifiedBoundariesCacheLRU = new LRUCache<string, any>(CACHE_CONFIG.MAX_SIZE, CACHE_CONFIG.MAX_AGE);
+export const simplifiedBoundariesCacheLRU = new LRUCache<string, GeoJSONGeometry>(CACHE_CONFIG.MAX_SIZE, CACHE_CONFIG.MAX_AGE);
 
-export function getCachedSimplifiedBoundary(cacheKey: string): any | undefined {
+export function getCachedSimplifiedBoundary(cacheKey: string): GeoJSONGeometry | undefined {
   return simplifiedBoundariesCacheLRU.get(cacheKey);
 }
 
-export function setCachedSimplifiedBoundary(cacheKey: string, geometry: any): void {
+export function setCachedSimplifiedBoundary(cacheKey: string, geometry: GeoJSONGeometry): void {
   simplifiedBoundariesCacheLRU.set(cacheKey, geometry);
 }
 
