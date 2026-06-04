@@ -819,7 +819,7 @@ export default {
               pathname: normalizeLookupPathname(String(req.pathname || '/api'))
             })) as BatchLookupRequest[];
             
-            const cb = geocodingCircuitBreaker ? { execute: (k: string, fn: () => Promise<any>) => geocodingCircuitBreaker!.execute(k, fn) } : undefined;
+            const cb = geocodingCircuitBreaker ? { execute: (k: string, fn: () => Promise<unknown>) => geocodingCircuitBreaker!.execute(k, fn) } : undefined;
             const results = await processBatchLookupWithBatchGeocoding(
               env,
               requests,
@@ -1057,7 +1057,7 @@ export default {
           incrementMetric('lookupRequests');
 
           const timeoutConfig = getTimeoutConfig(env);
-          const cb = geocodingCircuitBreaker ? { execute: (k: string, fn: () => Promise<any>) => geocodingCircuitBreaker!.execute(k, fn) } : undefined;
+          const cb = geocodingCircuitBreaker ? { execute: (k: string, fn: () => Promise<unknown>) => geocodingCircuitBreaker!.execute(k, fn) } : undefined;
 
           // Combined endpoint: federal + optional ON/QC provincial lookup
           if (lookupPathname === '/api/combined') {

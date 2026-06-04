@@ -163,11 +163,11 @@ describe('isPointInPolygon', () => {
       type: 'Point' as const,
       coordinates: [5, 5]
     };
-    expect(isPointInPolygon(5, 5, geometry as any)).toBe(false);
+    expect(isPointInPolygon(5, 5, geometry as unknown)).toBe(false);
   });
 
   it('returns false for missing geometry', () => {
-    expect(isPointInPolygon(5, 5, undefined as any)).toBe(false);
+    expect(isPointInPolygon(5, 5, undefined as unknown)).toBe(false);
   });
 });
 
