@@ -385,7 +385,7 @@ export async function normalizeAddressWithGoogle(
       region: 'ca'
     });
     const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
-    const resp = await fetch(url, { headers: { 'User-Agent': 'riding-lookup/1.0' } });
+    const resp = await fetch(url, { headers: { 'User-Agent': 'riding-lookup/1.0' }, signal: AbortSignal.timeout(10000) });
     if (!resp.ok) throw new Error(`Google reverse geocode HTTP error: ${resp.status}`);
     const rawData = await resp.json();
     const validation = safeValidateGoogleGeocode(rawData);
@@ -470,7 +470,8 @@ async function geocodeWithGeoGratis(qp: QueryParams): Promise<{ lon: number; lat
       
       const url = `https://geogratis.gc.ca/services/geolocation/en/locate?${params.toString()}`;
       const resp = await fetch(url, { 
-        headers: { "User-Agent": "riding-lookup/1.0" } 
+        headers: { "User-Agent": "riding-lookup/1.0" },
+        signal: AbortSignal.timeout(10000)
       });
       
       if (!resp.ok) {
@@ -652,7 +653,7 @@ export async function geocodeIfNeeded(
           params.set('region', 'ca');
 
           const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
-          const resp = await fetch(url, { headers: { "User-Agent": "riding-lookup/1.0" } });
+          const resp = await fetch(url, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(10000) });
           if (!resp.ok) throw new Error(`Google error: ${resp.status}`);
           const rawData = await resp.json();
           // Validate response structure with zod
@@ -676,7 +677,7 @@ export async function geocodeIfNeeded(
               nominatimParams.set("q", query);
             }
             const nominatimUrl = `https://nominatim.openstreetmap.org/search?${nominatimParams.toString()}`;
-            const nomResp = await fetch(nominatimUrl, { headers: { "User-Agent": "riding-lookup/1.0" } });
+            const nomResp = await fetch(nominatimUrl, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(10000) });
             if (nomResp.ok) {
             const rawResults = await nomResp.json();
             // Validate Nominatim response
@@ -716,7 +717,8 @@ export async function geocodeIfNeeded(
           const token = env.MAPBOX_TOKEN;
           if (!token) throw new Error("MAPBOX_TOKEN not configured");
           const resp = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?limit=1&proximity=ca&access_token=${token}`, {
-            headers: { "User-Agent": "riding-lookup/1.0" }
+            headers: { "User-Agent": "riding-lookup/1.0" },
+            signal: AbortSignal.timeout(10000)
           });
           if (!resp.ok) throw new Error(`Mapbox error: ${resp.status}`);
           const data = await resp.json() as MapboxResponse;
@@ -737,7 +739,7 @@ export async function geocodeIfNeeded(
             nominatimParams.set("q", query);
           }
           const nominatimUrl = `https://nominatim.openstreetmap.org/search?${nominatimParams.toString()}`;
-          const resp = await fetch(nominatimUrl, { headers: { "User-Agent": "riding-lookup/1.0" } });
+          const resp = await fetch(nominatimUrl, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(10000) });
           if (!resp.ok) throw new Error(`Nominatim error: ${resp.status}`);
           const rawResults = await resp.json();
           // Validate Nominatim response
@@ -819,7 +821,8 @@ export async function geocodeBatchWithGoogle(
         'Content-Type': 'application/json',
         'User-Agent': 'riding-lookup/1.0'
       },
-      body: JSON.stringify(batchRequest)
+      body: JSON.stringify(batchRequest),
+      signal: AbortSignal.timeout(10000)
     });
 
     if (!response.ok) {
