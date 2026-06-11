@@ -7,6 +7,7 @@ import {
   GoogleGeocodeLocation
 } from './types';
 import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS, TIME_CONSTANTS_SECONDS, QUALITY_THRESHOLDS } from './config';
+import { withRetry, withTimeout, NonRetriableError } from './utils';
 import { 
   safeValidateGeoGratis,
   safeValidateGoogleGeocode,
@@ -205,65 +206,7 @@ export async function setCachedReverseGeocoding(env: Env, cacheKey: string, resu
   }
 }
 
-// Non-retriable error type
-class NonRetriableError extends Error {
-  nonRetriable: boolean;
-  constructor(message: string) {
-    super(message);
-    this.nonRetriable = true;
-  }
-}
-
-// Retry utility function with jitter and non-retriable support
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  config: ReturnType<typeof getRetryConfig>,
-  operation: string
-): Promise<T> {
-  let lastError: Error;
-  
-  for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
-    try {
-      const result = await fn();
-      if (attempt > 1) {
-      }
-      return result;
-    } catch (error) {
-      lastError = error as Error;
-      
-      // Do not retry non-retriable errors
-      if ((lastError as { nonRetriable?: boolean })?.nonRetriable) {
-        console.error(`[GEOCODING] ${operation} failed with non-retriable error:`, lastError.message);
-        throw lastError;
-      }
-      
-      if (attempt === config.maxAttempts) {
-        console.error(`[GEOCODING] ${operation} failed after ${config.maxAttempts} attempts:`, lastError.message);
-        throw lastError;
-      }
-      
-      const delay = Math.min(
-        config.baseDelay * Math.pow(config.backoffMultiplier, attempt - 1),
-        config.maxDelay
-      );
-      const jitteredDelay = delay + Math.random() * 1000;
-      
-      console.warn(`[GEOCODING] ${operation} attempt ${attempt} failed, retrying in ${Math.round(jitteredDelay)}ms:`, lastError.message);
-      await new Promise(resolve => setTimeout(resolve, jitteredDelay));
-    }
-  }
-  
-  throw lastError!;
-}
-
-// Timeout utility function
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(`${operation} timed out after ${timeoutMs}ms`)), timeoutMs);
-  });
-  
-  return Promise.race([promise, timeoutPromise]);
-}
+// Non-retriable error removed — using NonRetriableError from './utils'
 
 export type GeocodeResult = { lon: number; lat: number; normalizedAddress?: string; addressComponents?: GoogleAddressComponents };
 
@@ -637,7 +580,7 @@ export async function geocodeIfNeeded(
           // Check for Google API key in header first, then fall back to environment variable
           const headerKey = request?.headers.get("X-Google-API-Key");
           const key = headerKey || env.GOOGLE_MAPS_KEY;
-          if (!key) throw new Error("Google API key not provided. Set X-Google-API-Key header or configure GOOGLE_MAPS_KEY environment variable");
+          if (!key) throw new NonRetriableError("Google API key not provided. Set X-Google-API-Key header or configure GOOGLE_MAPS_KEY environment variable");
           const params = new URLSearchParams({ key });
           // Prefer structured components when available
           const componentFilters: string[] = [];
@@ -660,7 +603,7 @@ export async function geocodeIfNeeded(
           const validation = safeValidateGoogleGeocode(rawData);
           if (!validation.success) {
             console.warn(`[GEOCODING] Google response validation failed:`, validation.error.errors);
-            throw new Error(`Google API response validation failed`);
+            throw new NonRetriableError(`Google API response validation failed`);
           }
           const data = validation.data;
           // Handle zero results or API errors without pointless retries; try Nominatim fallback immediately
@@ -684,7 +627,7 @@ export async function geocodeIfNeeded(
             const nomValidation = safeValidateNominatim(rawResults);
             if (!nomValidation.success) {
               console.warn(`[GEOCODING] Nominatim response validation failed:`, nomValidation.error.errors);
-              throw new Error(`Nominatim API response validation failed`);
+              throw new NonRetriableError(`Nominatim API response validation failed`);
             }
             const results = nomValidation.data;
             const first = results?.[0];
@@ -715,7 +658,7 @@ export async function geocodeIfNeeded(
           };
         } else if (provider === "mapbox") {
           const token = env.MAPBOX_TOKEN;
-          if (!token) throw new Error("MAPBOX_TOKEN not configured");
+          if (!token) throw new NonRetriableError("MAPBOX_TOKEN not configured");
           const resp = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?limit=1&proximity=ca&access_token=${token}`, {
             headers: { "User-Agent": "riding-lookup/1.0" },
             signal: AbortSignal.timeout(10000)
@@ -723,7 +666,7 @@ export async function geocodeIfNeeded(
           if (!resp.ok) throw new Error(`Mapbox error: ${resp.status}`);
           const data = await resp.json() as MapboxResponse;
           const feat = data?.features?.[0];
-          if (!feat?.center) throw new Error("No results from Mapbox");
+          if (!feat?.center) throw new NonRetriableError("No results from Mapbox");
           geocodeResult = { lon: feat.center[0], lat: feat.center[1] };
         } else {
           // Nominatim
@@ -746,11 +689,11 @@ export async function geocodeIfNeeded(
           const nomValidation = safeValidateNominatim(rawResults);
           if (!nomValidation.success) {
             console.warn(`[GEOCODING] Nominatim response validation failed:`, nomValidation.error.errors);
-            throw new Error(`Nominatim API response validation failed`);
+            throw new NonRetriableError(`Nominatim API response validation failed`);
           }
           const results = nomValidation.data;
           const first = results?.[0];
-          if (!first) throw new Error("No results from Nominatim");
+          if (!first) throw new NonRetriableError("No results from Nominatim");
           geocodeResult = { lon: Number(first.lon), lat: Number(first.lat) };
         }
         return geocodeResult;

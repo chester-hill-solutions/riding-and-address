@@ -592,8 +592,8 @@ export default {
         
         if (pathname === '/api/boundaries/all' && request.method === 'GET') {
           const dataset = url.searchParams.get('dataset') || 'federalridings-2024.geojson';
-          const limit = parseInt(url.searchParams.get('limit') || '100');
-          const offset = parseInt(url.searchParams.get('offset') || '0');
+          const limit = parseInt(url.searchParams.get('limit') || '100', 10);
+          const offset = parseInt(url.searchParams.get('offset') || '0', 10);
           
           try {
             const dbConfig = getSpatialDbConfig(env);
@@ -808,7 +808,7 @@ export default {
           try {
             // Check request body size (limit to 10MB)
             const contentLength = request.headers.get('content-length');
-            if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) {
+            if (contentLength && parseInt(contentLength, 10) > 10 * 1024 * 1024) {
               return badRequest('Request body too large. Maximum size is 10MB', 413);
             }
             
@@ -877,7 +877,7 @@ export default {
         try {
           // Check request body size (limit to 10MB)
           const contentLength = request.headers.get('content-length');
-          if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) {
+          if (contentLength && parseInt(contentLength, 10) > 10 * 1024 * 1024) {
             return badRequest('Request body too large. Maximum size is 10MB', 413);
           }
           

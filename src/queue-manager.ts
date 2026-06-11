@@ -333,7 +333,7 @@ export class QueueManager {
 
     // Check request body size (limit to 10MB)
     const contentLength = request.headers.get('content-length');
-    if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) {
+    if (contentLength && parseInt(contentLength, 10) > 10 * 1024 * 1024) {
       return new Response(JSON.stringify({ error: 'Request body too large. Maximum size is 10MB' }), {
         status: 413,
         headers: { 'Content-Type': 'application/json' }
@@ -814,8 +814,8 @@ export class QueueManager {
 
   private async handleDeadLetterQueue(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    const limit = parseInt(url.searchParams.get('limit') || '50');
-    const offset = parseInt(url.searchParams.get('offset') || '0');
+    const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+    const offset = parseInt(url.searchParams.get('offset') || '0', 10);
 
     const deadLetterJobs = this.deadLetterQueue
       .slice(offset, offset + limit)

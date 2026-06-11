@@ -300,6 +300,19 @@ export function validateAndSanitizeQuery(query: QueryParams): ValidationResult {
 }
 
 /**
+ * Error class for non-retriable failures (e.g., validation errors, missing config).
+ * When thrown inside withRetry, the operation will not be retried.
+ */
+export class NonRetriableError extends Error {
+  nonRetriable: boolean;
+  constructor(message: string) {
+    super(message);
+    this.name = 'NonRetriableError';
+    this.nonRetriable = true;
+  }
+}
+
+/**
  * Executes an async operation with automatic retry logic using exponential backoff.
  * 
  * @param operation - The async function to execute
@@ -320,6 +333,12 @@ export async function withRetry<T>(
       return await operation();
     } catch (error) {
       lastError = error as Error;
+      
+      // Do not retry non-retriable errors
+      if ((lastError as { nonRetriable?: boolean })?.nonRetriable) {
+        console.error(`${context} failed with non-retriable error:`, lastError.message);
+        throw lastError;
+      }
       
       if (attempt === config.maxAttempts) {
         console.error(`${context} failed after ${config.maxAttempts} attempts:`, lastError.message);
