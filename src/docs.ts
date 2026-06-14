@@ -17,14 +17,21 @@ export function createApiReference(baseUrl: string): string {
       margin: 0;
       height: 100%;
     }
+    #api-reference {
+      height: 100%;
+    }
   </style>
 </head>
 <body>
-  <script
-    id="api-reference"
-    data-url="${baseUrl}/api/docs"
-    data-configuration='{"theme":"default","layout":"modern","hideDownloadButton":false}'></script>
+  <div id="api-reference"></div>
   <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@${SCALAR_API_REFERENCE_VERSION}"></script>
+  <script>
+    Scalar.createApiReference('#api-reference', {
+      url: ${JSON.stringify(`${baseUrl}/api/docs`)},
+      theme: 'default',
+      layout: 'modern',
+    });
+  </script>
 </body>
 </html>`;
 }
@@ -55,30 +62,31 @@ const LOOKUP_QUERY_PARAMETERS = [
   {
     name: "postal",
     in: "query" as const,
-    description: "Canadian postal code (e.g., K1A 0A6)",
-    required: false,
-    schema: { type: "string", example: "K1A 0A6" },
+    description:
+      "Canadian postal code (e.g., K1A 0A6). Alternatively provide address or lat/lon instead.",
+    required: true,
+    schema: { type: "string", default: "K1A 0A6", example: "K1A 0A6" },
   },
   {
     name: "address",
     in: "query" as const,
     description: "Street address",
     required: false,
-    schema: { type: "string", example: "123 Main St, Toronto, ON" },
+    schema: { type: "string", default: "123 Main St, Toronto, ON", example: "123 Main St, Toronto, ON" },
   },
   {
     name: "lat",
     in: "query" as const,
-    description: "Latitude",
+    description: "Latitude (must be sent with lon)",
     required: false,
-    schema: { type: "number", example: 45.4215 },
+    schema: { type: "number", default: 45.4215, example: 45.4215 },
   },
   {
     name: "lon",
     in: "query" as const,
-    description: "Longitude",
+    description: "Longitude (must be sent with lat)",
     required: false,
-    schema: { type: "number", example: -75.6972 },
+    schema: { type: "number", default: -75.6972, example: -75.6972 },
   },
   {
     name: "city",
@@ -339,59 +347,7 @@ export function createOpenAPISpec(baseUrl: string) {
           description:
             "Returns the federal result plus the matching provincial result (Ontario or Quebec) in `province_data` when PROV_TERR maps to those provinces.",
           tags: ["Combined Lookup"],
-          parameters: [
-            {
-              name: "postal",
-              in: "query",
-              description: "Canadian postal code (e.g., K1A 0A6)",
-              required: false,
-              schema: { type: "string", example: "K1A 0A6" },
-            },
-            {
-              name: "address",
-              in: "query",
-              description: "Street address",
-              required: false,
-              schema: { type: "string", example: "123 Main St, Toronto, ON" },
-            },
-            {
-              name: "lat",
-              in: "query",
-              description: "Latitude",
-              required: false,
-              schema: { type: "number", example: 45.4215 },
-            },
-            {
-              name: "lon",
-              in: "query",
-              description: "Longitude",
-              required: false,
-              schema: { type: "number", example: -75.6972 },
-            },
-            {
-              name: "city",
-              in: "query",
-              description: "City name",
-              required: false,
-              schema: { type: "string", example: "Toronto" },
-            },
-            {
-              name: "state",
-              in: "query",
-              description: "Province or state",
-              required: false,
-              schema: { type: "string", example: "Ontario" },
-            },
-            {
-              name: "country",
-              in: "query",
-              description: "Country",
-              required: false,
-              schema: { type: "string", example: "Canada" },
-            },
-            INCLUDE_PROVINCE_PARAMETER,
-            RETURN_QUERY_PARAMETER,
-          ],
+          parameters: LOOKUP_QUERY_PARAMETERS,
           responses: {
             "200": {
               description: "Successful lookup (federal + optional provincial)",
@@ -489,41 +445,7 @@ export function createOpenAPISpec(baseUrl: string) {
           summary: "Lookup Quebec provincial riding by location",
           description: "Find the Quebec provincial riding for a given location",
           tags: ["Quebec Ridings"],
-          parameters: [
-            {
-              name: "postal",
-              in: "query",
-              description: "Canadian postal code (e.g., H2Y 1C6)",
-              required: false,
-              schema: { type: "string", example: "H2Y 1C6" },
-            },
-            {
-              name: "address",
-              in: "query",
-              description: "Street address",
-              required: false,
-              schema: {
-                type: "string",
-                example: "1234 Rue Saint-Denis, Montréal, QC",
-              },
-            },
-            {
-              name: "lat",
-              in: "query",
-              description: "Latitude",
-              required: false,
-              schema: { type: "number", example: 45.5017 },
-            },
-            {
-              name: "lon",
-              in: "query",
-              description: "Longitude",
-              required: false,
-              schema: { type: "number", example: -73.5673 },
-            },
-            INCLUDE_PROVINCE_PARAMETER,
-            RETURN_QUERY_PARAMETER,
-          ],
+          parameters: LOOKUP_QUERY_PARAMETERS,
           responses: {
             "200": {
               description: "Successful lookup",
@@ -560,38 +482,7 @@ export function createOpenAPISpec(baseUrl: string) {
           description:
             "Find the Ontario provincial riding for a given location",
           tags: ["Ontario Ridings"],
-          parameters: [
-            {
-              name: "postal",
-              in: "query",
-              description: "Canadian postal code (e.g., M5H 2N2)",
-              required: false,
-              schema: { type: "string", example: "M5H 2N2" },
-            },
-            {
-              name: "address",
-              in: "query",
-              description: "Street address",
-              required: false,
-              schema: { type: "string", example: "123 King St, Toronto, ON" },
-            },
-            {
-              name: "lat",
-              in: "query",
-              description: "Latitude",
-              required: false,
-              schema: { type: "number", example: 43.6532 },
-            },
-            {
-              name: "lon",
-              in: "query",
-              description: "Longitude",
-              required: false,
-              schema: { type: "number", example: -79.3832 },
-            },
-            INCLUDE_PROVINCE_PARAMETER,
-            RETURN_QUERY_PARAMETER,
-          ],
+          parameters: LOOKUP_QUERY_PARAMETERS,
           responses: {
             "200": {
               description: "Successful lookup",
@@ -628,10 +519,10 @@ export function createOpenAPISpec(baseUrl: string) {
           description: "Geocode an address or postal code using the self-hosted ODA database. Requires ODA_GEOCODING_ENABLED.",
           tags: ["ODA Geolocation"],
           parameters: [
-            { name: "address", in: "query", schema: { type: "string" } },
-            { name: "postal", in: "query", schema: { type: "string" } },
-            { name: "city", in: "query", schema: { type: "string" } },
-            { name: "state", in: "query", schema: { type: "string" } },
+            { name: "address", in: "query", schema: { type: "string", default: "123 Main St, Toronto, ON" } },
+            { name: "postal", in: "query", required: true, schema: { type: "string", default: "K1A 0A6", example: "K1A 0A6" } },
+            { name: "city", in: "query", schema: { type: "string", default: "Ottawa" } },
+            { name: "state", in: "query", schema: { type: "string", default: "ON" } },
           ],
           responses: {
             "200": { description: "Geocode result with confidence and mailingAddress" },
@@ -645,8 +536,8 @@ export function createOpenAPISpec(baseUrl: string) {
           summary: "Reverse geocode using ODA",
           tags: ["ODA Geolocation"],
           parameters: [
-            { name: "lat", in: "query", required: true, schema: { type: "number" } },
-            { name: "lon", in: "query", required: true, schema: { type: "number" } },
+            { name: "lat", in: "query", required: true, schema: { type: "number", default: 45.4215, example: 45.4215 } },
+            { name: "lon", in: "query", required: true, schema: { type: "number", default: -75.6972, example: -75.6972 } },
           ],
           responses: {
             "200": { description: "Nearest ODA address with distanceMeters" },
@@ -660,8 +551,8 @@ export function createOpenAPISpec(baseUrl: string) {
           summary: "Normalize address to Canada Post-style format",
           tags: ["ODA Geolocation"],
           parameters: [
-            { name: "address", in: "query", schema: { type: "string" } },
-            { name: "postal", in: "query", schema: { type: "string" } },
+            { name: "address", in: "query", schema: { type: "string", default: "123 Main St, Toronto, ON" } },
+            { name: "postal", in: "query", required: true, schema: { type: "string", default: "K1A 0A6", example: "K1A 0A6" } },
           ],
           responses: { "200": { description: "Normalized mailing address" } },
           security: [{ basicAuth: [] }],

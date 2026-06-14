@@ -435,7 +435,7 @@ export function createLandingPage(baseUrl: string): string {
           </div>
           <div class="try-row" id="try-input-row">
             <label for="try-input" id="try-input-label">Postal code</label>
-            <input id="try-input" name="input" value="K1A 0A6" autocomplete="off" spellcheck="false">
+            <input id="try-input" name="postal" value="K1A 0A6" autocomplete="off" spellcheck="false">
           </div>
           <div class="try-row" id="try-coord-row" hidden>
             <label for="try-lon">Longitude</label>
@@ -538,6 +538,9 @@ export function createLandingPage(baseUrl: string): string {
         inputRow.hidden = isCoords;
         coordRow.hidden = !isCoords;
         latRow.hidden = !isCoords;
+        input.disabled = false;
+        lonInput.disabled = !isCoords;
+        latInput.disabled = !isCoords;
 
         if (mode === 'postal') {
           inputLabel.textContent = 'Postal code';
@@ -553,12 +556,25 @@ export function createLandingPage(baseUrl: string): string {
         const mode = modeSelect.value;
 
         if (mode === 'postal') {
-          params.set('postal', input.value.trim());
+          const postal = input.value.trim();
+          if (!postal) {
+            return null;
+          }
+          params.set('postal', postal);
         } else if (mode === 'address') {
-          params.set('address', input.value.trim());
+          const address = input.value.trim();
+          if (!address) {
+            return null;
+          }
+          params.set('address', address);
         } else {
-          params.set('lat', latInput.value.trim());
-          params.set('lon', lonInput.value.trim());
+          const lat = latInput.value.trim();
+          const lon = lonInput.value.trim();
+          if (!lat || !lon) {
+            return null;
+          }
+          params.set('lat', lat);
+          params.set('lon', lon);
         }
 
         if (endpointSelect.value === '/api/combined') {
@@ -571,11 +587,15 @@ export function createLandingPage(baseUrl: string): string {
       function buildUrl() {
         const endpoint = endpointSelect.value;
         const params = buildQuery();
+        if (!params) {
+          return null;
+        }
         return baseUrl + endpoint + '?' + params.toString();
       }
 
       function buildCurl() {
-        return 'curl "' + buildUrl() + '"';
+        const url = buildUrl();
+        return url ? 'curl "' + url + '"' : '';
       }
 
       modeSelect.addEventListener('change', syncModeUi);
@@ -583,6 +603,10 @@ export function createLandingPage(baseUrl: string): string {
 
       copyButton.addEventListener('click', async function () {
         const curl = buildCurl();
+        if (!curl) {
+          setStatus('Enter a postal code, address, or coordinates first.', 'error');
+          return;
+        }
         try {
           await navigator.clipboard.writeText(curl);
           setStatus('Copied curl command to clipboard.', 'ok');
@@ -594,6 +618,11 @@ export function createLandingPage(baseUrl: string): string {
       form.addEventListener('submit', async function (event) {
         event.preventDefault();
         const url = buildUrl();
+        if (!url) {
+          output.textContent = '// Enter a postal code, address, or both coordinates';
+          setStatus('At least one location parameter is required.', 'error');
+          return;
+        }
         output.textContent = 'Loading...';
         setStatus('Requesting ' + url, '');
 
