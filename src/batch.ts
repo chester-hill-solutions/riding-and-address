@@ -1,13 +1,9 @@
 import { Env, BatchLookupRequest, BatchLookupResponse, BatchJob, QueryParams, LookupResult, GoogleAddressComponents } from './types';
 import { parseBatchLookupRequests } from './validation';
-import { normalizeAddressWithGoogle, type GeocodeBatchResult } from './geocoding';
+import { type GeocodeBatchResult } from './geocoding';
 import { incrementMetric, recordTiming } from './metrics';
-import { generateLookupCacheKey, getCachedLookupResult, setCachedLookupResult } from './cache';
-import { pickDataset, provincePathFromFederalProperties } from './utils';
-import { isOdaEnabled } from './oda-config';
-import { resolveNormalizedAddress } from './oda-handlers';
-
-const FEDERAL_PATH = '/api/federal';
+import { performExpandedLookup, type NormalizedAddressContext } from './lookup-expansion';
+import { resolveIncludeProvince } from './return-selector';
 
 // Type aliases for callback functions to avoid explicit any
 type GeocodeFunction = (env: Env, query: QueryParams, request?: Request) => Promise<{ lon: number; lat: number }>;
@@ -126,91 +122,38 @@ export async function processBatchLookupWithBatchGeocoding(
       }
     }
     
-    const hasGoogleKey = () => !isOdaEnabled(env) && !!(request?.headers?.get?.('X-Google-API-Key') ?? env.GOOGLE_MAPS_KEY);
-    const resolveNormalized = async (lat: number, lon: number, query: QueryParams): Promise<{ formattedAddress?: string; components?: GoogleAddressComponents } | undefined> => {
-      if (isOdaEnabled(env)) {
-        const v = await resolveNormalizedAddress(env, lat, lon, query, request, circuitBreaker);
-        return v ? { formattedAddress: v.normalizedAddress, components: v.addressComponents } : undefined;
-      }
-      if (!hasGoogleKey()) return undefined;
-      const v = await normalizeAddressWithGoogle(env, lat, lon, request, circuitBreaker);
-      return v ?? undefined;
-    };
-
-    const runCombined = async (
+    const runExpandedLookup = async (
       batchReq: BatchLookupRequest,
       lon: number,
-      lat: number
-    ): Promise<Pick<BatchLookupResponse, 'point' | 'properties' | 'riding' | 'province_data' | 'normalizedAddress' | 'addressComponents'>> => {
-      const cacheQueryFed = { ...batchReq.query, lon, lat };
-      const federalCacheKey = generateLookupCacheKey(cacheQueryFed, FEDERAL_PATH);
-      const federalCached = await getCachedLookupResult(env, federalCacheKey);
-      let normalizedAddress: string | undefined = federalCached?.normalizedAddress;
-      let addressComponents = federalCached?.addressComponents;
-      if (hasGoogleKey() || isOdaEnabled(env)) {
-        const googleResult = await resolveNormalized(lat, lon, batchReq.query);
-        if (googleResult) {
-          normalizedAddress = googleResult.formattedAddress;
-          addressComponents = googleResult.components;
+      lat: number,
+      addressContext?: NormalizedAddressContext
+    ): Promise<Pick<BatchLookupResponse, 'point' | 'properties' | 'riding' | 'province_data' | 'municipality' | 'normalizedAddress' | 'addressComponents'>> => {
+      const returnFields = batchReq.query.returnFields ?? [];
+      const includeProvince = resolveIncludeProvince(batchReq.pathname, batchReq.query.includeProvince);
+      const expanded = await performExpandedLookup(
+        env,
+        batchReq.pathname,
+        { ...batchReq.query, lon, lat },
+        returnFields,
+        includeProvince,
+        lookupRiding,
+        {
+          lon,
+          lat,
+          request,
+          circuitBreaker,
+          addressContext,
         }
-      }
-
-      let properties: Record<string, unknown> | null;
-      let riding: string | undefined;
-      if (federalCached) {
-        properties = federalCached.properties as Record<string, unknown> | null;
-        riding = federalCached.riding;
-      } else {
-        const fed = await lookupRiding(env, FEDERAL_PATH, lon, lat);
-        properties = fed.properties as Record<string, unknown> | null;
-        riding = fed.riding;
-        const { r2Key } = pickDataset(FEDERAL_PATH);
-        const dataset = r2Key.replace('.geojson', '');
-        const toCache = {
-          properties: fed.properties,
-          riding: fed.riding,
-          ...(normalizedAddress && { normalizedAddress }),
-          ...(addressComponents && { addressComponents }),
-        };
-        await setCachedLookupResult(env, federalCacheKey, toCache, dataset, { lon, lat });
-      }
-
-      const provincePath = provincePathFromFederalProperties(properties);
-      let province_data: { riding: string; properties: Record<string, unknown>; dataset: string } | null = null;
-      if (provincePath) {
-        const provinceCacheKey = generateLookupCacheKey(cacheQueryFed, provincePath);
-        const cachedProv = await getCachedLookupResult(env, provinceCacheKey);
-        if (cachedProv) {
-          province_data = {
-            riding: cachedProv.riding ?? '',
-            properties: (cachedProv.properties || {}) as Record<string, unknown>,
-            dataset: pickDataset(provincePath).r2Key.replace('.geojson', ''),
-          };
-        } else {
-          try {
-            const provLookup = await lookupRiding(env, provincePath, lon, lat);
-            const { r2Key } = pickDataset(provincePath);
-            const dataset = r2Key.replace('.geojson', '');
-            const toCache = { properties: provLookup.properties, riding: provLookup.riding };
-            await setCachedLookupResult(env, provinceCacheKey, toCache, dataset, { lon, lat });
-            province_data = {
-              riding: provLookup.riding ?? '',
-              properties: (provLookup.properties || {}) as Record<string, unknown>,
-              dataset,
-            };
-          } catch {
-            province_data = null;
-          }
-        }
-      }
+      );
 
       return {
         point: { lon, lat },
-        properties,
-        riding,
-        province_data,
-        ...(normalizedAddress && { normalizedAddress }),
-        ...(addressComponents && { addressComponents }),
+        properties: expanded.properties,
+        riding: expanded.riding,
+        ...(expanded.province_data !== undefined && { province_data: expanded.province_data }),
+        ...(expanded.municipality && { municipality: expanded.municipality }),
+        ...(expanded.normalizedAddress && { normalizedAddress: expanded.normalizedAddress }),
+        ...(expanded.addressComponents && { addressComponents: expanded.addressComponents }),
       };
     };
 
@@ -218,69 +161,14 @@ export async function processBatchLookupWithBatchGeocoding(
     for (const { request, index, lon, lat } of coordinatesProvided) {
       const startTime = Date.now();
       try {
-        if (request.pathname === '/api/combined') {
-          const payload = await runCombined(request, lon, lat);
-          results[index] = {
-            id: request.id,
-            query: request.query,
-            ...payload,
-            processingTime: Date.now() - startTime,
-          };
-          continue;
-        }
-
-        const cacheKey = generateLookupCacheKey({ ...request.query, lon, lat }, request.pathname);
-        const cachedResult = await getCachedLookupResult(env, cacheKey);
-        let normalizedAddress: string | undefined = cachedResult?.normalizedAddress;
-        let addressComponents = cachedResult?.addressComponents;
-
-        if (cachedResult) {
-          // Always try to get normalized address via reverse geocoding when Google API key is available
-      if (hasGoogleKey() || isOdaEnabled(env)) {
-        const googleResult = await resolveNormalized(lat, lon, request.query);
-            if (googleResult) {
-              normalizedAddress = googleResult.formattedAddress;
-              addressComponents = googleResult.components;
-            }
-          }
-          const processingTime = Date.now() - startTime;
-          results[index] = {
-            id: request.id,
-            query: request.query,
-            point: { lon, lat },
-            properties: cachedResult.properties,
-            ...(normalizedAddress && { normalizedAddress }),
-            ...(addressComponents && { addressComponents }),
-            processingTime
-          };
-        } else {
-          const result = await lookupRiding(env, request.pathname, lon, lat);
-      if (hasGoogleKey() || isOdaEnabled(env)) {
-        const googleResult = await resolveNormalized(lat, lon, request.query);
-            if (googleResult) {
-              normalizedAddress = googleResult.formattedAddress;
-              addressComponents = googleResult.components;
-            }
-          }
-          const processingTime = Date.now() - startTime;
-          const { r2Key } = pickDataset(request.pathname);
-          const dataset = r2Key.replace('.geojson', '');
-          const toCache = { 
-            ...result, 
-            ...(normalizedAddress && { normalizedAddress }),
-            ...(addressComponents && { addressComponents })
-          };
-          await setCachedLookupResult(env, cacheKey, toCache, dataset, { lon, lat });
-          results[index] = {
-            id: request.id,
-            query: request.query,
-            point: { lon, lat },
-            properties: result.properties,
-            ...(normalizedAddress && { normalizedAddress }),
-            ...(addressComponents && { addressComponents }),
-            processingTime
-          };
-        }
+        const payload = await runExpandedLookup(request, lon, lat);
+        results[index] = {
+          id: request.id,
+          query: request.query,
+          ...payload,
+          processingTime: Date.now() - startTime,
+        };
+        continue;
       } catch (error) {
         const processingTime = Date.now() - startTime;
         results[index] = {
@@ -305,69 +193,22 @@ export async function processBatchLookupWithBatchGeocoding(
         
         if (geocodingResult.success) {
           try {
-            if (request.pathname === '/api/combined') {
-              const payload = await runCombined(
-                request,
-                geocodingResult.lon,
-                geocodingResult.lat
-              );
-              results[index] = {
-                id: request.id,
-                query: request.query,
-                ...payload,
-                processingTime: Date.now() - startTime,
-              };
-              continue;
-            }
-
-            const cacheKey = generateLookupCacheKey(
-              { ...request.query, lon: geocodingResult.lon, lat: geocodingResult.lat },
-              request.pathname
+            const addressContext: NormalizedAddressContext = {
+              normalizedAddress: geocodingResult.normalizedAddress,
+              addressComponents: geocodingResult.addressComponents,
+            };
+            const payload = await runExpandedLookup(
+              request,
+              geocodingResult.lon,
+              geocodingResult.lat,
+              addressContext
             );
-            const cachedResult = await getCachedLookupResult(env, cacheKey);
-            let normalizedAddress: string | undefined = geocodingResult.normalizedAddress ?? cachedResult?.normalizedAddress;
-            let addressComponents = geocodingResult.addressComponents ?? cachedResult?.addressComponents;
-            // Always try to get normalized address via reverse geocoding when Google API key is available
-            if (hasGoogleKey() || isOdaEnabled(env)) {
-              const googleResult = await resolveNormalized(geocodingResult.lat, geocodingResult.lon, request.query);
-              if (googleResult) {
-                normalizedAddress = googleResult.formattedAddress;
-                addressComponents = googleResult.components;
-              }
-            }
-            
-            if (cachedResult) {
-              const processingTime = Date.now() - startTime;
-              results[index] = {
-                id: request.id,
-                query: request.query,
-                point: { lon: geocodingResult.lon, lat: geocodingResult.lat },
-                properties: cachedResult.properties,
-                ...(normalizedAddress && { normalizedAddress }),
-                ...(addressComponents && { addressComponents }),
-                processingTime
-              };
-            } else {
-              const result = await lookupRiding(env, request.pathname, geocodingResult.lon, geocodingResult.lat);
-              const processingTime = Date.now() - startTime;
-              const { r2Key } = pickDataset(request.pathname);
-              const dataset = r2Key.replace('.geojson', '');
-              const toCache = { 
-                ...result, 
-                ...(normalizedAddress && { normalizedAddress }),
-                ...(addressComponents && { addressComponents })
-              };
-              await setCachedLookupResult(env, cacheKey, toCache, dataset, { lon: geocodingResult.lon, lat: geocodingResult.lat });
-              results[index] = {
-                id: request.id,
-                query: request.query,
-                point: { lon: geocodingResult.lon, lat: geocodingResult.lat },
-                properties: result.properties,
-                ...(normalizedAddress && { normalizedAddress }),
-                ...(addressComponents && { addressComponents }),
-                processingTime
-              };
-            }
+            results[index] = {
+              id: request.id,
+              query: request.query,
+              ...payload,
+              processingTime: Date.now() - startTime,
+            };
           } catch (error) {
             const processingTime = Date.now() - startTime;
             results[index] = {

@@ -92,3 +92,24 @@ Fixture CSV: `test/fixtures/oda/fixture.csv`
 - Federal riding in `properties`
 - Ontario provincial riding in `province_data` when applicable
 - Optional `geocodeMethod`, `mailingAddress` in response
+
+## Case 11: Optional `return` selector with municipality
+
+**Query:** `GET /api?return=municipality&address=123%20Main%20St&city=Toronto&province=ON`
+
+**Expected:**
+- Federal riding in `properties`
+- `properties.MUNICIPALITY` set from ODA `mailingAddress.municipality` (e.g. `TORONTO`)
+- Top-level `municipality` matches `properties.MUNICIPALITY`
+- No `province_data` unless `include_province=true` is also requested
+
+## Case 12: OpenNorth parity — 757 Victoria Park
+
+**Query:** `GET /api?include_province=true&address=757%20Victoria%20Park&city=Toronto&province=ON`
+
+**Context:** OpenNorth reports Beaches-East York from postcode for this address; this service expects the provincial riding **Scarborough Southwest (SSW)** for the resolved point.
+
+**Expected:**
+- Federal riding resolved for the geocoded point
+- `province_data.riding` or provincial properties indicate Scarborough Southwest (not Beaches-East York)
+- Document resolved coordinates in tests if live geocoding varies

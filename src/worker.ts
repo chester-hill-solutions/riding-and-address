@@ -19,8 +19,7 @@ import {
   performCacheWarming,
   getCacheWarmingStatus,
   generateLookupCacheKey,
-  getCachedLookupResult,
-  setCachedLookupResult
+  getCachedLookupResult
 } from './cache';
 import { initializeCircuitBreakers, geocodingCircuitBreaker, r2CircuitBreaker } from './circuit-breaker';
 import { incrementMetric, recordTiming, getMetrics, getMetricsSummary } from './metrics';
@@ -28,8 +27,7 @@ import {
   isPointInPolygon, 
   withTimeout, 
   withRetry, 
-  pickDataset,
-  provincePathFromFederalProperties,
+  pickDataset, 
   parseQuery, 
   checkBasicAuth,
   checkAdminAuth, 
@@ -38,8 +36,11 @@ import {
   rateLimitExceededResponse,
   checkRateLimit,
   getClientId,
-  getCorrelationId
+  getCorrelationId,
+  resolveQueryReturnFields,
+  resolveQueryIncludeProvince
 } from './utils';
+import { performExpandedLookup, type NormalizedAddressContext } from './lookup-expansion';
 import { 
   createSpatialIndex, 
   findCandidateFeatures, 
@@ -1177,224 +1178,135 @@ export default {
           const timeoutConfig = getTimeoutConfig(env);
           const cb = geocodingCircuitBreaker ? { execute: (k: string, fn: () => Promise<unknown>) => geocodingCircuitBreaker!.execute(k, fn) } : undefined;
 
-          // Combined endpoint: federal + optional ON/QC provincial lookup
-          if (lookupPathname === '/api/combined') {
-            const federalPath = FEDERAL_PATH;
-            const federalCacheKey = generateLookupCacheKey(sanitizedQuery, federalPath);
-            const federalCached = await getCachedLookupResult(env, federalCacheKey);
-            if (federalCached) {
-              incrementMetric('lookupCacheHits');
-            }
-
-            let point = federalCached?.point || (sanitizedQuery.lat !== undefined && sanitizedQuery.lon !== undefined
-              ? { lon: sanitizedQuery.lon, lat: sanitizedQuery.lat }
-              : undefined);
-
-            let normalizedAddress: string | undefined;
-            let addressComponents: LookupResult['addressComponents'];
-
-            if (!point) {
-              const geocodeResult = await withTimeout(
-                geocodeIfNeeded(env, sanitizedQuery, request, undefined, cb),
-                timeoutConfig.geocoding,
-                "Geocoding"
-              );
-              point = { lon: geocodeResult.lon, lat: geocodeResult.lat };
-              normalizedAddress = geocodeResult.normalizedAddress;
-              addressComponents = geocodeResult.addressComponents;
-              if (!isOdaEnabled(env) && (request?.headers.get('X-Google-API-Key') || env.GOOGLE_MAPS_KEY)) {
-                const googleResult = await normalizeAddressWithGoogle(env, geocodeResult.lat, geocodeResult.lon, request, cb);
-                if (googleResult) {
-                  normalizedAddress = googleResult.formattedAddress;
-                  addressComponents = googleResult.components;
-                }
-              } else if (isOdaEnabled(env)) {
-                const odaNorm = await resolveNormalizedAddress(env, geocodeResult.lat, geocodeResult.lon, sanitizedQuery, request, cb);
-                if (odaNorm) {
-                  normalizedAddress = odaNorm.normalizedAddress;
-                  addressComponents = odaNorm.addressComponents;
-                }
-              }
-            }
-
-            const { lon, lat } = point;
-
-            let federalResult: LookupResult;
-            if (federalCached) {
-              federalResult = {
-                properties: federalCached.properties || {},
-                riding: federalCached.riding,
-                ...(federalCached.normalizedAddress && { normalizedAddress: federalCached.normalizedAddress }),
-                ...(federalCached.addressComponents && { addressComponents: federalCached.addressComponents })
-              };
-            } else {
-              incrementMetric('lookupCacheMisses');
-              const fedLookup = await withTimeout(
-                lookupRiding(env, federalPath, lon, lat),
-                timeoutConfig.lookup,
-                "Riding lookup"
-              );
-              federalResult = { properties: fedLookup.properties, riding: fedLookup.riding };
-              if (normalizedAddress) federalResult.normalizedAddress = normalizedAddress;
-              if (addressComponents) federalResult.addressComponents = addressComponents;
-              const { r2Key } = pickDataset(federalPath);
-              const dataset = r2Key.replace('.geojson', '');
-              await setCachedLookupResult(env, federalCacheKey, federalResult, dataset, { lon, lat });
-            }
-
-            const provincePath = provincePathFromFederalProperties(federalResult.properties as Record<string, unknown> | null);
-
-            let provinceData: { riding: string; properties: Record<string, unknown>; dataset: string } | null = null;
-            let provinceCachedHit = false;
-
-            if (provincePath) {
-              const provinceCacheKey = generateLookupCacheKey(sanitizedQuery, provincePath);
-              const cachedProv = await getCachedLookupResult(env, provinceCacheKey);
-              if (cachedProv) {
-                incrementMetric('lookupCacheHits');
-                provinceCachedHit = true;
-                provinceData = {
-                  riding: cachedProv.riding ?? '',
-                  properties: (cachedProv.properties || {}) as Record<string, unknown>,
-                  dataset: pickDataset(provincePath).r2Key.replace('.geojson', '')
-                };
-              } else {
-                incrementMetric('lookupCacheMisses');
-                try {
-                  const provLookup = await withTimeout(
-                    lookupRiding(env, provincePath, lon, lat),
-                    timeoutConfig.lookup,
-                    "Riding lookup (province)"
-                  );
-                  const { r2Key } = pickDataset(provincePath);
-                  const dataset = r2Key.replace('.geojson', '');
-                  const lookupResult: LookupResult = { properties: provLookup.properties, riding: provLookup.riding };
-                  await setCachedLookupResult(env, provinceCacheKey, lookupResult, dataset, { lon, lat });
-                  provinceData = {
-                    riding: lookupResult.riding ?? '',
-                    properties: (lookupResult.properties || {}) as Record<string, unknown>,
-                    dataset
-                  };
-                } catch (provError) {
-                  console.warn(`[${correlationId}] Provincial lookup failed (${provincePath}):`, provError instanceof Error ? provError.message : provError);
-                  provinceData = null;
-                }
-              }
-            }
-
-            recordTiming('totalLookupTime', Date.now() - startTime);
-
-            let cacheStatus: 'HIT' | 'MISS' | 'PARTIAL' = 'MISS';
-            const federalHit = !!federalCached;
-            const provinceHit = provinceCachedHit;
-            if (federalHit && (provincePath ? provinceHit : true)) {
-              cacheStatus = 'HIT';
-            } else if (federalHit || provinceHit) {
-              cacheStatus = 'PARTIAL';
-            }
-
-            return new Response(JSON.stringify({
-              query: sanitizedQuery,
-              point: { lon, lat },
-              riding: federalResult.riding,
-              properties: federalResult.properties,
-              province_data: provinceData,
-              ...(federalResult.normalizedAddress && { normalizedAddress: federalResult.normalizedAddress }),
-              ...(federalResult.addressComponents && { addressComponents: federalResult.addressComponents }),
-              correlationId
-            }), {
-              headers: {
-                "content-type": "application/json; charset=UTF-8",
-                "X-Cache-Status": cacheStatus,
-                ...getCorsHeaders(origin)
-              }
-            });
-          }
-
-          const cacheKey = generateLookupCacheKey(sanitizedQuery, lookupPathname);
-          
-          // Check lookup cache
+          const returnFields = resolveQueryReturnFields(sanitizedQuery);
+          const includeProvince = resolveQueryIncludeProvince(lookupPathname, sanitizedQuery);
+          const basePath =
+            lookupPathname === '/api' || lookupPathname === '/api/combined'
+              ? FEDERAL_PATH
+              : lookupPathname;
+          const cacheKey = generateLookupCacheKey(sanitizedQuery, basePath);
           const cachedResult = await getCachedLookupResult(env, cacheKey);
           if (cachedResult) {
             incrementMetric('lookupCacheHits');
-            recordTiming('totalLookupTime', Date.now() - startTime);
-            // Use point from cache entry if available, otherwise fall back to sanitizedQuery
-            const point = cachedResult.point || (sanitizedQuery.lat !== undefined && sanitizedQuery.lon !== undefined 
-              ? { lon: sanitizedQuery.lon, lat: sanitizedQuery.lat } 
-              : undefined);
-            return new Response(JSON.stringify({
-              query: sanitizedQuery,
-              point,
-              properties: cachedResult.properties,
-              riding: cachedResult.riding,
-              ...(cachedResult.normalizedAddress && { normalizedAddress: cachedResult.normalizedAddress }),
-              ...(cachedResult.addressComponents && { addressComponents: cachedResult.addressComponents }),
-              correlationId
-            }), {
-              headers: { 
-                "content-type": "application/json; charset=UTF-8",
-                "X-Cache-Status": "HIT",
-                ...getCorsHeaders(origin)
+          }
+
+          let lon: number;
+          let lat: number;
+          let addressContext: NormalizedAddressContext | undefined;
+
+          if (cachedResult?.point) {
+            lon = cachedResult.point.lon;
+            lat = cachedResult.point.lat;
+          } else if (
+            sanitizedQuery.lat !== undefined &&
+            sanitizedQuery.lon !== undefined
+          ) {
+            lon = sanitizedQuery.lon;
+            lat = sanitizedQuery.lat;
+          } else {
+            const geocodeResult = await withTimeout(
+              geocodeIfNeeded(env, sanitizedQuery, request, undefined, cb),
+              timeoutConfig.geocoding,
+              "Geocoding"
+            );
+            lon = geocodeResult.lon;
+            lat = geocodeResult.lat;
+            addressContext = {
+              normalizedAddress: geocodeResult.normalizedAddress,
+              addressComponents: geocodeResult.addressComponents,
+              mailingAddress: geocodeResult.mailingAddress,
+            };
+
+            if (
+              !isOdaEnabled(env) &&
+              (request?.headers.get('X-Google-API-Key') || env.GOOGLE_MAPS_KEY)
+            ) {
+              const googleResult = await normalizeAddressWithGoogle(
+                env,
+                geocodeResult.lat,
+                geocodeResult.lon,
+                request,
+                cb
+              );
+              if (googleResult) {
+                addressContext = {
+                  normalizedAddress: googleResult.formattedAddress,
+                  addressComponents: googleResult.components,
+                };
               }
-            });
-          }
-          
-          incrementMetric('lookupCacheMisses');
-          
-          const geocodeResult = await withTimeout(
-            geocodeIfNeeded(env, sanitizedQuery, request, undefined, cb),
-            timeoutConfig.geocoding,
-            "Geocoding"
-          );
-          const { lon, lat } = geocodeResult;
-          let normalizedAddress = geocodeResult.normalizedAddress;
-          let addressComponents = geocodeResult.addressComponents;
-          
-          if (!isOdaEnabled(env) && (request?.headers.get('X-Google-API-Key') || env.GOOGLE_MAPS_KEY)) {
-            const googleResult = await normalizeAddressWithGoogle(env, geocodeResult.lat, geocodeResult.lon, request, cb);
-            if (googleResult) {
-              normalizedAddress = googleResult.formattedAddress;
-              addressComponents = googleResult.components;
-            }
-          } else if (isOdaEnabled(env) && !normalizedAddress) {
-            const odaNorm = await resolveNormalizedAddress(env, lat, lon, sanitizedQuery, request, cb);
-            if (odaNorm) {
-              normalizedAddress = odaNorm.normalizedAddress;
-              addressComponents = odaNorm.addressComponents;
+            } else if (isOdaEnabled(env) && !addressContext.normalizedAddress) {
+              const odaNorm = await resolveNormalizedAddress(
+                env,
+                lat,
+                lon,
+                sanitizedQuery,
+                request,
+                cb
+              );
+              if (odaNorm) {
+                addressContext = {
+                  normalizedAddress: odaNorm.normalizedAddress,
+                  addressComponents: odaNorm.addressComponents,
+                  mailingAddress: odaNorm.mailingAddress,
+                };
+              }
             }
           }
-          
-          const result = await withTimeout(
-            lookupRiding(env, lookupPathname, lon, lat),
-            timeoutConfig.lookup,
-            "Riding lookup"
+
+          const expanded = await performExpandedLookup(
+            env,
+            lookupPathname,
+            sanitizedQuery,
+            returnFields,
+            includeProvince,
+            lookupRiding,
+            {
+              lon,
+              lat,
+              request,
+              circuitBreaker: cb,
+              timeoutConfig,
+              addressContext,
+              preloadedResult: cachedResult
+                ? {
+                    properties: cachedResult.properties,
+                    riding: cachedResult.riding,
+                    normalizedAddress: cachedResult.normalizedAddress,
+                    addressComponents: cachedResult.addressComponents,
+                  }
+                : undefined,
+              preloadedCacheStatus: cachedResult ? 'HIT' : undefined,
+            }
           );
-          
-          const { r2Key } = pickDataset(lookupPathname);
-          const dataset = r2Key.replace('.geojson', '');
-          const lookupResult: LookupResult = {
-            properties: result.properties,
-            riding: result.riding,
-            ...(normalizedAddress && { normalizedAddress }),
-            ...(addressComponents && { addressComponents })
-          };
-          await setCachedLookupResult(env, cacheKey, lookupResult, dataset, { lon, lat });
-          
+
           recordTiming('totalLookupTime', Date.now() - startTime);
-          return new Response(JSON.stringify({
-            query: sanitizedQuery,
-            point: { lon, lat },
-            ...result,
-            ...(normalizedAddress && { normalizedAddress }),
-            ...(addressComponents && { addressComponents }),
-            correlationId
-          }), {
-            headers: { 
-              "content-type": "application/json; charset=UTF-8",
-              "X-Cache-Status": "MISS",
-              ...getCorsHeaders(origin)
+
+          return new Response(
+            JSON.stringify({
+              query: sanitizedQuery,
+              point: { lon, lat },
+              riding: expanded.riding,
+              properties: expanded.properties,
+              ...(expanded.province_data !== undefined && {
+                province_data: expanded.province_data,
+              }),
+              ...(expanded.municipality && { municipality: expanded.municipality }),
+              ...(expanded.normalizedAddress && {
+                normalizedAddress: expanded.normalizedAddress,
+              }),
+              ...(expanded.addressComponents && {
+                addressComponents: expanded.addressComponents,
+              }),
+              correlationId,
+            }),
+            {
+              headers: {
+                "content-type": "application/json; charset=UTF-8",
+                "X-Cache-Status": expanded.cacheStatus,
+                ...getCorsHeaders(origin),
+              },
             }
-          });
+          );
         } catch (error) {
           incrementMetric('errorCount');
           console.error(`[${correlationId}] Lookup error:`, error);

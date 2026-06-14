@@ -1,5 +1,6 @@
-import { Env, QueryParams, GeoJSONGeometry } from './types';
+import { Env, QueryParams, GeoJSONGeometry, ReturnField } from './types';
 import { TIMEOUT_CONFIG, RETRY_CONFIG, getRetryConfig } from './config';
+import { parseReturnSelector, parseIncludeProvince, resolveIncludeProvince } from './return-selector';
 
 // Re-export for backward compatibility
 export const DEFAULT_TIMEOUTS = TIMEOUT_CONFIG;
@@ -286,6 +287,24 @@ export function validateAndSanitizeQuery(query: QueryParams): ValidationResult {
     sanitized.lat = coordValidation.lat;
     sanitized.lon = coordValidation.lon;
   }
+
+  if (query.return !== undefined) {
+    const returnParse = parseReturnSelector(query.return);
+    if (!returnParse.valid) {
+      return { valid: false, error: returnParse.error };
+    }
+    sanitized.return = query.return;
+    sanitized.returnFields = returnParse.fields;
+  }
+
+  if (query.include_province !== undefined) {
+    const includeProvinceParse = parseIncludeProvince(query.include_province);
+    if (!includeProvinceParse.valid) {
+      return { valid: false, error: includeProvinceParse.error };
+    }
+    sanitized.include_province = query.include_province;
+    sanitized.includeProvince = includeProvinceParse.value;
+  }
   
   // Check that at least one location parameter is provided
   const hasLocation = sanitized.address || sanitized.postal || sanitized.city || 
@@ -472,6 +491,14 @@ const PROV_TERR_TO_PROVINCE_PATH: Record<string, "/api/on" | "/api/qc"> = {
   QUEBEC: "/api/qc",
 };
 
+export function resolveQueryReturnFields(query: QueryParams): ReturnField[] {
+  return query.returnFields ?? [];
+}
+
+export function resolveQueryIncludeProvince(pathname: string, query: QueryParams): boolean {
+  return resolveIncludeProvince(pathname, query.includeProvince);
+}
+
 /**
  * Maps federal feature PROV_TERR (abbreviation or full name, EN/FR) to a provincial lookup path.
  */
@@ -501,6 +528,8 @@ export function parseQuery(request: Request): { query: QueryParams; validation: 
     city: q.get("city") || undefined,
     state: q.get("state") || q.get("province") || undefined,
     country: q.get("country") || undefined,
+    return: q.get("return") || undefined,
+    include_province: q.get("include_province") || undefined,
     lat: q.get("lat") ? Number(q.get("lat")) : undefined,
     lon: q.get("lon") || q.get("lng") || q.get("long") ? Number(q.get("lon") || q.get("lng") || q.get("long")) : undefined
   };

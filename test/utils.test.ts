@@ -10,7 +10,10 @@ import {
   pickDataset,
   provincePathFromFederalProperties,
   checkBasicAuth,
-  checkAdminAuth
+  checkAdminAuth,
+  validateAndSanitizeQuery,
+  resolveQueryReturnFields,
+  resolveQueryIncludeProvince,
 } from '../src/utils';
 
 describe('validateCoordinates', () => {
@@ -236,6 +239,71 @@ describe('provincePathFromFederalProperties', () => {
 function authRequest(headers: Record<string, string> = {}): Request {
   return new Request('https://example.com/api', { headers });
 }
+
+describe('validateAndSanitizeQuery return selector', () => {
+  it('parses valid return tokens', () => {
+    const result = validateAndSanitizeQuery({
+      postal: 'M5V 2T6',
+      return: 'municipality',
+    });
+    expect(result.valid).toBe(true);
+    expect(result.sanitized?.returnFields).toEqual(['municipality']);
+  });
+
+  it('rejects province_data in return selector', () => {
+    const result = validateAndSanitizeQuery({
+      postal: 'M5V 2T6',
+      return: 'province_data',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Unknown return field');
+  });
+
+  it('rejects unknown return tokens', () => {
+    const result = validateAndSanitizeQuery({
+      postal: 'M5V 2T6',
+      return: 'invalid_token',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Unknown return field');
+  });
+});
+
+describe('validateAndSanitizeQuery include_province', () => {
+  it('parses include_province=true', () => {
+    const result = validateAndSanitizeQuery({
+      postal: 'M5V 2T6',
+      include_province: 'true',
+    });
+    expect(result.valid).toBe(true);
+    expect(result.sanitized?.includeProvince).toBe(true);
+  });
+
+  it('rejects invalid include_province values', () => {
+    const result = validateAndSanitizeQuery({
+      postal: 'M5V 2T6',
+      include_province: 'maybe',
+    });
+    expect(result.valid).toBe(false);
+  });
+});
+
+describe('resolveQueryIncludeProvince', () => {
+  it('defaults province inclusion for combined endpoint', () => {
+    expect(resolveQueryIncludeProvince('/api/combined', {})).toBe(true);
+  });
+
+  it('requires explicit flag on federal endpoint', () => {
+    expect(resolveQueryIncludeProvince('/api/federal', {})).toBe(false);
+    expect(resolveQueryIncludeProvince('/api/federal', { includeProvince: true })).toBe(true);
+  });
+});
+
+describe('resolveQueryReturnFields', () => {
+  it('returns parsed return fields', () => {
+    expect(resolveQueryReturnFields({ returnFields: ['municipality'] })).toEqual(['municipality']);
+  });
+});
 
 describe('checkBasicAuth', () => {
   it('allows BYOK lookup access when BASIC_AUTH is configured', () => {

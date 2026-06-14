@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { BatchLookupRequest } from './types';
+import { parseReturnSelector, parseIncludeProvince, resolveIncludeProvince } from './return-selector';
 
 /**
  * Runtime type validation schemas for external API responses.
@@ -220,6 +221,8 @@ const QueryParamsSchema = z.object({
   city: z.string().optional(),
   state: z.string().optional(),
   country: z.string().optional(),
+  return: z.string().optional(),
+  include_province: z.string().optional(),
 }).refine(
   (query) =>
     (query.lat !== undefined && query.lon !== undefined) ||
@@ -237,7 +240,52 @@ export const BatchLookupRequestSchema = z.object({
 export const BatchLookupRequestsSchema = z.array(BatchLookupRequestSchema).min(1).max(100);
 
 export function parseBatchLookupRequests(data: unknown): BatchLookupRequest[] {
-  return BatchLookupRequestsSchema.parse(data) as BatchLookupRequest[];
+  const parsed = BatchLookupRequestsSchema.parse(data) as BatchLookupRequest[];
+  return enrichBatchLookupRequests(parsed);
+}
+
+function enrichBatchLookupRequests(requests: BatchLookupRequest[]): BatchLookupRequest[] {
+  return requests.map((request) => {
+    let returnFields = request.query.returnFields;
+    let includeProvince = request.query.includeProvince;
+
+    if (request.query.return !== undefined) {
+      const returnParse = parseReturnSelector(request.query.return);
+      if (!returnParse.valid) {
+        throw new z.ZodError([
+          {
+            code: 'custom',
+            message: returnParse.error ?? 'Invalid return selector',
+            path: ['query', 'return'],
+          },
+        ]);
+      }
+      returnFields = returnParse.fields;
+    }
+
+    if (request.query.include_province !== undefined) {
+      const includeProvinceParse = parseIncludeProvince(request.query.include_province);
+      if (!includeProvinceParse.valid) {
+        throw new z.ZodError([
+          {
+            code: 'custom',
+            message: includeProvinceParse.error ?? 'Invalid include_province flag',
+            path: ['query', 'include_province'],
+          },
+        ]);
+      }
+      includeProvince = includeProvinceParse.value;
+    }
+
+    return {
+      ...request,
+      query: {
+        ...request.query,
+        returnFields: returnFields ?? [],
+        includeProvince: resolveIncludeProvince(request.pathname, includeProvince),
+      },
+    };
+  });
 }
 
 export function safeParseBatchLookupRequests(
@@ -245,7 +293,17 @@ export function safeParseBatchLookupRequests(
 ): { success: true; data: BatchLookupRequest[] } | { success: false; error: z.ZodError } {
   const result = BatchLookupRequestsSchema.safeParse(data);
   if (result.success) {
-    return { success: true, data: result.data as BatchLookupRequest[] };
+    try {
+      return {
+        success: true,
+        data: enrichBatchLookupRequests(result.data as BatchLookupRequest[]),
+      };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return { success: false, error };
+      }
+      throw error;
+    }
   }
   return { success: false, error: result.error };
 }
