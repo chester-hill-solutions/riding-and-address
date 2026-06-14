@@ -9,14 +9,13 @@
 
 import { createReadStream, mkdirSync, writeFileSync, existsSync } from 'fs';
 import { createInterface } from 'readline';
-import { execSync, spawn, type ChildProcess } from 'child_process';
+import { execSync } from 'child_process';
 import { join } from 'path';
 import { normalizeOdaCsvRow } from '../src/oda-normalize';
 import { getOdaBaseSchemaSql } from '../src/oda-schema';
 import {
   prepareOdaInsertRow,
   buildAddressInsertSql,
-  buildRtreeInsertSql,
   buildCentroidSqlStatements,
   trackCentroidsFromRow,
   PROVINCE_DOWNLOAD_URLS,
@@ -67,7 +66,30 @@ function parseArgs(argv: string[]): ImportOptions {
 }
 
 function parseCsvLine(line: string, headers: string[]): Record<string, string> {
-  const values = line.split(',');
+  const values: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (char === ',' && !inQuotes) {
+      values.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  values.push(current.trim());
+
   const row: Record<string, string> = {};
   headers.forEach((header, index) => {
     row[header.trim()] = (values[index] || '').trim();
@@ -108,69 +130,8 @@ function initializeSchema(options: ImportOptions): void {
   executeSqlFile(options.database, options.remote, schemaPath);
 }
 
-const RTREE_INIT_PORT = 8799;
-
-async function initializeRtreeSchema(options: ImportOptions): Promise<void> {
-  const config = options.remote
-    ? 'scripts/wrangler.oda-init-remote.toml'
-    : 'scripts/wrangler.oda-init.toml';
-
-  console.log(`Initializing ODA R-tree via Worker (${options.remote ? 'remote' : 'local'} D1)...`);
-
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    let child: ChildProcess | undefined;
-
-    const finish = (error?: Error) => {
-      if (settled) return;
-      settled = true;
-      child?.kill('SIGTERM');
-      if (error) reject(error);
-      else resolve();
-    };
-
-    child = spawn(
-      'npx',
-      ['wrangler', 'dev', '--config', config, '--port', String(RTREE_INIT_PORT)],
-      { stdio: ['ignore', 'pipe', 'pipe'] }
-    );
-
-    const handleOutput = (chunk: Buffer) => {
-      if (!chunk.toString().includes('Ready on')) return;
-
-      fetch(`http://127.0.0.1:${RTREE_INIT_PORT}/`)
-        .then(async (response) => {
-          const body = (await response.json()) as { success?: boolean; message?: string };
-          if (!response.ok || !body.success) {
-            finish(new Error(body.message || 'ODA R-tree initialization failed'));
-            return;
-          }
-          console.log('ODA R-tree initialized.');
-          finish();
-        })
-        .catch((error: unknown) => {
-          finish(error instanceof Error ? error : new Error(String(error)));
-        });
-    };
-
-    child.stdout?.on('data', handleOutput);
-    child.stderr?.on('data', handleOutput);
-    child.on('error', (error) => finish(error));
-    child.on('exit', (code) => {
-      if (!settled) {
-        finish(new Error(`wrangler dev exited before R-tree init completed (code ${code ?? 'unknown'})`));
-      }
-    });
-
-    setTimeout(() => {
-      finish(new Error('Timed out waiting for ODA R-tree initialization'));
-    }, 60_000);
-  });
-}
-
 function buildProvinceDeleteSql(province: string): string[] {
   return [
-    `DELETE FROM oda_rtree WHERE id IN (SELECT id FROM oda_addresses WHERE province = '${province}');`,
     `DELETE FROM oda_addresses WHERE province = '${province}';`,
     `DELETE FROM oda_postal_centroids WHERE province = '${province}';`,
     `DELETE FROM oda_city_centroids WHERE province = '${province}';`,
@@ -208,7 +169,6 @@ async function importProvinceFromRows(
     trackCentroidsFromRow(normalized, postalCentroids, cityCentroids, streetRanges);
     const insertRow = prepareOdaInsertRow(normalized);
     batch.push(buildAddressInsertSql(insertRow, rowId));
-    batch.push(buildRtreeInsertSql(rowId, normalized.lon, normalized.lat));
     rowId++;
     imported++;
 
@@ -248,7 +208,6 @@ async function main(): Promise<void> {
 
   if (!options.skipSchema) {
     initializeSchema(options);
-    await initializeRtreeSchema(options);
   }
 
   console.log(`Reading ${options.file}...`);

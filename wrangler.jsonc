@@ -1,0 +1,85 @@
+{
+  "name": "riding-lookup",
+  "main": "src/worker.ts",
+  "compatibility_date": "2024-09-01",
+
+  // Bind an R2 bucket that will store the large GeoJSON files
+  // Create the bucket with: wrangler r2 bucket create ridings
+  "r2_buckets": [
+    {
+      "binding": "RIDINGS",
+      "bucket_name": "ridings"
+    }
+  ],
+
+  "kv_namespaces": [
+    {
+      "binding": "GEOCODING_CACHE",
+      "id": "e1ebe0d5eb39443e89d854526d97a6b6"
+    },
+    {
+      "binding": "LOOKUP_CACHE",
+      "id": "4c86b30f085146429527b7b232347a79"
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "QUEUE_MANAGER",
+        "class_name": "QueueManagerDO"
+      },
+      {
+        "name": "CIRCUIT_BREAKER_DO",
+        "class_name": "CircuitBreakerDO"
+      }
+    ]
+  },
+
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["QueueManagerDO"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["CircuitBreakerDO"]
+    }
+  ],
+
+  "vars": {
+    // Geocoding: GeoGratis is always used first (no configuration needed)
+    // Optional: set fallback geocoding provider. Supported: "nominatim" (default), "mapbox", or "google"
+    // For Mapbox, set MAPBOX_TOKEN as a secret: wrangler secret put MAPBOX_TOKEN
+    // For Google, set GOOGLE_MAPS_KEY as a secret: wrangler secret put GOOGLE_MAPS_KEY
+    // Basic auth credentials in format "username:password" (base64 encoded)
+    // Batch processing configuration
+    "BATCH_SIZE": 50,
+    "BATCH_TIMEOUT": 30000,
+    "RATE_LIMIT": 100,
+    "GEOCODER": "google",
+    "ODA_GEOCODING_ENABLED": "true",
+    "ODA_PROVINCES": "ON,QC",
+    "ODA_MIN_CONFIDENCE": "0.6",
+    "ODA_NN_MAX_CANDIDATES": "50",
+    "ODA_MAX_REVERSE_DISTANCE_METERS": "25000",
+    "ODA_MAX_AMBIGUOUS_MATCHES": "5"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "ODA_DB",
+      "database_name": "oda-addresses",
+      "database_id": "1e8710be-6de1-4003-a8fa-69907f867096"
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  },
+
+  // Cron Triggers for cache warming (every 6 hours)
+  "triggers": {
+    "crons": ["0 */6 * * *"]
+  }
+}

@@ -319,7 +319,7 @@ export default {
     }
     
     // Note: Cache warming is now handled by Cloudflare Cron Triggers
-    // See wrangler.toml for cron configuration
+    // See wrangler.jsonc for cron configuration
     
     // Initialize webhook processing
     initializeWebhookProcessing(env);

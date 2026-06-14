@@ -57,11 +57,11 @@ When enabled, address geocoding uses Statistics Canada's [Open Database of Addre
 **Setup:**
 ```bash
 wrangler d1 create oda-addresses
-# Add ODA_DB binding to wrangler.toml (see commented example)
+# Add ODA_DB binding to wrangler.jsonc (see commented example)
 npm run import:oda -- --file test/fixtures/oda/fixture.csv --provinces ON,QC --local
 ```
 
-Set `ODA_GEOCODING_ENABLED = "true"` in `wrangler.toml` after import.
+Set `ODA_GEOCODING_ENABLED = "true"` in `wrangler.jsonc` after import.
 
 **Limitations:** ODA v1.0 is 2021 data. Initial coverage is ON/QC. Returned addresses are Canada Post-style but not Canada Post-certified.
 
@@ -156,16 +156,16 @@ wrangler r2 object put ridings/ontarioridings-2022.geojson --file ./ontarioridin
 wrangler kv:namespace create "GEOCODING_CACHE"
 wrangler kv:namespace create "GEOCODING_CACHE" --preview
 ```
-Update the namespace IDs in `wrangler.toml`.
+Update the namespace IDs in `wrangler.jsonc`.
 
 #### 5) Configure Durable Objects for queue management
-The `QUEUE_MANAGER` Durable Object is already configured in `wrangler.toml` and will be automatically deployed.
+The `QUEUE_MANAGER` Durable Object is already configured in `wrangler.jsonc` and will be automatically deployed.
 
 #### 6) Optional: Set up D1 database for spatial indexing
 ```bash
 wrangler d1 create riding-lookup-db
 ```
-Add the database binding to `wrangler.toml`:
+Add the database binding to `wrangler.jsonc`:
 ```toml
 [[d1_databases]]
 binding = "RIDING_DB"
@@ -190,13 +190,13 @@ The service falls back to the configured provider when GeoGratis is unavailable 
 ```bash
 wrangler secret put MAPBOX_TOKEN
 ```
-Set `GEOCODER = "mapbox"` in `wrangler.toml`.
+Set `GEOCODER = "mapbox"` in `wrangler.jsonc`.
 
 **Google Maps Geocoding (Fallback):**
 ```bash
 wrangler secret put GOOGLE_MAPS_KEY
 ```
-Set `GEOCODER = "google"` in `wrangler.toml`.
+Set `GEOCODER = "google"` in `wrangler.jsonc`.
 
 *Alternative: Per-request API key*
 You can pass the Google API key as a header `X-Google-API-Key` with each request instead of setting the environment variable. This bypasses basic authentication automatically.
@@ -215,7 +215,7 @@ wrangler secret put BASIC_AUTH
 - Consider implementing additional rate limiting or access controls per API key if needed
 
 #### 9) Set environment variables
-Configure in `wrangler.toml` under `[vars]`:
+Configure in `wrangler.jsonc` under `"vars"`:
 ```toml
 BATCH_SIZE = 50          # Maximum items per batch
 BATCH_TIMEOUT = 30000    # Timeout in milliseconds  
@@ -257,7 +257,7 @@ curl -X POST https://your-worker.your-subdomain.workers.dev/api/database/sync \
 - **Automatic cache warming**: Background cache warming every 6 hours (currently uses setInterval; consider migrating to Cloudflare Cron Triggers for production)
 - **Circuit breakers**: Automatic failover when external services are unavailable
 
-**Note on Cache Warming**: The current implementation uses `setInterval` for cache warming. For production deployments, consider using Cloudflare Cron Triggers by adding to `wrangler.toml`:
+**Note on Cache Warming**: The current implementation uses `setInterval` for cache warming. For production deployments, consider using Cloudflare Cron Triggers by adding to `wrangler.jsonc`:
 ```toml
 [triggers]
 crons = ["0 */6 * * *"]  # Every 6 hours

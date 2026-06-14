@@ -62,3 +62,4 @@ CREATE INDEX IF NOT EXISTS idx_oda_postal ON oda_addresses(province, postal_code
 CREATE INDEX IF NOT EXISTS idx_oda_street ON oda_addresses(province, city_key, street_key, civic_number);
 CREATE INDEX IF NOT EXISTS idx_oda_search ON oda_addresses(search_key);
 CREATE INDEX IF NOT EXISTS idx_oda_city ON oda_addresses(province, city_key);
+CREATE INDEX IF NOT EXISTS idx_oda_coords ON oda_addresses(province, lat, lon);

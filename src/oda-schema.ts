@@ -83,40 +83,13 @@ export function getOdaBaseSchemaSql(): string[] {
     `CREATE INDEX IF NOT EXISTS idx_oda_street ON oda_addresses(province, city_key, street_key, civic_number)`,
     `CREATE INDEX IF NOT EXISTS idx_oda_search ON oda_addresses(search_key)`,
     `CREATE INDEX IF NOT EXISTS idx_oda_city ON oda_addresses(province, city_key)`,
-  ];
-}
-
-/** R-tree virtual table — must run via Worker D1 binding (not wrangler d1 execute) */
-export function getOdaRtreeSchemaSql(): string[] {
-  return [
-    `CREATE VIRTUAL TABLE IF NOT EXISTS oda_rtree USING rtree(
-      id,
-      minx, maxx,
-      miny, maxy
-    )`,
+    `CREATE INDEX IF NOT EXISTS idx_oda_coords ON oda_addresses(province, lat, lon)`,
   ];
 }
 
 /** Full schema for POST /api/oda/init */
 export function getOdaSchemaSql(): string[] {
-  return [...getOdaBaseSchemaSql(), ...getOdaRtreeSchemaSql()];
-}
-
-export async function initializeOdaRtree(env: Env): Promise<boolean> {
-  if (!env.ODA_DB) {
-    console.error('ODA_DB binding not configured');
-    return false;
-  }
-
-  try {
-    for (const sql of getOdaRtreeSchemaSql()) {
-      await env.ODA_DB.prepare(sql).run();
-    }
-    return true;
-  } catch (error) {
-    console.error('Failed to initialize ODA R-tree:', error);
-    return false;
-  }
+  return getOdaBaseSchemaSql();
 }
 
 export async function initializeOdaDatabase(env: Env): Promise<boolean> {
@@ -193,24 +166,12 @@ export async function getOdaStats(env: Env): Promise<OdaStats> {
 export async function deleteProvinceData(env: Env, province: string): Promise<void> {
   if (!env.ODA_DB) return;
 
-  const ids = await env.ODA_DB.prepare(
-    `SELECT id FROM oda_addresses WHERE province = ?`
-  ).bind(province).all();
-
-  const statements: D1PreparedStatement[] = [
+  await env.ODA_DB.batch([
     env.ODA_DB.prepare(`DELETE FROM oda_addresses WHERE province = ?`).bind(province),
     env.ODA_DB.prepare(`DELETE FROM oda_postal_centroids WHERE province = ?`).bind(province),
     env.ODA_DB.prepare(`DELETE FROM oda_city_centroids WHERE province = ?`).bind(province),
     env.ODA_DB.prepare(`DELETE FROM oda_street_ranges WHERE province = ?`).bind(province),
-  ];
-
-  for (const row of ids.results || []) {
-    statements.push(
-      env.ODA_DB.prepare(`DELETE FROM oda_rtree WHERE id = ?`).bind(row.id as number)
-    );
-  }
-
-  await env.ODA_DB.batch(statements);
+  ]);
 }
 
 export { ODA_DEFAULTS };

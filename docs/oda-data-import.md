@@ -49,7 +49,7 @@ Rows without valid coordinates are skipped.
 # 1. Create D1 database
 wrangler d1 create oda-addresses
 
-# 2. Add binding to wrangler.toml (see README)
+# 2. Add binding to wrangler.jsonc (see README)
 
 # 3. Initialize schema (via API or import script)
 curl -X POST https://your-worker.workers.dev/api/oda/init \

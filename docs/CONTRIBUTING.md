@@ -83,7 +83,7 @@ The Riding Lookup API is a Cloudflare Worker that provides geospatial lookup ser
 
 ### Environment Configuration
 
-The project uses several configuration options in `wrangler.toml`:
+The project uses several configuration options in `wrangler.jsonc`:
 
 - **Geocoding providers**: GeoGratis (primary, always used first), with fallback to `nominatim` (default), `mapbox`, or `google`
 - **Batch processing**: Configurable batch size and timeouts

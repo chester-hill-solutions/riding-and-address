@@ -326,11 +326,10 @@ async function findNearestNeighbor(
       SELECT a.id, a.province, a.civic_number, a.street_name, a.street_type, a.street_direction,
              a.unit, a.postal_code, a.city, a.lat, a.lon, a.full_address
       FROM oda_addresses a
-      JOIN oda_rtree r ON a.id = r.id
-      WHERE r.minx <= ? AND r.maxx >= ?
-        AND r.miny <= ? AND r.maxy >= ?
+      WHERE a.lat BETWEEN ? AND ?
+        AND a.lon BETWEEN ? AND ?
     `;
-    const params: unknown[] = [lon + delta, lon - delta, lat + delta, lat - delta];
+    const params: unknown[] = [lat - delta, lat + delta, lon - delta, lon + delta];
 
     if (bounds?.province) {
       query += ` AND a.province = ?`;

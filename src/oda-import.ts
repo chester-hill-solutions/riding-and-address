@@ -55,10 +55,6 @@ export function buildAddressInsertSql(row: OdaInsertRow, id: number): string {
   );`;
 }
 
-export function buildRtreeInsertSql(id: number, lon: number, lat: number): string {
-  return `INSERT INTO oda_rtree (id, minx, maxx, miny, maxy) VALUES (${id}, ${lon}, ${lon}, ${lat}, ${lat});`;
-}
-
 export interface CentroidAccumulator {
   latSum: number;
   lonSum: number;
