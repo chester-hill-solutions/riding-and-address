@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { BatchLookupRequest } from './types';
 
 /**
  * Runtime type validation schemas for external API responses.
@@ -209,5 +210,43 @@ export function safeValidate<T>(
   } else {
     return { success: false, error: result.error };
   }
+}
+
+const QueryParamsSchema = z.object({
+  address: z.string().optional(),
+  postal: z.string().optional(),
+  lat: z.number().finite().optional(),
+  lon: z.number().finite().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  country: z.string().optional(),
+}).refine(
+  (query) =>
+    (query.lat !== undefined && query.lon !== undefined) ||
+    !!query.postal ||
+    !!query.address,
+  { message: 'query must include lat/lon, postal, or address' }
+);
+
+export const BatchLookupRequestSchema = z.object({
+  id: z.string().min(1),
+  query: QueryParamsSchema,
+  pathname: z.string().regex(/^\/api/),
+});
+
+export const BatchLookupRequestsSchema = z.array(BatchLookupRequestSchema).min(1).max(100);
+
+export function parseBatchLookupRequests(data: unknown): BatchLookupRequest[] {
+  return BatchLookupRequestsSchema.parse(data) as BatchLookupRequest[];
+}
+
+export function safeParseBatchLookupRequests(
+  data: unknown
+): { success: true; data: BatchLookupRequest[] } | { success: false; error: z.ZodError } {
+  const result = BatchLookupRequestsSchema.safeParse(data);
+  if (result.success) {
+    return { success: true, data: result.data as BatchLookupRequest[] };
+  }
+  return { success: false, error: result.error };
 }
 

@@ -8,6 +8,7 @@ export const WEBHOOK_CONFIG = {
   RETRY_DELAY: 5000, // 5 seconds
   TIMEOUT: 30000, // 30 seconds
   MAX_WEBHOOKS: 10,
+  MAX_RESPONSE_BODY_LENGTH: 1024,
   CLEANUP_INTERVAL: TIME_CONSTANTS.TWENTY_FOUR_HOURS_MS,
   MAX_EVENT_AGE: TIME_CONSTANTS.SEVEN_DAYS_MS
 };
@@ -101,7 +102,37 @@ async function addDeliveryToIndex(env: Env, deliveryId: string): Promise<void> {
   }
 }
 
-// Create webhook event
+export function truncateWebhookResponseBody(
+  body: string,
+  maxLength: number = WEBHOOK_CONFIG.MAX_RESPONSE_BODY_LENGTH
+): { body: string; truncated: boolean } {
+  if (body.length <= maxLength) {
+    return { body, truncated: false };
+  }
+  return {
+    body: `${body.slice(0, maxLength)}...[truncated]`,
+    truncated: true,
+  };
+}
+
+export function shouldScheduleWebhookRetry(attempts: number, maxAttempts: number): boolean {
+  return attempts < maxAttempts;
+}
+
+function applyWebhookFailure(event: WebhookEvent, endTime: number): void {
+  event.attempts++;
+  event.lastAttempt = endTime;
+
+  if (shouldScheduleWebhookRetry(event.attempts, event.maxAttempts)) {
+    event.status = 'pending';
+    event.nextRetry = Date.now() + WEBHOOK_CONFIG.RETRY_DELAY * Math.pow(2, event.attempts - 1);
+    return;
+  }
+
+  event.status = 'failed';
+  event.nextRetry = undefined;
+}
+
 export async function createWebhookEvent(env: Env, webhookId: string, eventType: string, batchId: string, payload: Record<string, unknown>): Promise<string> {
   const eventId = generateEventId();
   const event: WebhookEvent = {
@@ -195,7 +226,10 @@ export async function deliverWebhook(env: Env, webhookId: string, eventId: strin
     const endTime = Date.now();
     delivery.duration = endTime - startTime;
     delivery.responseCode = response.status;
-    delivery.responseBody = await response.text();
+    const rawBody = await response.text();
+    const truncatedBody = truncateWebhookResponseBody(rawBody);
+    delivery.responseBody = truncatedBody.body;
+    delivery.responseBodyTruncated = truncatedBody.truncated;
     
     if (response.ok) {
       delivery.status = 'success';
@@ -216,21 +250,9 @@ export async function deliverWebhook(env: Env, webhookId: string, eventId: strin
         await addDeliveryToIndex(env, deliveryId);
       }
       
-      // Schedule retry if within limits
-      if (event.attempts < event.maxAttempts) {
-        event.status = 'pending';
-        event.attempts++;
-        event.nextRetry = Date.now() + WEBHOOK_CONFIG.RETRY_DELAY * Math.pow(2, event.attempts - 1);
-        event.lastAttempt = endTime;
-        if (env.WEBHOOKS) {
-          await env.WEBHOOKS.put(`${WEBHOOK_EVENT_PREFIX}${eventId}`, JSON.stringify(event));
-        }
-      } else {
-        event.status = 'failed';
-        event.lastAttempt = endTime;
-        if (env.WEBHOOKS) {
-          await env.WEBHOOKS.put(`${WEBHOOK_EVENT_PREFIX}${eventId}`, JSON.stringify(event));
-        }
+      applyWebhookFailure(event, endTime);
+      if (env.WEBHOOKS) {
+        await env.WEBHOOKS.put(`${WEBHOOK_EVENT_PREFIX}${eventId}`, JSON.stringify(event));
       }
       
       return false;
@@ -245,21 +267,9 @@ export async function deliverWebhook(env: Env, webhookId: string, eventId: strin
       await addDeliveryToIndex(env, deliveryId);
     }
     
-    // Schedule retry if within limits
-    if (event.attempts < event.maxAttempts) {
-      event.status = 'pending';
-      event.attempts++;
-      event.nextRetry = Date.now() + WEBHOOK_CONFIG.RETRY_DELAY * Math.pow(2, event.attempts - 1);
-      event.lastAttempt = endTime;
-      if (env.WEBHOOKS) {
-        await env.WEBHOOKS.put(`${WEBHOOK_EVENT_PREFIX}${eventId}`, JSON.stringify(event));
-      }
-    } else {
-      event.status = 'failed';
-      event.lastAttempt = endTime;
-      if (env.WEBHOOKS) {
-        await env.WEBHOOKS.put(`${WEBHOOK_EVENT_PREFIX}${eventId}`, JSON.stringify(event));
-      }
+    applyWebhookFailure(event, endTime);
+    if (env.WEBHOOKS) {
+      await env.WEBHOOKS.put(`${WEBHOOK_EVENT_PREFIX}${eventId}`, JSON.stringify(event));
     }
     
     return false;

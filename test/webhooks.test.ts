@@ -4,6 +4,8 @@ import {
   generateEventId,
   generateDeliveryId,
   createWebhookSignature,
+  truncateWebhookResponseBody,
+  shouldScheduleWebhookRetry,
   WEBHOOK_CONFIG
 } from '../src/webhooks';
 
@@ -84,5 +86,28 @@ describe('WEBHOOK_CONFIG', () => {
     expect(WEBHOOK_CONFIG.RETRY_DELAY).toBe(5000);
     expect(WEBHOOK_CONFIG.TIMEOUT).toBe(30000);
     expect(WEBHOOK_CONFIG.MAX_WEBHOOKS).toBe(10);
+    expect(WEBHOOK_CONFIG.MAX_RESPONSE_BODY_LENGTH).toBe(1024);
+  });
+});
+
+describe('truncateWebhookResponseBody', () => {
+  it('returns the original body when under the limit', () => {
+    const result = truncateWebhookResponseBody('ok');
+    expect(result).toEqual({ body: 'ok', truncated: false });
+  });
+
+  it('truncates oversized response bodies', () => {
+    const body = 'x'.repeat(2000);
+    const result = truncateWebhookResponseBody(body, 100);
+    expect(result.truncated).toBe(true);
+    expect(result.body.endsWith('...[truncated]')).toBe(true);
+    expect(result.body.length).toBeLessThan(body.length);
+  });
+});
+
+describe('shouldScheduleWebhookRetry', () => {
+  it('stops retrying after maxAttempts is reached', () => {
+    expect(shouldScheduleWebhookRetry(4, 5)).toBe(true);
+    expect(shouldScheduleWebhookRetry(5, 5)).toBe(false);
   });
 });

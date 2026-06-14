@@ -20,6 +20,10 @@
     {
       "binding": "LOOKUP_CACHE",
       "id": "4c86b30f085146429527b7b232347a79"
+    },
+    {
+      "binding": "WEBHOOKS",
+      "id": "3b23842cd96b40369311f52298a987cf"
     }
   ],
 
@@ -63,7 +67,8 @@
     "ODA_MIN_CONFIDENCE": "0.6",
     "ODA_NN_MAX_CANDIDATES": "50",
     "ODA_MAX_REVERSE_DISTANCE_METERS": "25000",
-    "ODA_MAX_AMBIGUOUS_MATCHES": "5"
+    "ODA_MAX_AMBIGUOUS_MATCHES": "5",
+    "SPATIAL_DB_ENABLED": "false"
   },
 
   "d1_databases": [
@@ -71,6 +76,11 @@
       "binding": "ODA_DB",
       "database_name": "oda-addresses",
       "database_id": "1e8710be-6de1-4003-a8fa-69907f867096"
+    },
+    {
+      "binding": "RIDING_DB",
+      "database_name": "riding-lookup-db",
+      "database_id": "64e55bc2-0e52-46bb-a9cd-56bf465464dc"
     }
   ],
 

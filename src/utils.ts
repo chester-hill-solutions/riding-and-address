@@ -571,43 +571,45 @@ export function rateLimitExceededResponse(correlationId?: string): Response {
 }
 
 // Authentication
-/**
- * Checks if the request is authorized.
- * 
- * Security Model:
- * - If BASIC_AUTH is not configured, authentication is skipped (all requests allowed)
- * - If X-Google-API-Key header is provided, basic auth is bypassed (BYOK - Bring Your Own Key)
- *   This allows users to use their own Google Maps API key without needing the configured
- *   basic auth credentials. Note: If the Google API key is compromised, the attacker
- *   will have full access to the API.
- * - Otherwise, HTTP Basic Authentication is required using the configured BASIC_AUTH secret
- * 
- * @param request - The incoming request
- * @param env - Environment variables including BASIC_AUTH
- * @returns true if authorized, false otherwise
- */
-export function checkBasicAuth(request: Request, env: Env): boolean {
-  // If BASIC_AUTH is not configured, skip authentication
-  if (!env.BASIC_AUTH) return true;
-  
-  // If user provides their own Google API key, bypass basic auth (BYOK model)
-  // SECURITY NOTE: This allows full API access with just a Google API key.
-  // Ensure Google API keys are kept secure and consider rate limiting per key.
-  const googleApiKey = request.headers.get("X-Google-API-Key");
-  if (googleApiKey) return true;
-  
+function verifyBasicAuthCredentials(request: Request, env: Env): boolean {
   const authHeader = request.headers.get("Authorization");
   if (!authHeader || !authHeader.startsWith("Basic ")) {
     return false;
   }
-  
+
   try {
-    const encoded = authHeader.substring(6); // Remove "Basic " prefix
+    const encoded = authHeader.substring(6);
     const decoded = atob(encoded);
     return decoded === env.BASIC_AUTH;
   } catch {
     return false;
   }
+}
+
+/**
+ * Checks if the request is authorized for lookup/geocoding routes.
+ *
+ * Security Model:
+ * - If BASIC_AUTH is not configured, authentication is skipped (all requests allowed)
+ * - If X-Google-API-Key header is provided, basic auth is bypassed (BYOK - Bring Your Own Key)
+ * - Otherwise, HTTP Basic Authentication is required using the configured BASIC_AUTH secret
+ */
+export function checkBasicAuth(request: Request, env: Env): boolean {
+  if (!env.BASIC_AUTH) return true;
+
+  const googleApiKey = request.headers.get("X-Google-API-Key");
+  if (googleApiKey) return true;
+
+  return verifyBasicAuthCredentials(request, env);
+}
+
+/**
+ * Checks if the request is authorized for admin/diagnostic routes.
+ * BYOK bypass is intentionally not allowed here.
+ */
+export function checkAdminAuth(request: Request, env: Env): boolean {
+  if (!env.BASIC_AUTH) return true;
+  return verifyBasicAuthCredentials(request, env);
 }
 
 // Geometry simplification

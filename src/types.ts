@@ -329,6 +329,7 @@ export interface WebhookDelivery {
   status: 'success' | 'failed';
   responseCode?: number;
   responseBody?: string;
+  responseBodyTruncated?: boolean;
   attemptedAt: number;
   duration: number;
   error?: string;

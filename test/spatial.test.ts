@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   getSpatialDbConfig,
+  getSpatialDatasetCleanupOrder,
   calculateBoundingBox,
   createSpatialIndex,
   isPointInBoundingBox,
@@ -50,6 +51,16 @@ describe('getSpatialDbConfig', () => {
   it('returns enabled when SPATIAL_DB_ENABLED is 1', () => {
     const config = getSpatialDbConfig({ SPATIAL_DB_ENABLED: '1' });
     expect(config.ENABLED).toBe(true);
+  });
+});
+
+describe('getSpatialDatasetCleanupOrder', () => {
+  it('removes rtree rows before feature rows when enabled', () => {
+    expect(getSpatialDatasetCleanupOrder(true)).toEqual(['rtree', 'features']);
+  });
+
+  it('only removes feature rows when rtree is disabled', () => {
+    expect(getSpatialDatasetCleanupOrder(false)).toEqual(['features']);
   });
 });
 

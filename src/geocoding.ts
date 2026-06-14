@@ -5,7 +5,8 @@ import {
   GoogleBatchGeocodeRequest,
   GoogleAddressComponents,
   GoogleGeocodeLocation,
-  OdaGeocodeMetadata
+  OdaGeocodeMetadata,
+  Metrics
 } from './types';
 import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS, TIME_CONSTANTS_SECONDS, QUALITY_THRESHOLDS } from './config';
 import { withRetry, withTimeout, NonRetriableError } from './utils';
@@ -646,8 +647,8 @@ export async function geocodeIfNeeded(
   qp: QueryParams, 
   request?: Request,
   metrics?: {
-    incrementMetric: (key: keyof import('./types').Metrics, value?: number) => void;
-    recordTiming: (key: keyof import('./types').Metrics, duration: number) => void;
+    incrementMetric: (key: keyof Metrics, value?: number) => void;
+    recordTiming: (key: keyof Metrics, duration: number) => void;
   },
   circuitBreaker?: {
     execute: (key: string, fn: () => Promise<unknown>) => Promise<unknown>;
@@ -983,8 +984,8 @@ export async function geocodeBatch(
   queries: QueryParams[], 
   request?: Request,
   metrics?: {
-    incrementMetric: (key: keyof import('./types').Metrics, value?: number) => void;
-    recordTiming: (key: keyof import('./types').Metrics, duration: number) => void;
+    incrementMetric: (key: keyof Metrics, value?: number) => void;
+    recordTiming: (key: keyof Metrics, duration: number) => void;
   },
   circuitBreaker?: {
     execute: (key: string, fn: () => Promise<unknown>) => Promise<unknown>;

@@ -8,7 +8,9 @@ import {
   isPointInPolygon,
   generateCorrelationId,
   pickDataset,
-  provincePathFromFederalProperties
+  provincePathFromFederalProperties,
+  checkBasicAuth,
+  checkAdminAuth
 } from '../src/utils';
 
 describe('validateCoordinates', () => {
@@ -228,5 +230,28 @@ describe('provincePathFromFederalProperties', () => {
   it('returns null for missing properties', () => {
     expect(provincePathFromFederalProperties(null)).toBeNull();
     expect(provincePathFromFederalProperties(undefined)).toBeNull();
+  });
+});
+
+function authRequest(headers: Record<string, string> = {}): Request {
+  return new Request('https://example.com/api', { headers });
+}
+
+describe('checkBasicAuth', () => {
+  it('allows BYOK lookup access when BASIC_AUTH is configured', () => {
+    const request = authRequest({ 'X-Google-API-Key': 'test-key' });
+    expect(checkBasicAuth(request, { BASIC_AUTH: 'admin:secret' } as never)).toBe(true);
+  });
+});
+
+describe('checkAdminAuth', () => {
+  it('rejects BYOK header for admin routes', () => {
+    const request = authRequest({ 'X-Google-API-Key': 'test-key' });
+    expect(checkAdminAuth(request, { BASIC_AUTH: 'admin:secret' } as never)).toBe(false);
+  });
+
+  it('accepts valid basic auth credentials', () => {
+    const request = authRequest({ Authorization: `Basic ${btoa('admin:secret')}` });
+    expect(checkAdminAuth(request, { BASIC_AUTH: 'admin:secret' } as never)).toBe(true);
   });
 });

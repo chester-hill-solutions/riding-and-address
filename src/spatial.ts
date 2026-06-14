@@ -446,6 +446,12 @@ export async function getAllFeaturesFromDatabase(env: Env, dataset: string, limi
 }
 
 // Sync GeoJSON data to spatial database
+export type SpatialDatasetCleanupStep = 'rtree' | 'features';
+
+export function getSpatialDatasetCleanupOrder(useRtree: boolean): SpatialDatasetCleanupStep[] {
+  return useRtree ? ['rtree', 'features'] : ['features'];
+}
+
 export async function syncGeoJSONToDatabase(
   env: Env, 
   dataset: string,
@@ -465,19 +471,18 @@ export async function syncGeoJSONToDatabase(
     // Initialize database if needed
     await initializeSpatialDatabase(env);
     
-    // Clear existing data for this dataset
-    await env.RIDING_DB.prepare(`DELETE FROM spatial_features WHERE dataset = ?`).bind(dataset).run();
-    
+    // Clear existing data for this dataset (R-tree rows must be removed before feature rows)
     if (dbConfig.USE_RTREE_INDEX) {
-      // Clear R-tree entries for this dataset
       const existingIds = await env.RIDING_DB.prepare(`
         SELECT id FROM spatial_features WHERE dataset = ?
       `).bind(dataset).all();
-      
+
       for (const row of existingIds.results) {
         await env.RIDING_DB.prepare(`DELETE FROM spatial_rtree WHERE id = ?`).bind(row.id).run();
       }
     }
+
+    await env.RIDING_DB.prepare(`DELETE FROM spatial_features WHERE dataset = ?`).bind(dataset).run();
     
     // Insert features in batches
     const batchSize = dbConfig.BATCH_INSERT_SIZE;

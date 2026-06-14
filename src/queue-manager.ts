@@ -1,6 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 
 import { Env } from './types';
+import { parseBatchLookupRequests } from './validation';
 
 export interface QueueJob {
   id: string;
@@ -340,8 +341,18 @@ export class QueueManager {
       });
     }
 
-    const body = await request.json() as { requests: BatchLookupRequest[]; priority?: number; tags?: string[] };
-    const { requests, priority = 1, tags = [] } = body;
+    const body = await request.json() as { requests: unknown; priority?: number; tags?: string[] };
+    let requests: BatchLookupRequest[];
+    try {
+      requests = parseBatchLookupRequests(body.requests);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid requests array';
+      return new Response(JSON.stringify({ error: message }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    const { priority = 1, tags = [] } = body;
 
     if (!Array.isArray(requests) || requests.length === 0) {
       return new Response(JSON.stringify({ error: 'Invalid requests array' }), {

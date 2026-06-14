@@ -1,4 +1,5 @@
-import { Env, BatchLookupRequest, BatchLookupResponse, BatchJob, QueryParams, LookupResult } from './types';
+import { Env, BatchLookupRequest, BatchLookupResponse, BatchJob, QueryParams, LookupResult, GoogleAddressComponents } from './types';
+import { parseBatchLookupRequests } from './validation';
 import { normalizeAddressWithGoogle, type GeocodeBatchResult } from './geocoding';
 import { incrementMetric, recordTiming } from './metrics';
 import { generateLookupCacheKey, getCachedLookupResult, setCachedLookupResult } from './cache';
@@ -87,7 +88,7 @@ export async function processBatchLookup(
 export async function processBatchLookupWithBatchGeocoding(
   env: Env,
   requests: BatchLookupRequest[],
-  geocodeIfNeeded: (env: Env, query: QueryParams, request?: Request) => Promise<{ lon: number; lat: number; normalizedAddress?: string; addressComponents?: import('./types').GoogleAddressComponents }>,
+  geocodeIfNeeded: (env: Env, query: QueryParams, request?: Request) => Promise<{ lon: number; lat: number; normalizedAddress?: string; addressComponents?: GoogleAddressComponents }>,
   lookupRiding: LookupRidingFunction,
   geocodeBatchFn: (env: Env, queries: QueryParams[], request?: Request, circuitBreaker?: CircuitBreakerExecutor) => Promise<GeocodeBatchResult[]>,
   request?: Request,
@@ -126,7 +127,7 @@ export async function processBatchLookupWithBatchGeocoding(
     }
     
     const hasGoogleKey = () => !isOdaEnabled(env) && !!(request?.headers?.get?.('X-Google-API-Key') ?? env.GOOGLE_MAPS_KEY);
-    const resolveNormalized = async (lat: number, lon: number, query: QueryParams): Promise<{ formattedAddress?: string; components?: import('./types').GoogleAddressComponents } | undefined> => {
+    const resolveNormalized = async (lat: number, lon: number, query: QueryParams): Promise<{ formattedAddress?: string; components?: GoogleAddressComponents } | undefined> => {
       if (isOdaEnabled(env)) {
         const v = await resolveNormalizedAddress(env, lat, lon, query, request, circuitBreaker);
         return v ? { formattedAddress: v.normalizedAddress, components: v.addressComponents } : undefined;
@@ -400,9 +401,10 @@ export async function processBatchLookupWithBatchGeocoding(
 }
 
 // Queue-based batch processing using Durable Objects
-export async function submitBatchToQueue(env: Env, requests: BatchLookupRequest[]): Promise<{ batchId: string; status: string }> {
-  // Validate batch size
-  if (requests.length > MAX_BATCH_SIZE) {
+export async function submitBatchToQueue(env: Env, requests: unknown): Promise<{ batchId: string; status: string }> {
+  const validatedRequests = parseBatchLookupRequests(requests);
+
+  if (validatedRequests.length > MAX_BATCH_SIZE) {
     throw new Error(`Batch size exceeds maximum of ${MAX_BATCH_SIZE} requests`);
   }
   
@@ -416,7 +418,7 @@ export async function submitBatchToQueue(env: Env, requests: BatchLookupRequest[
   const response = await queueManager.fetch(new Request("https://queue.local/queue/submit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ requests })
+    body: JSON.stringify({ requests: validatedRequests })
   }));
 
   if (!response.ok) {

@@ -1,6 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 
-import { Env, LookupResult, GeoJSONFeatureCollection, SpatialIndex, GeoJSONFeature, BatchLookupRequest, QueryParams } from './types';
+import { Env, LookupResult, GeoJSONFeatureCollection, SpatialIndex, GeoJSONFeature } from './types';
 import { geocodeIfNeeded, geocodeBatch, normalizeAddressWithGoogle } from './geocoding';
 import {
   handleGeocodeRoute,
@@ -31,7 +31,8 @@ import {
   pickDataset,
   provincePathFromFederalProperties,
   parseQuery, 
-  checkBasicAuth, 
+  checkBasicAuth,
+  checkAdminAuth, 
   badRequest, 
   unauthorizedResponse, 
   rateLimitExceededResponse,
@@ -64,6 +65,7 @@ import {
   getBatchStatus,
   processQueueJobs
 } from './batch';
+import { safeParseBatchLookupRequests } from './validation';
 import { QueueManagerDO } from './queue-manager';
 import { CircuitBreakerDO } from './circuit-breaker-do';
 import { createLandingPage, createSwaggerUI, createOpenAPISpec } from './docs';
@@ -384,14 +386,26 @@ export default {
         });
       }
       
-      // Health check endpoint
+      // Health check endpoint (public liveness; detailed diagnostics require admin auth)
       if (pathname === '/health') {
+        if (!checkAdminAuth(request, env)) {
+          return new Response(JSON.stringify({
+            status: 'healthy',
+            timestamp: Date.now(),
+          }), {
+            headers: {
+              "content-type": "application/json; charset=UTF-8",
+              'Access-Control-Allow-Origin': '*'
+            }
+          });
+        }
+
         const metrics = getMetrics();
         const circuitBreakerStates = {
           geocoding: await geocodingCircuitBreaker.getStateInfo('geocoding:nominatim'),
           r2: await r2CircuitBreaker.getStateInfo('r2:federalridings-2024.geojson')
         };
-        
+
         return new Response(JSON.stringify({
           status: 'healthy',
           timestamp: Date.now(),
@@ -399,27 +413,31 @@ export default {
           circuitBreakers: circuitBreakerStates,
           cacheWarming: getCacheWarmingStatus()
         }), {
-          headers: { 
+          headers: {
             "content-type": "application/json; charset=UTF-8",
             'Access-Control-Allow-Origin': '*'
           }
         });
       }
-      
+
       // Metrics endpoint
       if (pathname === '/metrics') {
+        if (!checkAdminAuth(request, env)) {
+          return unauthorizedResponse(correlationId);
+        }
+
         const metrics = getMetricsSummary();
         return new Response(JSON.stringify(metrics), {
-          headers: { 
+          headers: {
             "content-type": "application/json; charset=UTF-8",
             'Access-Control-Allow-Origin': '*'
           }
         });
       }
-      
+
       // Webhook management endpoints
       if (pathname.startsWith('/webhooks')) {
-        if (!checkBasicAuth(request, env)) {
+        if (!checkAdminAuth(request, env)) {
           return unauthorizedResponse(correlationId);
         }
         
@@ -466,6 +484,10 @@ export default {
       
       // Cache warming status endpoint
       if (pathname === '/cache-warming' && request.method === 'GET') {
+        if (!checkAdminAuth(request, env)) {
+          return unauthorizedResponse(correlationId);
+        }
+
         const status = getCacheWarmingStatus();
         return new Response(JSON.stringify({
           ...status,
@@ -485,7 +507,7 @@ export default {
       // Handle database endpoints
       if (pathname.startsWith('/api/database')) {
         if (pathname === '/api/database/init' && request.method === 'POST') {
-          if (!checkBasicAuth(request, env)) {
+          if (!checkAdminAuth(request, env)) {
             return unauthorizedResponse(correlationId);
           }
           
@@ -509,7 +531,7 @@ export default {
         }
         
         if (pathname === '/api/database/sync' && request.method === 'POST') {
-          if (!checkBasicAuth(request, env)) {
+          if (!checkAdminAuth(request, env)) {
             return unauthorizedResponse(correlationId);
           }
           
@@ -537,7 +559,7 @@ export default {
         }
         
         if (pathname === '/api/database/stats' && request.method === 'GET') {
-          if (!checkBasicAuth(request, env)) {
+          if (!checkAdminAuth(request, env)) {
             return unauthorizedResponse(correlationId);
           }
           
@@ -686,7 +708,7 @@ export default {
       // Handle cache warming endpoints
       if (pathname === "/api/cache/warm") {
         if (request.method === "POST") {
-          if (!checkBasicAuth(request, env)) {
+          if (!checkAdminAuth(request, env)) {
             return unauthorizedResponse(correlationId);
           }
           
@@ -726,7 +748,7 @@ export default {
       // Handle webhook management endpoints
       if (pathname.startsWith('/api/webhooks')) {
         if (pathname === '/api/webhooks' && request.method === 'GET') {
-          if (!checkBasicAuth(request, env)) {
+          if (!checkAdminAuth(request, env)) {
             return unauthorizedResponse(correlationId);
           }
           
@@ -752,7 +774,7 @@ export default {
         }
         
         if (pathname === '/api/webhooks' && request.method === 'POST') {
-          if (!checkBasicAuth(request, env)) {
+          if (!checkAdminAuth(request, env)) {
             return unauthorizedResponse(correlationId);
           }
           
@@ -783,7 +805,7 @@ export default {
         }
         
         if (pathname === '/api/webhooks/events' && request.method === 'GET') {
-          if (!checkBasicAuth(request, env)) {
+          if (!checkAdminAuth(request, env)) {
             return unauthorizedResponse(correlationId);
           }
           
@@ -803,7 +825,7 @@ export default {
         }
         
         if (pathname === '/api/webhooks/deliveries' && request.method === 'GET') {
-          if (!checkBasicAuth(request, env)) {
+          if (!checkAdminAuth(request, env)) {
             return unauthorizedResponse(correlationId);
           }
           
@@ -827,7 +849,7 @@ export default {
       
       // Batch processing endpoints
       if (pathname.startsWith('/batch')) {
-        if (!checkBasicAuth(request, env)) {
+        if (!checkAdminAuth(request, env)) {
           return unauthorizedResponse(correlationId);
         }
         
@@ -839,17 +861,24 @@ export default {
               return badRequest('Request body too large. Maximum size is 10MB', 413);
             }
             
-            const body = await request.json() as { requests: Record<string, unknown>[] };
-            const requests = body.requests.map((req, index) => ({
-              id: String(req.id || `req_${index}`),
-              query: req.query as QueryParams,
-              pathname: normalizeLookupPathname(String(req.pathname || '/api'))
-            })) as BatchLookupRequest[];
-            
+            const body = await request.json() as { requests?: unknown };
+            if (!body.requests || !Array.isArray(body.requests)) {
+              return badRequest("Invalid request body. Expected 'requests' array.", 400);
+            }
+
+            const parsedRequests = safeParseBatchLookupRequests(body.requests);
+            if (!parsedRequests.success) {
+              return badRequest(
+                parsedRequests.error.errors.map((e) => e.message).join('; '),
+                400,
+                'INVALID_BATCH_REQUEST'
+              );
+            }
+
             const cb = geocodingCircuitBreaker ? { execute: (k: string, fn: () => Promise<unknown>) => geocodingCircuitBreaker!.execute(k, fn) } : undefined;
             const results = await processBatchLookupWithBatchGeocoding(
               env,
-              requests,
+              parsedRequests.data,
               geocodeIfNeeded,
               lookupRiding,
               (e, q, req?, c?) => geocodeBatch(e, q, req, undefined, c ?? cb),
@@ -897,7 +926,7 @@ export default {
         }
         
         // Check basic authentication
-        if (!checkBasicAuth(request, env)) {
+        if (!checkAdminAuth(request, env)) {
           return unauthorizedResponse(correlationId);
         }
         
@@ -908,13 +937,22 @@ export default {
             return badRequest('Request body too large. Maximum size is 10MB', 413);
           }
           
-          const body = await request.json() as { requests: Record<string, unknown>[] };
-          
+          const body = await request.json() as { requests?: unknown };
+
           if (!body.requests || !Array.isArray(body.requests)) {
             return badRequest("Invalid request body. Expected 'requests' array.", 400);
           }
-          
-          const result = await submitBatchToQueue(env, body.requests as unknown as BatchLookupRequest[]);
+
+          const parsedRequests = safeParseBatchLookupRequests(body.requests);
+          if (!parsedRequests.success) {
+            return badRequest(
+              parsedRequests.error.errors.map((e) => e.message).join('; '),
+              400,
+              'INVALID_BATCH_REQUEST'
+            );
+          }
+
+          const result = await submitBatchToQueue(env, parsedRequests.data);
           return new Response(JSON.stringify(result), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",
@@ -936,7 +974,7 @@ export default {
         }
         
         // Check basic authentication
-        if (!checkBasicAuth(request, env)) {
+        if (!checkAdminAuth(request, env)) {
           return unauthorizedResponse(correlationId);
         }
         
@@ -968,7 +1006,7 @@ export default {
         }
         
         // Check basic authentication
-        if (!checkBasicAuth(request, env)) {
+        if (!checkAdminAuth(request, env)) {
           return unauthorizedResponse(correlationId);
         }
         
@@ -996,7 +1034,7 @@ export default {
         }
         
         // Check basic authentication
-        if (!checkBasicAuth(request, env)) {
+        if (!checkAdminAuth(request, env)) {
           return unauthorizedResponse(correlationId);
         }
         
@@ -1032,7 +1070,7 @@ export default {
       
       // Queue processing endpoint (legacy)
       if (pathname === '/queue/process' && request.method === 'POST') {
-        if (!checkBasicAuth(request, env)) {
+        if (!checkAdminAuth(request, env)) {
           return unauthorizedResponse(correlationId);
         }
         
@@ -1056,7 +1094,7 @@ export default {
       // ODA geolocation admin endpoints
       if (pathname.startsWith('/api/oda')) {
         if (pathname === '/api/oda/init' && request.method === 'POST') {
-          if (!checkBasicAuth(request, env)) {
+          if (!checkAdminAuth(request, env)) {
             return unauthorizedResponse(correlationId);
           }
           try {
@@ -1070,7 +1108,7 @@ export default {
         }
 
         if (pathname === '/api/oda/stats' && request.method === 'GET') {
-          if (!checkBasicAuth(request, env)) {
+          if (!checkAdminAuth(request, env)) {
             return unauthorizedResponse(correlationId);
           }
           try {
@@ -1116,7 +1154,7 @@ export default {
           return rateLimitExceededResponse(correlationId);
         }
         
-        // Check basic authentication for API routes
+        // Check basic authentication for API routes (BYOK allowed)
         if (!checkBasicAuth(request, env)) {
           return unauthorizedResponse(correlationId);
         }
