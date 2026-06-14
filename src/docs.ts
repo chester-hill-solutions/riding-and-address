@@ -95,9 +95,9 @@ const INCLUDE_PROVINCE_PARAMETER = {
   name: "include_province",
   in: "query" as const,
   description:
-    "Optional boolean. When true, include matching Ontario or Quebec provincial data in province_data. /api/combined defaults to true.",
+    "Optional flag (`true`/`false`). When true, include matching Ontario or Quebec provincial data in province_data. /api/combined defaults to true.",
   required: false,
-  schema: { type: "boolean", example: true },
+  schema: { type: "string", enum: ["true", "false"], example: "true" },
 };
 
 const LOOKUP_QUERY_PARAMETERS = [

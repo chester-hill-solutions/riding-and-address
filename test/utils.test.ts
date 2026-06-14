@@ -13,6 +13,7 @@ import {
   checkBasicAuth,
   checkAdminAuth,
   validateAndSanitizeQuery,
+  parseQuery,
 } from '../src/utils';
 
 describe('validateCoordinates', () => {
@@ -320,6 +321,15 @@ describe('validateAndSanitizeQuery include_province', () => {
     const result = validateAndSanitizeQuery({ postal: 'M5V 2T6' }, '/api/combined');
     expect(result.valid).toBe(true);
     expect(result.sanitized?.includeProvince).toBe(true);
+  });
+
+  it('treats presence-only include_province query flag as true', () => {
+    const request = new Request(
+      'http://localhost/api/federal?postal=M5V%202T6&include_province'
+    );
+    const { validation } = parseQuery(request);
+    expect(validation.valid).toBe(true);
+    expect(validation.sanitized?.includeProvince).toBe(true);
   });
 
   it('requires explicit flag on federal endpoint', () => {

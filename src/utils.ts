@@ -531,6 +531,14 @@ export function ridingNameFromProperties(
   return undefined;
 }
 
+/** Read include_province from URL search params (flag or explicit true/false). */
+export function includeProvinceFromSearchParams(q: URLSearchParams): string | undefined {
+  if (!q.has('include_province')) return undefined;
+  const value = q.get('include_province');
+  // Scalar and some clients send enabled boolean params as a presence-only flag.
+  return value === '' ? 'true' : value ?? 'true';
+}
+
 // Query parsing
 export function parseQuery(request: Request): { query: QueryParams; validation: ValidationResult } {
   const url = new URL(request.url);
@@ -544,7 +552,7 @@ export function parseQuery(request: Request): { query: QueryParams; validation: 
     state: q.get("state") || q.get("province") || undefined,
     country: q.get("country") || undefined,
     return: q.get("return") || undefined,
-    include_province: q.get("include_province") || undefined,
+    include_province: includeProvinceFromSearchParams(q),
     lat: q.get("lat") ? Number(q.get("lat")) : undefined,
     lon: q.get("lon") || q.get("lng") || q.get("long") ? Number(q.get("lon") || q.get("lng") || q.get("long")) : undefined
   };
