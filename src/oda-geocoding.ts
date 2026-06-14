@@ -207,28 +207,33 @@ async function findStreetInterpolated(
 ): Promise<OdaAddressRow | null> {
   if (!env.ODA_DB || !parsed.city || !parsed.streetName) return null;
 
-  const cityKey = buildCityKey(parsed.city, parsed.province || provinces[0]);
-  const streetKey = buildStreetKey(
-    parsed.streetName,
-    parsed.streetType || '',
-    parsed.streetDirection || ''
-  );
-  const placeholders = provinces.map(() => '?').join(',');
+  const streetTypes = parsed.streetType
+    ? [parsed.streetType]
+    : ['', 'AVE', 'ST', 'RD', 'DR', 'BLVD', 'CRES'];
 
-  if (parsed.civicParsed?.numeric !== null && parsed.civicParsed?.numeric !== undefined) {
-    const civic = parsed.civicParsed.raw;
-    const exact = await env.ODA_DB.prepare(`
+  for (const streetType of streetTypes) {
+    const cityKey = buildCityKey(parsed.city, parsed.province || provinces[0]);
+    const streetKey = buildStreetKey(
+      parsed.streetName,
+      streetType,
+      parsed.streetDirection || ''
+    );
+    const placeholders = provinces.map(() => '?').join(',');
+
+    if (parsed.civicParsed?.numeric !== null && parsed.civicParsed?.numeric !== undefined) {
+      const civic = parsed.civicParsed.raw;
+      const exact = await env.ODA_DB.prepare(`
       SELECT id, province, civic_number, street_name, street_type, street_direction,
              unit, postal_code, city, lat, lon, full_address
       FROM oda_addresses
       WHERE province IN (${placeholders}) AND city_key = ? AND street_key = ? AND civic_number = ?
       LIMIT 1
     `)
-      .bind(...provinces, cityKey, streetKey, civic)
-      .first();
-    if (exact) return exact as unknown as OdaAddressRow;
+        .bind(...provinces, cityKey, streetKey, civic)
+        .first();
+      if (exact) return exact as unknown as OdaAddressRow;
 
-    const nearest = await env.ODA_DB.prepare(`
+      const nearest = await env.ODA_DB.prepare(`
       SELECT id, province, civic_number, street_name, street_type, street_direction,
              unit, postal_code, city, lat, lon, full_address
       FROM oda_addresses
@@ -236,35 +241,38 @@ async function findStreetInterpolated(
       ORDER BY ABS(CAST(civic_number AS INTEGER) - ?) ASC
       LIMIT 1
     `)
-      .bind(...provinces, cityKey, streetKey, parsed.civicParsed.numeric)
-      .first();
-    return (nearest as unknown as OdaAddressRow | null) ?? null;
-  }
+        .bind(...provinces, cityKey, streetKey, parsed.civicParsed.numeric)
+        .first();
+      if (nearest) return nearest as unknown as OdaAddressRow;
+    }
 
-  const range = await env.ODA_DB.prepare(`
+    const range = await env.ODA_DB.prepare(`
     SELECT lat, lon, province FROM oda_street_ranges
     WHERE province IN (${placeholders}) AND city_key = ? AND street_key = ?
     LIMIT 1
   `)
-    .bind(...provinces, cityKey, streetKey)
-    .first();
+      .bind(...provinces, cityKey, streetKey)
+      .first();
 
-  if (!range) return null;
+    if (range) {
+      return {
+        id: 0,
+        province: range.province as string,
+        civic_number: parsed.civic || '',
+        street_name: parsed.streetName,
+        street_type: streetType || parsed.streetType || '',
+        street_direction: parsed.streetDirection || '',
+        unit: '',
+        postal_code: parsed.postal || '',
+        city: parsed.city,
+        lat: range.lat as number,
+        lon: range.lon as number,
+        full_address: '',
+      };
+    }
+  }
 
-  return {
-    id: 0,
-    province: range.province as string,
-    civic_number: parsed.civic || '',
-    street_name: parsed.streetName,
-    street_type: parsed.streetType || '',
-    street_direction: parsed.streetDirection || '',
-    unit: '',
-    postal_code: parsed.postal || '',
-    city: parsed.city,
-    lat: range.lat as number,
-    lon: range.lon as number,
-    full_address: '',
-  };
+  return null;
 }
 
 async function findCityCentroid(
@@ -463,14 +471,9 @@ export async function geocodeWithOda(env: Env, qp: QueryParams): Promise<OdaGeoc
         config,
         ['city', 'province']
       );
-      if ((result.confidence ?? 0) < config.minConfidence) {
-        throw new OdaGeocodeError(
-          'City centroid match below confidence threshold',
-          'LOW_CONFIDENCE_GEOCODE',
-          422
-        );
+      if ((result.confidence ?? 0) >= config.minConfidence) {
+        return result;
       }
-      return result;
     }
   }
 

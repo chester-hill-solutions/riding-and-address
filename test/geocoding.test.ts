@@ -10,7 +10,7 @@ import { Env } from '../src/types';
 describe('generateGeocodingCacheKey', () => {
   it('generates a key with provider prefix', () => {
     const key = generateGeocodingCacheKey({ address: '123 Main St' }, 'google');
-    expect(key.startsWith('geocoding:google:')).toBe(true);
+    expect(key.startsWith('geocoding:v2:google:')).toBe(true);
   });
 
   it('normalizes address to lowercase', () => {
@@ -331,7 +331,7 @@ describe('geocodeIfNeeded with ODA enabled', () => {
     } as unknown as D1Database;
 
     globalThis.fetch = vi.fn(async (url: string | URL) => {
-      if (String(url).includes('geogratis')) {
+      if (String(url).includes('geolocator.api.geo.ca') || String(url).includes('geogratis')) {
         return new Response(
           JSON.stringify([
             {
@@ -368,6 +368,51 @@ describe('geocodeIfNeeded with ODA enabled', () => {
 
     expect(result.lon).toBeCloseTo(-79.3124, 3);
     expect(result.lat).toBeCloseTo(43.6891, 3);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses region-filtered GeoGratis result for Victoria Park instead of Alberta', async () => {
+    globalThis.fetch = vi.fn(async (url: string | URL) => {
+      if (String(url).includes('geolocator.api.geo.ca') || String(url).includes('geogratis')) {
+        return new Response(
+          JSON.stringify([
+            {
+              title: '757 Victoria Park Avenue, City Of Toronto, Ontario',
+              qualifier: 'INTERPOLATED_POSITION',
+              geometry: { type: 'Point', coordinates: [-79.288688, 43.692101] },
+            },
+            {
+              title: '757 Highway & Route 757, Parkland County, Alberta',
+              qualifier: 'LOCATION',
+              geometry: { type: 'Point', coordinates: [-114.869564, 53.715415] },
+            },
+          ]),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      throw new Error(`Unexpected fetch: ${String(url)}`);
+    }) as typeof fetch;
+
+    const env: Env = {
+      RIDINGS: {} as R2Bucket,
+      ODA_GEOCODING_ENABLED: 'false',
+      GEOCODING_CACHE: {
+        get: async () => null,
+        put: async () => {},
+        delete: async () => {},
+        list: async () => ({ keys: [], list_complete: true, cacheStatus: null }),
+        getWithMetadata: async () => ({ value: null, metadata: null, cacheStatus: null }),
+      } as KVNamespace,
+    };
+
+    const result = await geocodeIfNeeded(env, {
+      address: '757 Victoria Park',
+      city: 'Toronto',
+      state: 'ON',
+    });
+
+    expect(result.lat).toBeCloseTo(43.692101, 3);
+    expect(result.lon).toBeCloseTo(-79.288688, 3);
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 });

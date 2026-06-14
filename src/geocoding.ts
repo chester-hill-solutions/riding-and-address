@@ -19,6 +19,13 @@ import {
 } from './validation';
 import { isOdaEnabled } from './oda-config';
 import { geocodeWithOda, OdaGeocodeError } from './oda-geocoding';
+import {
+  buildGeocodeQueryString,
+  expandStreetAddress,
+  googleResultMatchesRegion,
+  provinceNameForGoogleComponent,
+  selectGeoGratisResult,
+} from './geocode-region';
 
 async function runOrDefer(deferTask: DeferTaskFn | undefined, task: Promise<void>): Promise<void> {
   if (deferTask) {
@@ -80,7 +87,7 @@ export function generateGeocodingCacheKey(query: QueryParams, provider: string):
     country: query.country?.toLowerCase().trim()
   };
   
-  return `geocoding:${provider}:${JSON.stringify(normalizedQuery)}`;
+  return `geocoding:v2:${provider}:${JSON.stringify(normalizedQuery)}`;
 }
 
 /**
@@ -426,7 +433,7 @@ export async function normalizeAddressWithGoogle(
  * @returns Promise resolving to geocoding result with lon, lat, qualifier, and score, or null if failed
  * 
  * @remarks
- * - Uses the GeoGratis API endpoint: https://geogratis.gc.ca/services/geolocation/en/locate
+ * - Uses the NRCan Geolocator API: https://www.geolocator.api.geo.ca/geolocation/en/locate
  * - Requests score and component data via expand parameter for quality assessment
  * - Returns null on API errors, empty results, or invalid coordinates
  */
@@ -434,28 +441,13 @@ async function geocodeWithGeoGratis(qp: QueryParams): Promise<{ lon: number; lat
   const retryConfig = getRetryConfig();
   try {
     return await withRetry(async () => {
-      // Build query string from available parameters
-      const queryParts: string[] = [];
-      if (qp.address) queryParts.push(qp.address);
-      if (qp.postal) queryParts.push(qp.postal);
-      if (qp.city) queryParts.push(qp.city);
-      if (qp.state) queryParts.push(qp.state);
-      if (qp.country) queryParts.push(qp.country);
-      
-      // Fallback to any available query if no structured parts
-      if (queryParts.length === 0) {
-        const query = qp.address || qp.postal || qp.city || qp.state || qp.country;
-        if (!query) throw new NonRetriableError('Missing query parameters for GeoGratis');
-        queryParts.push(query);
-      }
-      
-      const queryString = queryParts.join(', ');
-      const params = new URLSearchParams({ 
+      const queryString = buildGeocodeQueryString(qp);
+      const params = new URLSearchParams({
         q: queryString,
-        expand: 'score,component' // Request score and component for quality assessment
+        expand: 'score,component',
       });
-      
-      const url = `https://geogratis.gc.ca/services/geolocation/en/locate?${params.toString()}`;
+
+      const url = `https://www.geolocator.api.geo.ca/geolocation/en/locate?${params.toString()}`;
       const resp = await fetch(url, { 
         headers: { "User-Agent": "riding-lookup/1.0" },
         signal: AbortSignal.timeout(10000)
@@ -475,25 +467,20 @@ async function geocodeWithGeoGratis(qp: QueryParams): Promise<{ lon: number; lat
       }
       
       const data = validation.data;
-      
-      // Check if we have results
+
       if (data.length === 0) {
         console.warn(`[GEOCODING] GeoGratis returned no results`);
         throw new NonRetriableError('GeoGratis returned no results');
       }
-      
-      // Get the first result (best match)
-      const firstResult = data[0];
-      
-      // Extract coordinates from geometry
-      if (!firstResult.geometry || !firstResult.geometry.coordinates || firstResult.geometry.coordinates.length < 2) {
+
+      const selected = selectGeoGratisResult(qp, data);
+      if (!selected?.geometry?.coordinates || selected.geometry.coordinates.length < 2) {
         console.warn(`[GEOCODING] GeoGratis result missing valid coordinates`);
         throw new NonRetriableError('GeoGratis result missing valid coordinates');
       }
-      
-      // GeoJSON coordinates are [lon, lat] format
-      const lon = firstResult.geometry.coordinates[0];
-      const lat = firstResult.geometry.coordinates[1];
+
+      const lon = selected.geometry.coordinates[0];
+      const lat = selected.geometry.coordinates[1];
       
       if (typeof lon !== 'number' || typeof lat !== 'number' || isNaN(lon) || isNaN(lat)) {
         console.warn(`[GEOCODING] GeoGratis result has invalid coordinates`);
@@ -503,8 +490,8 @@ async function geocodeWithGeoGratis(qp: QueryParams): Promise<{ lon: number; lat
       return {
         lon,
         lat,
-        qualifier: firstResult.qualifier,
-        score: firstResult.score
+        qualifier: selected.qualifier,
+        score: selected.score,
       };
     }, retryConfig, 'GeoGratis geocode');
   } catch (error) {
@@ -525,11 +512,12 @@ async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, reque
   const componentFilters: string[] = [];
   if (qp.postal) componentFilters.push(`postal_code:${qp.postal.replace(/\s+/g, '')}`);
   if (qp.city) componentFilters.push(`locality:${qp.city}`);
-  if (qp.state) componentFilters.push(`administrative_area:${qp.state}`);
+  const provinceComponent = provinceNameForGoogleComponent(qp.state);
+  if (provinceComponent) componentFilters.push(`administrative_area:${provinceComponent}`);
   const country = (qp.country || 'CA').toUpperCase();
   componentFilters.push(`country:${country}`);
-  if (componentFilters.length) params.set("components", componentFilters.join("|"));
-  if (qp.address) params.set("address", qp.address);
+  if (componentFilters.length) params.set('components', componentFilters.join('|'));
+  params.set('address', qp.address ? expandStreetAddress(qp.address) : buildGeocodeQueryString(qp));
   params.set('region', 'ca');
 
   const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
@@ -553,6 +541,10 @@ async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, reque
   const loc = result.geometry.location;
   const fmt = result.formatted_address;
   const components = parseGoogleAddressComponents(result);
+  if (!googleResultMatchesRegion(qp, components, typeof fmt === 'string' ? fmt : undefined)) {
+    console.warn('[GEOCODING] Google result outside requested region, falling back to Nominatim');
+    return await geocodeWithNominatimFallback(qp, buildGeocodeQueryString(qp));
+  }
   return {
     lon: loc.lng,
     lat: loc.lat,
@@ -565,10 +557,14 @@ async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, reque
  * Fallback to Nominatim when Google returns no results or errors.
  */
 async function geocodeWithNominatimFallback(qp: QueryParams, query: string): Promise<GeocodeResult> {
-  const nominatimParams = new URLSearchParams({ format: "jsonv2", limit: "1", country: "canada" });
-  if (qp.address) nominatimParams.set("street", qp.address);
-  if (qp.city) nominatimParams.set("city", qp.city);
-  if (qp.state) nominatimParams.set("state", qp.state);
+  const nominatimParams = new URLSearchParams({ format: 'jsonv2', limit: '1', country: 'canada' });
+  const street = qp.address ? expandStreetAddress(qp.address) : undefined;
+  if (street) nominatimParams.set('street', street);
+  if (qp.city) nominatimParams.set('city', qp.city);
+  if (qp.state) {
+    const provinceName = provinceNameForGoogleComponent(qp.state);
+    nominatimParams.set('state', provinceName || qp.state);
+  }
   if (qp.country) nominatimParams.set("country", qp.country);
   if (qp.postal) nominatimParams.set("postalcode", qp.postal);
   if (![qp.address, qp.city, qp.state, qp.country, qp.postal].some(Boolean)) {
@@ -614,10 +610,14 @@ async function geocodeWithMapbox(qp: QueryParams, query: string, env: Env): Prom
  * Geocodes an address using the Nominatim (OpenStreetMap) API.
  */
 async function geocodeWithNominatim(qp: QueryParams, query: string): Promise<GeocodeResult> {
-  const nominatimParams = new URLSearchParams({ format: "jsonv2", limit: "1", country: "canada" });
-  if (qp.address) nominatimParams.set("street", qp.address);
-  if (qp.city) nominatimParams.set("city", qp.city);
-  if (qp.state) nominatimParams.set("state", qp.state);
+  const nominatimParams = new URLSearchParams({ format: 'jsonv2', limit: '1', country: 'canada' });
+  const street = qp.address ? expandStreetAddress(qp.address) : undefined;
+  if (street) nominatimParams.set('street', street);
+  if (qp.city) nominatimParams.set('city', qp.city);
+  if (qp.state) {
+    const provinceName = provinceNameForGoogleComponent(qp.state);
+    nominatimParams.set('state', provinceName || qp.state);
+  }
   if (qp.country) nominatimParams.set("country", qp.country);
   if (qp.postal) nominatimParams.set("postalcode", qp.postal);
   if (![qp.address, qp.city, qp.state, qp.country, qp.postal].some(Boolean)) {
@@ -712,14 +712,18 @@ export async function geocodeIfNeeded(
     
     if (geogratisCached) {
       const isInterpolated = geogratisCached.qualifier === 'INTERPOLATED_POSITION';
-      const hasPoorScore = geogratisCached.score !== undefined && geogratisCached.score < GEOGRATIS_MIN_SCORE;
-      
-      if (!isInterpolated && !hasPoorScore) {
+      const hasPoorScore =
+        geogratisCached.score !== undefined && geogratisCached.score < GEOGRATIS_MIN_SCORE;
+      const hasRegionHints = !!(qp.state || qp.city);
+
+      if ((!isInterpolated || hasRegionHints) && !hasPoorScore) {
         metrics?.incrementMetric('geocodingCacheHits');
         metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
         return { lon: geogratisCached.lon, lat: geogratisCached.lat };
       } else {
-        console.warn(`[GEOCODING] Cached GeoGratis result was ${isInterpolated ? 'interpolated' : 'poor quality'}, fetching fresh result`);
+        console.warn(
+          `[GEOCODING] Cached GeoGratis result was ${isInterpolated ? 'interpolated' : 'poor quality'}, fetching fresh result`
+        );
       }
     }
     
@@ -728,16 +732,20 @@ export async function geocodeIfNeeded(
       const geogratisResult = await geocodeWithGeoGratis(qp);
       
       if (geogratisResult) {
-        // Check if result is acceptable
         const isInterpolated = geogratisResult.qualifier === 'INTERPOLATED_POSITION';
-        const hasPoorScore = geogratisResult.score !== undefined && geogratisResult.score < GEOGRATIS_MIN_SCORE;
-        
-        if (isInterpolated) {
-          console.warn(`[GEOCODING] GeoGratis returned INTERPOLATED_POSITION, falling back to ${env.GEOCODER || 'nominatim'}`);
+        const hasPoorScore =
+          geogratisResult.score !== undefined && geogratisResult.score < GEOGRATIS_MIN_SCORE;
+        const hasRegionHints = !!(qp.state || qp.city);
+
+        if (isInterpolated && !hasRegionHints) {
+          console.warn(
+            `[GEOCODING] GeoGratis returned INTERPOLATED_POSITION without region hints, falling back to ${env.GEOCODER || 'nominatim'}`
+          );
         } else if (hasPoorScore) {
-          console.warn(`[GEOCODING] GeoGratis returned poor score (${geogratisResult.score}), falling back to ${env.GEOCODER || 'nominatim'}`);
+          console.warn(
+            `[GEOCODING] GeoGratis returned poor score (${geogratisResult.score}), falling back to ${env.GEOCODER || 'nominatim'}`
+          );
         } else {
-          // GeoGratis result is good, use it and cache with quality info
           await runOrDefer(
             deferTask,
             setCachedGeocoding(
@@ -769,9 +777,15 @@ export async function geocodeIfNeeded(
     const cacheKey = generateGeocodingCacheKey(qp, provider);
     const cached = await getCachedGeocoding(env, cacheKey);
     if (cached) {
-      metrics?.incrementMetric('geocodingCacheHits');
-      metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
-      return { lon: cached.lon, lat: cached.lat } as GeocodeResult;
+      const regionOk =
+        provider !== 'google' ||
+        googleResultMatchesRegion(qp, cached.addressComponents, cached.normalizedAddress);
+      if (regionOk) {
+        metrics?.incrementMetric('geocodingCacheHits');
+        metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
+        return { lon: cached.lon, lat: cached.lat } as GeocodeResult;
+      }
+      console.warn('[GEOCODING] Cached Google result outside requested region, fetching fresh result');
     }
     
     metrics?.incrementMetric('geocodingCacheMisses');

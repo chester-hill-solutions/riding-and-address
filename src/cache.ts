@@ -483,7 +483,7 @@ export function generateLookupCacheKey(query: QueryParams, pathname: string): st
   }
   
   // Ensure key doesn't exceed KV 512 byte limit
-  const key = `lookup:${dataset}:${type}:${value}:${pathname}`;
+  const key = `lookup:v2:${dataset}:${type}:${value}:${pathname}`;
   if (key.length > 512) {
     // Hash long keys (simple hash for now)
     const hash = key.split('').reduce((acc, char) => {
