@@ -222,7 +222,12 @@ export interface GeoJSONFeatureCollection {
 }
 
 // Query and result interfaces
-export type ReturnField = 'municipality';
+import type { ReturnField } from './return-selector';
+export type { ReturnField };
+
+export type CircuitBreakerExecutor = {
+  execute: (key: string, fn: () => Promise<unknown>) => Promise<unknown>;
+};
 
 export interface QueryParams {
   address?: string;

@@ -111,20 +111,3 @@ describe('buildExpandedLookupPayload', () => {
     expect(payload.province_data).toBeUndefined();
   });
 });
-
-describe('OpenNorth parity fixture — 757 Victoria Park', () => {
-  /**
-   * Resolved coordinates for 757 Victoria Park Ave, Toronto (fixture).
-   * OpenNorth maps postcode to Beaches-East York; expected provincial riding is SSW.
-   */
-  const VICTORIA_PARK_COORDS = { lat: 43.6891, lon: -79.3124 };
-
-  it('documents expected provincial riding for the fixture point', () => {
-    const expectedProvincialRiding = 'Scarborough Southwest';
-    const openNorthMismatch = 'Beaches-East York';
-
-    expect(expectedProvincialRiding).not.toBe(openNorthMismatch);
-    expect(VICTORIA_PARK_COORDS.lat).toBeGreaterThan(43);
-    expect(VICTORIA_PARK_COORDS.lon).toBeLessThan(-79);
-  });
-});

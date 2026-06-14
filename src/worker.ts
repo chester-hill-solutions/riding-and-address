@@ -1,16 +1,14 @@
 /// <reference types="@cloudflare/workers-types" />
 
 import { Env, LookupResult, GeoJSONFeatureCollection, SpatialIndex, GeoJSONFeature } from './types';
-import { geocodeIfNeeded, geocodeBatch, normalizeAddressWithGoogle } from './geocoding';
+import { geocodeIfNeeded, geocodeBatch } from './geocoding';
 import {
   handleGeocodeRoute,
   handleReverseRoute,
   handleNormalizeAddressRoute,
   handleOdaInit,
   handleOdaStats,
-  resolveNormalizedAddress,
 } from './oda-handlers';
-import { isOdaEnabled } from './oda-config';
 import { 
   geoCacheLRU, 
   spatialIndexCacheLRU, 
@@ -18,8 +16,6 @@ import {
   setCachedSpatialIndex,
   performCacheWarming,
   getCacheWarmingStatus,
-  generateLookupCacheKey,
-  getCachedLookupResult
 } from './cache';
 import { initializeCircuitBreakers, geocodingCircuitBreaker, r2CircuitBreaker } from './circuit-breaker';
 import { incrementMetric, recordTiming, getMetrics, getMetricsSummary } from './metrics';
@@ -28,7 +24,6 @@ import {
   withTimeout, 
   withRetry, 
   pickDataset, 
-  parseQuery, 
   checkBasicAuth,
   checkAdminAuth, 
   badRequest, 
@@ -37,10 +32,9 @@ import {
   checkRateLimit,
   getClientId,
   getCorrelationId,
-  resolveQueryReturnFields,
-  resolveQueryIncludeProvince
 } from './utils';
-import { performExpandedLookup, type NormalizedAddressContext } from './lookup-expansion';
+import { handleLookupRequest } from './lookup-handler';
+import { resolveLookupPath } from './return-selector';
 import { 
   createSpatialIndex, 
   findCandidateFeatures, 
@@ -73,13 +67,6 @@ import { createLandingPage, createSwaggerUI, createOpenAPISpec } from './docs';
 import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS } from './config';
 
 // Global state
-
-const FEDERAL_PATH = "/api/federal";
-
-function normalizeLookupPathname(pathname: string): string {
-  if (pathname === "/api") return FEDERAL_PATH;
-  return pathname;
-}
 
 /**
  * Handle scheduled events (Cron Triggers) for cache warming.
@@ -625,7 +612,7 @@ export default {
           }
           
           try {
-            const result = await lookupRiding(env, FEDERAL_PATH, lon, lat);
+            const result = await lookupRiding(env, resolveLookupPath('/api').datasetPath, lon, lat);
             return new Response(JSON.stringify(result), {
               headers: { 
                 "content-type": "application/json; charset=UTF-8",
@@ -1147,176 +1134,24 @@ export default {
 
       // Main lookup endpoint
       if (pathname.startsWith('/api')) {
-        const lookupPathname = normalizeLookupPathname(pathname);
-
-        // Check rate limiting
         const clientId = getClientId(request);
         if (!checkRateLimit(env, clientId)) {
           return rateLimitExceededResponse(correlationId);
         }
-        
-        // Check basic authentication for API routes (BYOK allowed)
+
         if (!checkBasicAuth(request, env)) {
           return unauthorizedResponse(correlationId);
         }
-        
-        try {
-          const { validation } = parseQuery(request);
-          
-          // Check validation result
-          if (!validation.valid) {
-            return badRequest(validation.error || "Invalid query parameters", 400, "INVALID_QUERY", correlationId);
-          }
-          
-          // Use sanitized query parameters
-          const sanitizedQuery = validation.sanitized!;
-          const origin = request.headers.get('Origin');
-          
-          // Increment lookup requests metric (before cache check)
-          incrementMetric('lookupRequests');
 
-          const timeoutConfig = getTimeoutConfig(env);
-          const cb = geocodingCircuitBreaker ? { execute: (k: string, fn: () => Promise<unknown>) => geocodingCircuitBreaker!.execute(k, fn) } : undefined;
-
-          const returnFields = resolveQueryReturnFields(sanitizedQuery);
-          const includeProvince = resolveQueryIncludeProvince(lookupPathname, sanitizedQuery);
-          const basePath =
-            lookupPathname === '/api' || lookupPathname === '/api/combined'
-              ? FEDERAL_PATH
-              : lookupPathname;
-          const cacheKey = generateLookupCacheKey(sanitizedQuery, basePath);
-          const cachedResult = await getCachedLookupResult(env, cacheKey);
-          if (cachedResult) {
-            incrementMetric('lookupCacheHits');
-          }
-
-          let lon: number;
-          let lat: number;
-          let addressContext: NormalizedAddressContext | undefined;
-
-          if (cachedResult?.point) {
-            lon = cachedResult.point.lon;
-            lat = cachedResult.point.lat;
-          } else if (
-            sanitizedQuery.lat !== undefined &&
-            sanitizedQuery.lon !== undefined
-          ) {
-            lon = sanitizedQuery.lon;
-            lat = sanitizedQuery.lat;
-          } else {
-            const geocodeResult = await withTimeout(
-              geocodeIfNeeded(env, sanitizedQuery, request, undefined, cb),
-              timeoutConfig.geocoding,
-              "Geocoding"
-            );
-            lon = geocodeResult.lon;
-            lat = geocodeResult.lat;
-            addressContext = {
-              normalizedAddress: geocodeResult.normalizedAddress,
-              addressComponents: geocodeResult.addressComponents,
-              mailingAddress: geocodeResult.mailingAddress,
-            };
-
-            if (
-              !isOdaEnabled(env) &&
-              (request?.headers.get('X-Google-API-Key') || env.GOOGLE_MAPS_KEY)
-            ) {
-              const googleResult = await normalizeAddressWithGoogle(
-                env,
-                geocodeResult.lat,
-                geocodeResult.lon,
-                request,
-                cb
-              );
-              if (googleResult) {
-                addressContext = {
-                  normalizedAddress: googleResult.formattedAddress,
-                  addressComponents: googleResult.components,
-                };
-              }
-            } else if (isOdaEnabled(env) && !addressContext.normalizedAddress) {
-              const odaNorm = await resolveNormalizedAddress(
-                env,
-                lat,
-                lon,
-                sanitizedQuery,
-                request,
-                cb
-              );
-              if (odaNorm) {
-                addressContext = {
-                  normalizedAddress: odaNorm.normalizedAddress,
-                  addressComponents: odaNorm.addressComponents,
-                  mailingAddress: odaNorm.mailingAddress,
-                };
-              }
-            }
-          }
-
-          const expanded = await performExpandedLookup(
-            env,
-            lookupPathname,
-            sanitizedQuery,
-            returnFields,
-            includeProvince,
-            lookupRiding,
-            {
-              lon,
-              lat,
-              request,
-              circuitBreaker: cb,
-              timeoutConfig,
-              addressContext,
-              preloadedResult: cachedResult
-                ? {
-                    properties: cachedResult.properties,
-                    riding: cachedResult.riding,
-                    normalizedAddress: cachedResult.normalizedAddress,
-                    addressComponents: cachedResult.addressComponents,
-                  }
-                : undefined,
-              preloadedCacheStatus: cachedResult ? 'HIT' : undefined,
-            }
-          );
-
-          recordTiming('totalLookupTime', Date.now() - startTime);
-
-          return new Response(
-            JSON.stringify({
-              query: sanitizedQuery,
-              point: { lon, lat },
-              riding: expanded.riding,
-              properties: expanded.properties,
-              ...(expanded.province_data !== undefined && {
-                province_data: expanded.province_data,
-              }),
-              ...(expanded.municipality && { municipality: expanded.municipality }),
-              ...(expanded.normalizedAddress && {
-                normalizedAddress: expanded.normalizedAddress,
-              }),
-              ...(expanded.addressComponents && {
-                addressComponents: expanded.addressComponents,
-              }),
-              correlationId,
-            }),
-            {
-              headers: {
-                "content-type": "application/json; charset=UTF-8",
-                "X-Cache-Status": expanded.cacheStatus,
-                ...getCorsHeaders(origin),
-              },
-            }
-          );
-        } catch (error) {
-          incrementMetric('errorCount');
-          console.error(`[${correlationId}] Lookup error:`, error);
-          return badRequest(
-            error instanceof Error ? error.message : "Lookup failed",
-            500,
-            "LOOKUP_ERROR",
-            correlationId
-          );
-        }
+        return handleLookupRequest(
+          request,
+          env,
+          pathname,
+          lookupRiding,
+          correlationId,
+          startTime,
+          getCorsHeaders
+        );
       }
       
       return badRequest("Not found", 404, "NOT_FOUND", correlationId)

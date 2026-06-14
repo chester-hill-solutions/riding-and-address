@@ -3,8 +3,7 @@ import {
   parseReturnSelector,
   parseIncludeProvince,
   resolveIncludeProvince,
-  isFederalLookupPath,
-  wantsReturnField,
+  resolveLookupPath,
 } from '../src/return-selector';
 
 describe('parseReturnSelector', () => {
@@ -71,18 +70,28 @@ describe('resolveIncludeProvince', () => {
   });
 });
 
-describe('isFederalLookupPath', () => {
-  it('matches federal and combined paths', () => {
-    expect(isFederalLookupPath('/api')).toBe(true);
-    expect(isFederalLookupPath('/api/federal')).toBe(true);
-    expect(isFederalLookupPath('/api/combined')).toBe(true);
-    expect(isFederalLookupPath('/api/on')).toBe(false);
+describe('resolveLookupPath', () => {
+  it('maps /api to federal dataset path', () => {
+    expect(resolveLookupPath('/api')).toEqual({
+      lookupPathname: '/api/federal',
+      datasetPath: '/api/federal',
+      isFederal: true,
+    });
   });
-});
 
-describe('wantsReturnField', () => {
-  it('checks membership', () => {
-    expect(wantsReturnField(['municipality'], 'municipality')).toBe(true);
-    expect(wantsReturnField([], 'municipality')).toBe(false);
+  it('maps /api/combined to federal dataset with combined semantics', () => {
+    expect(resolveLookupPath('/api/combined')).toEqual({
+      lookupPathname: '/api/combined',
+      datasetPath: '/api/federal',
+      isFederal: true,
+    });
+  });
+
+  it('passes provincial paths through unchanged', () => {
+    expect(resolveLookupPath('/api/on')).toEqual({
+      lookupPathname: '/api/on',
+      datasetPath: '/api/on',
+      isFederal: false,
+    });
   });
 });

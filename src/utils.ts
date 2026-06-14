@@ -1,4 +1,4 @@
-import { Env, QueryParams, GeoJSONGeometry, ReturnField } from './types';
+import { Env, QueryParams, GeoJSONGeometry } from './types';
 import { TIMEOUT_CONFIG, RETRY_CONFIG, getRetryConfig } from './config';
 import { parseReturnSelector, parseIncludeProvince, resolveIncludeProvince } from './return-selector';
 
@@ -260,7 +260,7 @@ export function validatePostalCode(postal: string): { valid: boolean; sanitized?
  * @param query - Raw query parameters from request
  * @returns Validation result with sanitized parameters or error message
  */
-export function validateAndSanitizeQuery(query: QueryParams): ValidationResult {
+export function validateAndSanitizeQuery(query: QueryParams, pathname: string): ValidationResult {
   const sanitized: QueryParams = {};
   
   // Sanitize string inputs
@@ -305,6 +305,9 @@ export function validateAndSanitizeQuery(query: QueryParams): ValidationResult {
     sanitized.include_province = query.include_province;
     sanitized.includeProvince = includeProvinceParse.value;
   }
+
+  sanitized.returnFields = sanitized.returnFields ?? [];
+  sanitized.includeProvince = resolveIncludeProvince(pathname, sanitized.includeProvince);
   
   // Check that at least one location parameter is provided
   const hasLocation = sanitized.address || sanitized.postal || sanitized.city || 
@@ -491,14 +494,6 @@ const PROV_TERR_TO_PROVINCE_PATH: Record<string, "/api/on" | "/api/qc"> = {
   QUEBEC: "/api/qc",
 };
 
-export function resolveQueryReturnFields(query: QueryParams): ReturnField[] {
-  return query.returnFields ?? [];
-}
-
-export function resolveQueryIncludeProvince(pathname: string, query: QueryParams): boolean {
-  return resolveIncludeProvince(pathname, query.includeProvince);
-}
-
 /**
  * Maps federal feature PROV_TERR (abbreviation or full name, EN/FR) to a provincial lookup path.
  */
@@ -535,7 +530,7 @@ export function parseQuery(request: Request): { query: QueryParams; validation: 
   };
   
   // Validate and sanitize
-  const validation = validateAndSanitizeQuery(rawQuery);
+  const validation = validateAndSanitizeQuery(rawQuery, url.pathname);
   
   return { query: rawQuery, validation };
 }

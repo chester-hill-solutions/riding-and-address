@@ -12,8 +12,6 @@ import {
   checkBasicAuth,
   checkAdminAuth,
   validateAndSanitizeQuery,
-  resolveQueryReturnFields,
-  resolveQueryIncludeProvince,
 } from '../src/utils';
 
 describe('validateCoordinates', () => {
@@ -242,28 +240,37 @@ function authRequest(headers: Record<string, string> = {}): Request {
 
 describe('validateAndSanitizeQuery return selector', () => {
   it('parses valid return tokens', () => {
-    const result = validateAndSanitizeQuery({
-      postal: 'M5V 2T6',
-      return: 'municipality',
-    });
+    const result = validateAndSanitizeQuery(
+      {
+        postal: 'M5V 2T6',
+        return: 'municipality',
+      },
+      '/api/federal'
+    );
     expect(result.valid).toBe(true);
     expect(result.sanitized?.returnFields).toEqual(['municipality']);
   });
 
   it('rejects province_data in return selector', () => {
-    const result = validateAndSanitizeQuery({
-      postal: 'M5V 2T6',
-      return: 'province_data',
-    });
+    const result = validateAndSanitizeQuery(
+      {
+        postal: 'M5V 2T6',
+        return: 'province_data',
+      },
+      '/api/federal'
+    );
     expect(result.valid).toBe(false);
     expect(result.error).toContain('Unknown return field');
   });
 
   it('rejects unknown return tokens', () => {
-    const result = validateAndSanitizeQuery({
-      postal: 'M5V 2T6',
-      return: 'invalid_token',
-    });
+    const result = validateAndSanitizeQuery(
+      {
+        postal: 'M5V 2T6',
+        return: 'invalid_token',
+      },
+      '/api/federal'
+    );
     expect(result.valid).toBe(false);
     expect(result.error).toContain('Unknown return field');
   });
@@ -271,37 +278,50 @@ describe('validateAndSanitizeQuery return selector', () => {
 
 describe('validateAndSanitizeQuery include_province', () => {
   it('parses include_province=true', () => {
-    const result = validateAndSanitizeQuery({
-      postal: 'M5V 2T6',
-      include_province: 'true',
-    });
+    const result = validateAndSanitizeQuery(
+      {
+        postal: 'M5V 2T6',
+        include_province: 'true',
+      },
+      '/api/federal'
+    );
     expect(result.valid).toBe(true);
     expect(result.sanitized?.includeProvince).toBe(true);
   });
 
   it('rejects invalid include_province values', () => {
-    const result = validateAndSanitizeQuery({
-      postal: 'M5V 2T6',
-      include_province: 'maybe',
-    });
+    const result = validateAndSanitizeQuery(
+      {
+        postal: 'M5V 2T6',
+        include_province: 'maybe',
+      },
+      '/api/federal'
+    );
     expect(result.valid).toBe(false);
   });
-});
 
-describe('resolveQueryIncludeProvince', () => {
   it('defaults province inclusion for combined endpoint', () => {
-    expect(resolveQueryIncludeProvince('/api/combined', {})).toBe(true);
+    const result = validateAndSanitizeQuery({ postal: 'M5V 2T6' }, '/api/combined');
+    expect(result.valid).toBe(true);
+    expect(result.sanitized?.includeProvince).toBe(true);
   });
 
   it('requires explicit flag on federal endpoint', () => {
-    expect(resolveQueryIncludeProvince('/api/federal', {})).toBe(false);
-    expect(resolveQueryIncludeProvince('/api/federal', { includeProvince: true })).toBe(true);
-  });
-});
+    const result = validateAndSanitizeQuery({ postal: 'M5V 2T6' }, '/api/federal');
+    expect(result.valid).toBe(true);
+    expect(result.sanitized?.includeProvince).toBe(false);
 
-describe('resolveQueryReturnFields', () => {
-  it('returns parsed return fields', () => {
-    expect(resolveQueryReturnFields({ returnFields: ['municipality'] })).toEqual(['municipality']);
+    const explicit = validateAndSanitizeQuery(
+      { postal: 'M5V 2T6', include_province: 'true' },
+      '/api/federal'
+    );
+    expect(explicit.sanitized?.includeProvince).toBe(true);
+  });
+
+  it('defaults returnFields to empty array', () => {
+    const result = validateAndSanitizeQuery({ postal: 'M5V 2T6' }, '/api/federal');
+    expect(result.valid).toBe(true);
+    expect(result.sanitized?.returnFields).toEqual([]);
   });
 });
 

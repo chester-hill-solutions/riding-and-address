@@ -15,6 +15,30 @@ export interface IncludeProvinceParseResult {
   error?: string;
 }
 
+const FEDERAL_DATASET_PATH = '/api/federal';
+
+export interface ResolvedLookupPath {
+  /** Path used for routing and expansion semantics (/api → /api/federal) */
+  lookupPathname: string;
+  /** Path used for dataset lookup and cache keys */
+  datasetPath: string;
+  isFederal: boolean;
+}
+
+/**
+ * Canonical pathname resolution for lookup routes.
+ */
+export function resolveLookupPath(pathname: string): ResolvedLookupPath {
+  const lookupPathname = pathname === '/api' ? FEDERAL_DATASET_PATH : pathname;
+  const datasetPath =
+    pathname === '/api' || pathname === '/api/combined' ? FEDERAL_DATASET_PATH : pathname;
+  const isFederal =
+    pathname === '/api' ||
+    pathname === FEDERAL_DATASET_PATH ||
+    pathname === '/api/combined';
+  return { lookupPathname, datasetPath, isFederal };
+}
+
 /**
  * Parses a comma-separated `return` query value into supported expansion tokens.
  */
@@ -80,12 +104,4 @@ export function resolveIncludeProvince(
     return includeProvince;
   }
   return pathname === '/api/combined';
-}
-
-export function isFederalLookupPath(pathname: string): boolean {
-  return pathname === '/api' || pathname === '/api/federal' || pathname === '/api/combined';
-}
-
-export function wantsReturnField(fields: ReturnField[], field: ReturnField): boolean {
-  return fields.includes(field);
 }
