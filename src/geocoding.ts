@@ -216,7 +216,7 @@ export type GeocodeBatchResult = { lon: number; lat: number; success: boolean; e
  * Parses Google address_components array into structured address components object.
  * Extracts all available address parts from Google's response.
  */
-function parseGoogleAddressComponents(result: Record<string, unknown>): GoogleAddressComponents | undefined {
+export function parseGoogleAddressComponents(result: Record<string, unknown>): GoogleAddressComponents | undefined {
   if (!result || !Array.isArray(result.address_components)) {
     return undefined;
   }
@@ -469,6 +469,131 @@ async function geocodeWithGeoGratis(qp: QueryParams): Promise<{ lon: number; lat
   }
 }
 
+/**
+ * Geocodes an address using the Google Geocoding API.
+ * Falls back to Nominatim on ZERO_RESULTS, REQUEST_DENIED, or INVALID_REQUEST.
+ */
+async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, request?: Request): Promise<GeocodeResult> {
+  const headerKey = request?.headers.get("X-Google-API-Key");
+  const key = headerKey || env.GOOGLE_MAPS_KEY;
+  if (!key) throw new NonRetriableError("Google API key not provided. Set X-Google-API-Key header or configure GOOGLE_MAPS_KEY environment variable");
+  const params = new URLSearchParams({ key });
+  const componentFilters: string[] = [];
+  if (qp.postal) componentFilters.push(`postal_code:${qp.postal.replace(/\s+/g, '')}`);
+  if (qp.city) componentFilters.push(`locality:${qp.city}`);
+  if (qp.state) componentFilters.push(`administrative_area:${qp.state}`);
+  const country = (qp.country || 'CA').toUpperCase();
+  componentFilters.push(`country:${country}`);
+  if (componentFilters.length) params.set("components", componentFilters.join("|"));
+  if (qp.address) params.set("address", qp.address);
+  params.set('region', 'ca');
+
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
+  const resp = await fetch(url, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(10000) });
+  if (!resp.ok) throw new Error(`Google error: ${resp.status}`);
+  const rawData = await resp.json();
+  const validation = safeValidateGoogleGeocode(rawData);
+  if (!validation.success) {
+    console.warn(`[GEOCODING] Google response validation failed:`, validation.error.errors);
+    throw new NonRetriableError(`Google API response validation failed`);
+  }
+  const data = validation.data;
+  if (data.status === 'ZERO_RESULTS' || data.status === 'REQUEST_DENIED' || data.status === 'INVALID_REQUEST' || !data.results?.length) {
+    console.error(`[GEOCODING] Google API failed (${data.status || 'no results'}), falling back to Nominatim`);
+    return await geocodeWithNominatimFallback(qp, query);
+  }
+  if (data.status === 'OVER_QUERY_LIMIT' || data.status === 'UNKNOWN_ERROR') {
+    throw new Error(`Google API error: ${data.status}`);
+  }
+  const result = data.results[0];
+  const loc = result.geometry.location;
+  const fmt = result.formatted_address;
+  const components = parseGoogleAddressComponents(result);
+  return {
+    lon: loc.lng,
+    lat: loc.lat,
+    ...(typeof fmt === 'string' && fmt.length > 0 && { normalizedAddress: fmt }),
+    ...(components && { addressComponents: components })
+  };
+}
+
+/**
+ * Fallback to Nominatim when Google returns no results or errors.
+ */
+async function geocodeWithNominatimFallback(qp: QueryParams, query: string): Promise<GeocodeResult> {
+  const nominatimParams = new URLSearchParams({ format: "jsonv2", limit: "1", country: "canada" });
+  if (qp.address) nominatimParams.set("street", qp.address);
+  if (qp.city) nominatimParams.set("city", qp.city);
+  if (qp.state) nominatimParams.set("state", qp.state);
+  if (qp.country) nominatimParams.set("country", qp.country);
+  if (qp.postal) nominatimParams.set("postalcode", qp.postal);
+  if (![qp.address, qp.city, qp.state, qp.country, qp.postal].some(Boolean)) {
+    nominatimParams.set("q", query);
+  }
+  const nominatimUrl = `https://nominatim.openstreetmap.org/search?${nominatimParams.toString()}`;
+  const nomResp = await fetch(nominatimUrl, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(10000) });
+  if (nomResp.ok) {
+    const rawResults = await nomResp.json();
+    const nomValidation = safeValidateNominatim(rawResults);
+    if (!nomValidation.success) {
+      console.warn(`[GEOCODING] Nominatim response validation failed:`, nomValidation.error.errors);
+      throw new NonRetriableError(`Nominatim API response validation failed`);
+    }
+    const results = nomValidation.data;
+    const first = results?.[0];
+    if (first) {
+      return { lon: Number(first.lon), lat: Number(first.lat) };
+    }
+  }
+  console.error(`[GEOCODING] Nominatim fallback also failed, no results found`);
+  throw new NonRetriableError("No results from Google");
+}
+
+/**
+ * Geocodes an address using the Mapbox Geocoding API.
+ */
+async function geocodeWithMapbox(qp: QueryParams, query: string, env: Env): Promise<GeocodeResult> {
+  const token = env.MAPBOX_TOKEN;
+  if (!token) throw new NonRetriableError("MAPBOX_TOKEN not configured");
+  const resp = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?limit=1&proximity=ca&access_token=${token}`, {
+    headers: { "User-Agent": "riding-lookup/1.0" },
+    signal: AbortSignal.timeout(10000)
+  });
+  if (!resp.ok) throw new Error(`Mapbox error: ${resp.status}`);
+  const data = await resp.json() as MapboxResponse;
+  const feat = data?.features?.[0];
+  if (!feat?.center) throw new NonRetriableError("No results from Mapbox");
+  return { lon: feat.center[0], lat: feat.center[1] };
+}
+
+/**
+ * Geocodes an address using the Nominatim (OpenStreetMap) API.
+ */
+async function geocodeWithNominatim(qp: QueryParams, query: string): Promise<GeocodeResult> {
+  const nominatimParams = new URLSearchParams({ format: "jsonv2", limit: "1", country: "canada" });
+  if (qp.address) nominatimParams.set("street", qp.address);
+  if (qp.city) nominatimParams.set("city", qp.city);
+  if (qp.state) nominatimParams.set("state", qp.state);
+  if (qp.country) nominatimParams.set("country", qp.country);
+  if (qp.postal) nominatimParams.set("postalcode", qp.postal);
+  if (![qp.address, qp.city, qp.state, qp.country, qp.postal].some(Boolean)) {
+    nominatimParams.set("q", query);
+  }
+  const nominatimUrl = `https://nominatim.openstreetmap.org/search?${nominatimParams.toString()}`;
+  const resp = await fetch(nominatimUrl, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(10000) });
+  if (!resp.ok) throw new Error(`Nominatim error: ${resp.status}`);
+  const rawResults = await resp.json();
+  const nomValidation = safeValidateNominatim(rawResults);
+  if (!nomValidation.success) {
+    console.warn(`[GEOCODING] Nominatim response validation failed:`, nomValidation.error.errors);
+    throw new NonRetriableError(`Nominatim API response validation failed`);
+  }
+  const results = nomValidation.data;
+  const first = results?.[0];
+  if (!first) throw new NonRetriableError("No results from Nominatim");
+  return { lon: Number(first.lon), lat: Number(first.lat) };
+}
+
 // Main geocoding function
 /**
  * Geocodes a query (address/postal code) to coordinates if needed.
@@ -574,129 +699,13 @@ export async function geocodeIfNeeded(
     let result: GeocodeResult;
     try {
       const geocodeFn = async (): Promise<GeocodeResult> => {
-        let geocodeResult: GeocodeResult;
-    
         if (provider === "google") {
-          // Check for Google API key in header first, then fall back to environment variable
-          const headerKey = request?.headers.get("X-Google-API-Key");
-          const key = headerKey || env.GOOGLE_MAPS_KEY;
-          if (!key) throw new NonRetriableError("Google API key not provided. Set X-Google-API-Key header or configure GOOGLE_MAPS_KEY environment variable");
-          const params = new URLSearchParams({ key });
-          // Prefer structured components when available
-          const componentFilters: string[] = [];
-          if (qp.postal) componentFilters.push(`postal_code:${qp.postal.replace(/\s+/g, '')}`);
-          if (qp.city) componentFilters.push(`locality:${qp.city}`);
-          if (qp.state) componentFilters.push(`administrative_area:${qp.state}`);
-          // Default to Canada unless caller specifies
-          const country = (qp.country || 'CA').toUpperCase();
-          componentFilters.push(`country:${country}`);
-          if (componentFilters.length) params.set("components", componentFilters.join("|"));
-          if (qp.address) params.set("address", qp.address);
-          // Region bias for Canada
-          params.set('region', 'ca');
-
-          const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
-          const resp = await fetch(url, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(10000) });
-          if (!resp.ok) throw new Error(`Google error: ${resp.status}`);
-          const rawData = await resp.json();
-          // Validate response structure with zod
-          const validation = safeValidateGoogleGeocode(rawData);
-          if (!validation.success) {
-            console.warn(`[GEOCODING] Google response validation failed:`, validation.error.errors);
-            throw new NonRetriableError(`Google API response validation failed`);
-          }
-          const data = validation.data;
-          // Handle zero results or API errors without pointless retries; try Nominatim fallback immediately
-          if (data.status === 'ZERO_RESULTS' || data.status === 'REQUEST_DENIED' || data.status === 'INVALID_REQUEST' || !data.results?.length) {
-            console.error(`[GEOCODING] Google API failed (${data.status || 'no results'}), falling back to Nominatim`);
-            // Fallback to Nominatim (same shaping as below)
-            const nominatimParams = new URLSearchParams({ format: "jsonv2", limit: "1", country: "canada" });
-            if (qp.address) nominatimParams.set("street", qp.address);
-            if (qp.city) nominatimParams.set("city", qp.city);
-            if (qp.state) nominatimParams.set("state", qp.state);
-            if (qp.country) nominatimParams.set("country", qp.country);
-            if (qp.postal) nominatimParams.set("postalcode", qp.postal);
-            if (![qp.address, qp.city, qp.state, qp.country, qp.postal].some(Boolean)) {
-              nominatimParams.set("q", query);
-            }
-            const nominatimUrl = `https://nominatim.openstreetmap.org/search?${nominatimParams.toString()}`;
-            const nomResp = await fetch(nominatimUrl, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(10000) });
-            if (nomResp.ok) {
-            const rawResults = await nomResp.json();
-            // Validate Nominatim response
-            const nomValidation = safeValidateNominatim(rawResults);
-            if (!nomValidation.success) {
-              console.warn(`[GEOCODING] Nominatim response validation failed:`, nomValidation.error.errors);
-              throw new NonRetriableError(`Nominatim API response validation failed`);
-            }
-            const results = nomValidation.data;
-            const first = results?.[0];
-              if (first) {
-                geocodeResult = { lon: Number(first.lon), lat: Number(first.lat) };
-                return geocodeResult;
-              }
-            }
-            console.error(`[GEOCODING] Nominatim fallback also failed, no results found`);
-            throw new NonRetriableError("No results from Google");
-          }
-          
-          // Handle other Google API error statuses
-          if (data.status === 'OVER_QUERY_LIMIT' || data.status === 'UNKNOWN_ERROR') {
-            throw new Error(`Google API error: ${data.status}`);
-          }
-          
-          const result = data.results[0];
-          const loc = result.geometry.location;
-          const fmt = result.formatted_address;
-          const components = parseGoogleAddressComponents(result);
-          
-          geocodeResult = {
-            lon: loc.lng,
-            lat: loc.lat,
-            ...(typeof fmt === 'string' && fmt.length > 0 && { normalizedAddress: fmt }),
-            ...(components && { addressComponents: components })
-          };
+          return await geocodeWithGoogle(qp, query, env, request);
         } else if (provider === "mapbox") {
-          const token = env.MAPBOX_TOKEN;
-          if (!token) throw new NonRetriableError("MAPBOX_TOKEN not configured");
-          const resp = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?limit=1&proximity=ca&access_token=${token}`, {
-            headers: { "User-Agent": "riding-lookup/1.0" },
-            signal: AbortSignal.timeout(10000)
-          });
-          if (!resp.ok) throw new Error(`Mapbox error: ${resp.status}`);
-          const data = await resp.json() as MapboxResponse;
-          const feat = data?.features?.[0];
-          if (!feat?.center) throw new NonRetriableError("No results from Mapbox");
-          geocodeResult = { lon: feat.center[0], lat: feat.center[1] };
+          return await geocodeWithMapbox(qp, query, env);
         } else {
-          // Nominatim
-          // Default to Nominatim (OpenStreetMap)
-          const nominatimParams = new URLSearchParams({ format: "jsonv2", limit: "1", country: "canada" });
-          if (qp.address) nominatimParams.set("street", qp.address);
-          if (qp.city) nominatimParams.set("city", qp.city);
-          if (qp.state) nominatimParams.set("state", qp.state);
-          if (qp.country) nominatimParams.set("country", qp.country);
-          if (qp.postal) nominatimParams.set("postalcode", qp.postal);
-          // Fallback free-form
-          if (![qp.address, qp.city, qp.state, qp.country, qp.postal].some(Boolean)) {
-            nominatimParams.set("q", query);
-          }
-          const nominatimUrl = `https://nominatim.openstreetmap.org/search?${nominatimParams.toString()}`;
-          const resp = await fetch(nominatimUrl, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(10000) });
-          if (!resp.ok) throw new Error(`Nominatim error: ${resp.status}`);
-          const rawResults = await resp.json();
-          // Validate Nominatim response
-          const nomValidation = safeValidateNominatim(rawResults);
-          if (!nomValidation.success) {
-            console.warn(`[GEOCODING] Nominatim response validation failed:`, nomValidation.error.errors);
-            throw new NonRetriableError(`Nominatim API response validation failed`);
-          }
-          const results = nomValidation.data;
-          const first = results?.[0];
-          if (!first) throw new NonRetriableError("No results from Nominatim");
-          geocodeResult = { lon: Number(first.lon), lat: Number(first.lat) };
+          return await geocodeWithNominatim(qp, query);
         }
-        return geocodeResult;
       };
 
       const retryConfig = getRetryConfig();
