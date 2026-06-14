@@ -45,7 +45,9 @@ import {
   getAllWebhooks,
   getWebhookEvents,
   getWebhookDeliveries,
-  createWebhook
+  createWebhook,
+  processWebhookEvents,
+  cleanupWebhookData
 } from './webhooks';
 import { 
   processBatchLookupWithBatchGeocoding,
@@ -81,6 +83,22 @@ async function handleScheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionC
     console.log('[Cron] Cache warming completed successfully');
   } catch (error) {
     console.error('[Cron] Cache warming failed:', error);
+  }
+
+  // Process pending webhook events
+  try {
+    await processWebhookEvents(env);
+    console.log('[Cron] Webhook processing completed successfully');
+  } catch (error) {
+    console.error('[Cron] Webhook processing failed:', error);
+  }
+
+  // Cleanup old webhook data
+  try {
+    await cleanupWebhookData(env);
+    console.log('[Cron] Webhook cleanup completed successfully');
+  } catch (error) {
+    console.error('[Cron] Webhook cleanup failed:', error);
   }
 }
 
