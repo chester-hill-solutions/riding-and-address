@@ -286,7 +286,7 @@ function featurePropertiesIfContains(ridingFeature: GeoJSONFeature, lon: number,
  * - GET /, /docs, /swagger - API documentation
  */
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const startTime = Date.now();
     const correlationId = getCorrelationId(request);
     incrementMetric('requestCount');
@@ -1138,7 +1138,8 @@ export default {
           lookupRiding,
           correlationId,
           startTime,
-          getCorsHeaders
+          getCorsHeaders,
+          ctx
         );
       }
       

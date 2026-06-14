@@ -18,7 +18,8 @@ export async function handleLookupRequest(
   lookupRiding: LookupRidingFn,
   correlationId: string,
   startTime: number,
-  getCorsHeaders: (origin?: string | null) => Record<string, string>
+  getCorsHeaders: (origin?: string | null) => Record<string, string>,
+  ctx?: ExecutionContext
 ): Promise<Response> {
   const { lookupPathname } = resolveLookupPath(pathname);
   const { validation } = parseQuery(request);
@@ -40,6 +41,12 @@ export async function handleLookupRequest(
       }
     : undefined;
 
+  const deferTask = ctx
+    ? (task: Promise<unknown>) => {
+        ctx.waitUntil(task);
+      }
+    : undefined;
+
   try {
     const expanded = await performExpandedLookup(env, lookupPathname, sanitizedQuery, lookupRiding, {
       request,
@@ -47,6 +54,7 @@ export async function handleLookupRequest(
       geocodeIfNeeded: (env, query, req, cb) =>
         geocodeIfNeeded(env, query, req, undefined, cb),
       geocodingTimeoutMs: timeoutConfig.geocoding,
+      deferTask,
     });
 
     recordTiming('totalLookupTime', Date.now() - startTime);

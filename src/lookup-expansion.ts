@@ -56,6 +56,17 @@ export type GeocodeIfNeededFn = (
   mailingAddress?: CanadaPostStyleAddress;
 }>;
 
+/** Schedule background work (e.g. KV cache writes) without blocking the response. */
+export type DeferTaskFn = (task: Promise<unknown>) => void;
+
+async function runOrDefer(deferTask: DeferTaskFn | undefined, task: Promise<void>): Promise<void> {
+  if (deferTask) {
+    deferTask(task);
+  } else {
+    await task;
+  }
+}
+
 type ProvinceFetchResult = {
   data: ProvinceData | null;
   cacheHit: boolean;
@@ -143,7 +154,8 @@ export async function fetchProvinceData(
   lat: number,
   federalProperties: Record<string, unknown> | null,
   query: QueryParams,
-  lookupRiding: LookupRidingFn
+  lookupRiding: LookupRidingFn,
+  deferTask?: DeferTaskFn
 ): Promise<ProvinceFetchResult> {
   const provincePath = provincePathFromFederalProperties(federalProperties);
   if (!provincePath) {
@@ -166,7 +178,10 @@ export async function fetchProvinceData(
       properties: provLookup.properties,
       riding: provLookup.riding,
     };
-    await setCachedLookupResult(env, provinceCacheKey, toCache, dataset, { lon, lat });
+    await runOrDefer(
+      deferTask,
+      setCachedLookupResult(env, provinceCacheKey, toCache, dataset, { lon, lat })
+    );
     return {
       data: {
         riding: provLookup.riding ?? '',
@@ -331,6 +346,7 @@ export async function performExpandedLookup(
     geocodeIfNeeded?: GeocodeIfNeededFn;
     geocodingTimeoutMs?: number;
     addressContext?: NormalizedAddressContext;
+    deferTask?: DeferTaskFn;
   } = {}
 ): Promise<ExpandedLookupPayload & { point: { lon: number; lat: number } }> {
   const { datasetPath, isFederal } = resolveLookupPath(lookupPathname);
@@ -364,17 +380,20 @@ export async function performExpandedLookup(
     baseResult = lookup;
     const { r2Key } = pickDataset(datasetPath);
     const dataset = r2Key.replace('.geojson', '');
-    await setCachedLookupResult(
-      env,
-      cacheKey,
-      {
-        properties: lookup.properties,
-        riding: lookup.riding,
-        normalizedAddress: lookup.normalizedAddress,
-        addressComponents: lookup.addressComponents,
-      },
-      dataset,
-      { lon, lat }
+    await runOrDefer(
+      options.deferTask,
+      setCachedLookupResult(
+        env,
+        cacheKey,
+        {
+          properties: lookup.properties,
+          riding: lookup.riding,
+          normalizedAddress: lookup.normalizedAddress,
+          addressComponents: lookup.addressComponents,
+        },
+        dataset,
+        { lon, lat }
+      )
     );
   }
 
@@ -382,7 +401,34 @@ export async function performExpandedLookup(
   const needsProvince = includeProvince && isFederal;
 
   let addressContext = resolvedAddressContext;
-  if (needsMunicipality) {
+  let provinceData: ProvinceData | null | undefined;
+  let provinceCacheHit = false;
+
+  if (needsMunicipality && needsProvince) {
+    const [resolvedCtx, provinceResult] = await Promise.all([
+      resolveAddressContext(
+        env,
+        lat,
+        lon,
+        sanitizedQuery,
+        options.request,
+        options.circuitBreaker,
+        addressContext
+      ),
+      fetchProvinceData(
+        env,
+        lon,
+        lat,
+        baseResult.properties,
+        sanitizedQuery,
+        lookupRiding,
+        options.deferTask
+      ),
+    ]);
+    addressContext = resolvedCtx;
+    provinceData = provinceResult.data;
+    provinceCacheHit = provinceResult.cacheHit;
+  } else if (needsMunicipality) {
     addressContext = await resolveAddressContext(
       env,
       lat,
@@ -392,21 +438,18 @@ export async function performExpandedLookup(
       options.circuitBreaker,
       addressContext
     );
-  }
-
-  let provinceData: ProvinceData | null | undefined;
-  let provinceCacheHit = false;
-  if (needsProvince) {
-    const result = await fetchProvinceData(
+  } else if (needsProvince) {
+    const provinceResult = await fetchProvinceData(
       env,
       lon,
       lat,
       baseResult.properties,
       sanitizedQuery,
-      lookupRiding
+      lookupRiding,
+      options.deferTask
     );
-    provinceData = result.data;
-    provinceCacheHit = result.cacheHit;
+    provinceData = provinceResult.data;
+    provinceCacheHit = provinceResult.cacheHit;
   }
 
   const cacheStatus = computeCombinedCacheStatus(
