@@ -10,7 +10,7 @@ The API provides lookup endpoints for different levels of government:
 - `GET /api` — Alias of `/api/federal` for backwards compatibility
 - `GET /api/qc` — Quebec provincial ridings (2025 boundaries)  
 - `GET /api/on` — Ontario provincial ridings (2022 boundaries)
-- `GET /api/combined` — Federal result plus matching Ontario or Quebec provincial data in `province_data` when `PROV_TERR` indicates ON or QC (abbreviations and full names supported)
+- `GET /api/combined` — Convenience endpoint equivalent to federal lookup with `include_province=true` by default
 
 ### Query Parameters
 
@@ -21,21 +21,55 @@ Provide either coordinates or a geocodable address:
 - `city` — City name (optional, helps with geocoding)
 - `state` or `province` — Province/state (optional)
 - `country` — Country (optional, defaults to Canada)
+- `include_province` — Optional boolean (`true`/`false`) to include matching Ontario or Quebec provincial data in `province_data`
+- `return` — Optional comma-separated list of extra response fields (see below)
+
+#### Optional `include_province` flag
+
+Request provincial riding data without changing the base federal lookup:
+
+- `include_province=true` — include `province_data` when the federal result's `PROV_TERR` maps to ON or QC
+- `include_province=false` — omit provincial lookup (even on `/api/combined`)
+- `/api/combined` defaults to `include_province=true` when the flag is omitted
+
+#### Optional `return` selector
+
+Request additional response metadata:
+
+| Token | Description |
+|-------|-------------|
+| `municipality` | Include `properties.MUNICIPALITY` when resolvable from ODA/Google address normalization |
+
+Examples:
+
+- `return=municipality`
+- `include_province=true&return=municipality`
+
+Rules:
+
+- Unknown `return` tokens return `400 INVALID_QUERY`.
+- Invalid `include_province` values return `400 INVALID_QUERY`.
 
 #### Examples:
 - `GET /api?lat=45.5017&lon=-73.5673`
+- `GET /api?include_province=true&postal=M5V2T6`
+- `GET /api?include_province=true&return=municipality&address=123%20Main%20St&city=Toronto&province=ON`
 - `GET /api/qc?address=350%20Rue%20St-Paul%20E,%20Montréal`
-- `GET /api/on?postal=M5V2T6`
-- `GET /api?address=123%20Main%20St&city=Toronto&province=ON`
+- `GET /api/on?postal=M5V2T6&return=municipality`
+- `GET /api/combined?address=757%20Victoria%20Park&city=Toronto&province=ON`
 
 #### Response Format:
 ```json
 {
   "query": { "lat": 45.5017, "lon": -73.5673 },
   "point": { "lon": -73.5673, "lat": 45.5017 },
-  "properties": { /* riding properties from GeoJSON feature, or null */ }
+  "properties": { /* riding properties from GeoJSON feature, or null */ },
+  "province_data": null,
+  "municipality": "TORONTO"
 }
 ```
+
+`province_data` is included only when `include_province=true` (or by default on `/api/combined`). Top-level `municipality` and `properties.MUNICIPALITY` are included only when `return=municipality`.
 
 ### ODA Self-Hosted Geocoding
 

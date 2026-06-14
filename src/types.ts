@@ -222,6 +222,13 @@ export interface GeoJSONFeatureCollection {
 }
 
 // Query and result interfaces
+import type { ReturnField } from './return-selector';
+export type { ReturnField };
+
+export type CircuitBreakerExecutor = {
+  execute: (key: string, fn: () => Promise<unknown>) => Promise<unknown>;
+};
+
 export interface QueryParams {
   address?: string;
   postal?: string;
@@ -230,6 +237,14 @@ export interface QueryParams {
   city?: string;
   state?: string; // province/state
   country?: string;
+  /** Raw comma-separated return selector from query string or batch body */
+  return?: string;
+  /** Parsed return fields (set during validation) */
+  returnFields?: ReturnField[];
+  /** Raw include_province flag from query string or batch body */
+  include_province?: string;
+  /** Parsed include_province flag (set during validation) */
+  includeProvince?: boolean;
 }
 
 export interface LookupResult {
@@ -272,6 +287,7 @@ export interface BatchLookupResponse {
   properties: Record<string, unknown> | null;
   riding?: string;
   province_data?: { riding: string; properties: Record<string, unknown>; dataset: string } | null;
+  municipality?: string;
   normalizedAddress?: string;
   addressComponents?: GoogleAddressComponents;
   error?: string;

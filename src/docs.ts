@@ -571,6 +571,8 @@ print(data)</code></pre>
                     <div class="param"><strong>address</strong> - Full address to geocode</div>
                     <div class="param"><strong>lat/lon</strong> - Latitude and longitude coordinates</div>
                     <div class="param"><strong>city/state/country</strong> - Location components</div>
+                    <div class="param"><strong>include_province</strong> - Optional boolean to include provincial riding data</div>
+                    <div class="param"><strong>return</strong> - Optional comma-separated extras: <code>municipality</code></div>
                 </div>
             </div>
 
@@ -589,7 +591,7 @@ print(data)</code></pre>
                     <span class="url">/api/combined</span>
                     <span class="description">Federal + Ontario or Quebec Provincial</span>
                 </div>
-                <p>Returns federal riding data plus <code>province_data</code> when the federal feature’s PROV_TERR is Ontario or Quebec (supports abbreviations and full names).</p>
+                <p>Convenience endpoint equivalent to federal lookup with <code>include_province=true</code> by default. Also accepts <code>return=municipality</code> for municipality enrichment.</p>
             </div>
 
             <div class="endpoint-section">
@@ -1097,6 +1099,96 @@ export function createSwaggerUI(baseUrl: string): string {
 </html>`;
 }
 
+const RETURN_QUERY_PARAMETER = {
+  name: "return",
+  in: "query" as const,
+  description: "Optional comma-separated extra response fields. Supported: municipality.",
+  required: false,
+  schema: { type: "string", example: "municipality" },
+};
+
+const INCLUDE_PROVINCE_PARAMETER = {
+  name: "include_province",
+  in: "query" as const,
+  description:
+    "Optional boolean. When true, include matching Ontario or Quebec provincial data in province_data. /api/combined defaults to true.",
+  required: false,
+  schema: { type: "boolean", example: true },
+};
+
+const LOOKUP_QUERY_PARAMETERS = [
+  {
+    name: "postal",
+    in: "query" as const,
+    description: "Canadian postal code (e.g., K1A 0A6)",
+    required: false,
+    schema: { type: "string", example: "K1A 0A6" },
+  },
+  {
+    name: "address",
+    in: "query" as const,
+    description: "Street address",
+    required: false,
+    schema: { type: "string", example: "123 Main St, Toronto, ON" },
+  },
+  {
+    name: "lat",
+    in: "query" as const,
+    description: "Latitude",
+    required: false,
+    schema: { type: "number", example: 45.4215 },
+  },
+  {
+    name: "lon",
+    in: "query" as const,
+    description: "Longitude",
+    required: false,
+    schema: { type: "number", example: -75.6972 },
+  },
+  {
+    name: "city",
+    in: "query" as const,
+    description: "City name",
+    required: false,
+    schema: { type: "string", example: "Toronto" },
+  },
+  {
+    name: "state",
+    in: "query" as const,
+    description: "Province or state",
+    required: false,
+    schema: { type: "string", example: "Ontario" },
+  },
+  {
+    name: "country",
+    in: "query" as const,
+    description: "Country",
+    required: false,
+    schema: { type: "string", example: "Canada" },
+  },
+  INCLUDE_PROVINCE_PARAMETER,
+  RETURN_QUERY_PARAMETER,
+];
+
+const RETURN_RESPONSE_PROPERTIES = {
+  province_data: {
+    type: "object",
+    nullable: true,
+    description:
+      "Ontario or Quebec provincial riding when include_province=true and PROV_TERR maps to ON/QC",
+    properties: {
+      riding: { type: "string" },
+      properties: { type: "object", nullable: true },
+      dataset: { type: "string" },
+    },
+  },
+  municipality: {
+    type: "string",
+    nullable: true,
+    description: "Municipality when return includes municipality",
+  },
+};
+
 export function createOpenAPISpec(baseUrl: string) {
   return {
     openapi: "3.0.0",
@@ -1128,57 +1220,7 @@ export function createOpenAPISpec(baseUrl: string) {
           description:
             "Alias of /api/federal. Find the federal riding for a given location using postal code, address, or coordinates",
           tags: ["Federal Ridings"],
-          parameters: [
-            {
-              name: "postal",
-              in: "query",
-              description: "Canadian postal code (e.g., K1A 0A6)",
-              required: false,
-              schema: { type: "string", example: "K1A 0A6" },
-            },
-            {
-              name: "address",
-              in: "query",
-              description: "Street address",
-              required: false,
-              schema: { type: "string", example: "123 Main St, Toronto, ON" },
-            },
-            {
-              name: "lat",
-              in: "query",
-              description: "Latitude",
-              required: false,
-              schema: { type: "number", example: 45.4215 },
-            },
-            {
-              name: "lon",
-              in: "query",
-              description: "Longitude",
-              required: false,
-              schema: { type: "number", example: -75.6972 },
-            },
-            {
-              name: "city",
-              in: "query",
-              description: "City name",
-              required: false,
-              schema: { type: "string", example: "Toronto" },
-            },
-            {
-              name: "state",
-              in: "query",
-              description: "Province or state",
-              required: false,
-              schema: { type: "string", example: "Ontario" },
-            },
-            {
-              name: "country",
-              in: "query",
-              description: "Country",
-              required: false,
-              schema: { type: "string", example: "Canada" },
-            },
-          ],
+          parameters: LOOKUP_QUERY_PARAMETERS,
           responses: {
             "200": {
               description: "Successful lookup",
@@ -1205,6 +1247,7 @@ export function createOpenAPISpec(baseUrl: string) {
                           "Riding properties including FED_NUM, FED_NAME, etc.",
                         nullable: true,
                       },
+                      ...RETURN_RESPONSE_PROPERTIES,
                     },
                   },
                   example: {
@@ -1269,57 +1312,7 @@ export function createOpenAPISpec(baseUrl: string) {
           description:
             "Find the federal riding for a given location using postal code, address, or coordinates",
           tags: ["Federal Ridings"],
-          parameters: [
-            {
-              name: "postal",
-              in: "query",
-              description: "Canadian postal code (e.g., K1A 0A6)",
-              required: false,
-              schema: { type: "string", example: "K1A 0A6" },
-            },
-            {
-              name: "address",
-              in: "query",
-              description: "Street address",
-              required: false,
-              schema: { type: "string", example: "123 Main St, Toronto, ON" },
-            },
-            {
-              name: "lat",
-              in: "query",
-              description: "Latitude",
-              required: false,
-              schema: { type: "number", example: 45.4215 },
-            },
-            {
-              name: "lon",
-              in: "query",
-              description: "Longitude",
-              required: false,
-              schema: { type: "number", example: -75.6972 },
-            },
-            {
-              name: "city",
-              in: "query",
-              description: "City name",
-              required: false,
-              schema: { type: "string", example: "Toronto" },
-            },
-            {
-              name: "state",
-              in: "query",
-              description: "Province or state",
-              required: false,
-              schema: { type: "string", example: "Ontario" },
-            },
-            {
-              name: "country",
-              in: "query",
-              description: "Country",
-              required: false,
-              schema: { type: "string", example: "Canada" },
-            },
-          ],
+          parameters: LOOKUP_QUERY_PARAMETERS,
           responses: {
             "200": {
               description: "Successful lookup",
@@ -1346,6 +1339,7 @@ export function createOpenAPISpec(baseUrl: string) {
                           "Riding properties including FED_NUM, FED_NAME, etc.",
                         nullable: true,
                       },
+                      ...RETURN_RESPONSE_PROPERTIES,
                     },
                   },
                   example: {
@@ -1460,6 +1454,8 @@ export function createOpenAPISpec(baseUrl: string) {
               required: false,
               schema: { type: "string", example: "Canada" },
             },
+            INCLUDE_PROVINCE_PARAMETER,
+            RETURN_QUERY_PARAMETER,
           ],
           responses: {
             "200": {
@@ -1590,6 +1586,8 @@ export function createOpenAPISpec(baseUrl: string) {
               required: false,
               schema: { type: "number", example: -73.5673 },
             },
+            INCLUDE_PROVINCE_PARAMETER,
+            RETURN_QUERY_PARAMETER,
           ],
           responses: {
             "200": {
@@ -1611,6 +1609,7 @@ export function createOpenAPISpec(baseUrl: string) {
                         type: "object",
                         nullable: true,
                       },
+                      ...RETURN_RESPONSE_PROPERTIES,
                     },
                   },
                 },
@@ -1655,6 +1654,8 @@ export function createOpenAPISpec(baseUrl: string) {
               required: false,
               schema: { type: "number", example: -79.3832 },
             },
+            INCLUDE_PROVINCE_PARAMETER,
+            RETURN_QUERY_PARAMETER,
           ],
           responses: {
             "200": {
@@ -1676,6 +1677,7 @@ export function createOpenAPISpec(baseUrl: string) {
                         type: "object",
                         nullable: true,
                       },
+                      ...RETURN_RESPONSE_PROPERTIES,
                     },
                   },
                 },
@@ -1778,6 +1780,15 @@ export function createOpenAPISpec(baseUrl: string) {
                               city: { type: "string" },
                               state: { type: "string" },
                               country: { type: "string" },
+                              return: {
+                                type: "string",
+                                description: "Optional comma-separated extras: municipality",
+                              },
+                              include_province: {
+                                type: "boolean",
+                                description:
+                                  "Optional boolean. When true, include matching provincial data in province_data",
+                              },
                             },
                           },
                         },
@@ -1854,6 +1865,15 @@ export function createOpenAPISpec(baseUrl: string) {
                               city: { type: "string" },
                               state: { type: "string" },
                               country: { type: "string" },
+                              return: {
+                                type: "string",
+                                description: "Optional comma-separated extras: municipality",
+                              },
+                              include_province: {
+                                type: "boolean",
+                                description:
+                                  "Optional boolean. When true, include matching provincial data in province_data",
+                              },
                             },
                           },
                         },

@@ -1,5 +1,6 @@
 import { Env, QueryParams, GeoJSONGeometry } from './types';
 import { TIMEOUT_CONFIG, RETRY_CONFIG, getRetryConfig } from './config';
+import { parseReturnSelector, parseIncludeProvince, resolveIncludeProvince } from './return-selector';
 
 // Re-export for backward compatibility
 export const DEFAULT_TIMEOUTS = TIMEOUT_CONFIG;
@@ -259,7 +260,7 @@ export function validatePostalCode(postal: string): { valid: boolean; sanitized?
  * @param query - Raw query parameters from request
  * @returns Validation result with sanitized parameters or error message
  */
-export function validateAndSanitizeQuery(query: QueryParams): ValidationResult {
+export function validateAndSanitizeQuery(query: QueryParams, pathname: string): ValidationResult {
   const sanitized: QueryParams = {};
   
   // Sanitize string inputs
@@ -286,6 +287,27 @@ export function validateAndSanitizeQuery(query: QueryParams): ValidationResult {
     sanitized.lat = coordValidation.lat;
     sanitized.lon = coordValidation.lon;
   }
+
+  if (query.return !== undefined) {
+    const returnParse = parseReturnSelector(query.return);
+    if (!returnParse.valid) {
+      return { valid: false, error: returnParse.error };
+    }
+    sanitized.return = query.return;
+    sanitized.returnFields = returnParse.fields;
+  }
+
+  if (query.include_province !== undefined) {
+    const includeProvinceParse = parseIncludeProvince(query.include_province);
+    if (!includeProvinceParse.valid) {
+      return { valid: false, error: includeProvinceParse.error };
+    }
+    sanitized.include_province = query.include_province;
+    sanitized.includeProvince = includeProvinceParse.value;
+  }
+
+  sanitized.returnFields = sanitized.returnFields ?? [];
+  sanitized.includeProvince = resolveIncludeProvince(pathname, sanitized.includeProvince);
   
   // Check that at least one location parameter is provided
   const hasLocation = sanitized.address || sanitized.postal || sanitized.city || 
@@ -501,12 +523,14 @@ export function parseQuery(request: Request): { query: QueryParams; validation: 
     city: q.get("city") || undefined,
     state: q.get("state") || q.get("province") || undefined,
     country: q.get("country") || undefined,
+    return: q.get("return") || undefined,
+    include_province: q.get("include_province") || undefined,
     lat: q.get("lat") ? Number(q.get("lat")) : undefined,
     lon: q.get("lon") || q.get("lng") || q.get("long") ? Number(q.get("lon") || q.get("lng") || q.get("long")) : undefined
   };
   
   // Validate and sanitize
-  const validation = validateAndSanitizeQuery(rawQuery);
+  const validation = validateAndSanitizeQuery(rawQuery, url.pathname);
   
   return { query: rawQuery, validation };
 }

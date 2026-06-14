@@ -29,6 +29,7 @@
     "lint:fix": "eslint src/**/*.ts test/**/*.ts --fix",
     "test": "vitest run",
     "test:watch": "vitest",
+    "benchmark:lookup": "tsx scripts/benchmark-lookup.ts",
     "import:oda": "tsx scripts/import-oda.ts"
   },
   "keywords": [],
