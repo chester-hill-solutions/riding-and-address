@@ -1,6 +1,14 @@
 # ODA Fixture Acceptance Examples
 
-These fixture cases define expected behavior. Tests in `test/oda-geocoding.test.ts` and `test/canada-post-format.test.ts` assert against these examples.
+These fixture cases define expected behavior. Tests in `test/oda-geocoding.test.ts`, `test/oda-fixture-cases.test.ts`, and `test/canada-post-format.test.ts` assert against these examples.
+
+```bash
+# Offline ODA tests (in-memory fixture DB)
+npm run test:oda
+
+# Live production ODA API (requires auth)
+ODA_LIVE=1 BENCHMARK_BASIC_AUTH='user:pass' npm run test:oda:live
+```
 
 Fixture CSV: `test/fixtures/oda/fixture.csv`
 

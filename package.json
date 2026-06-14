@@ -29,6 +29,8 @@
     "lint:fix": "eslint src/**/*.ts test/**/*.ts --fix",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:oda": "vitest run test/oda-normalize.test.ts test/oda-geocoding.test.ts test/oda-fixture-cases.test.ts test/canada-post-format.test.ts",
+    "test:oda:live": "ODA_LIVE=1 vitest run test/oda-geocoding-live.test.ts",
     "benchmark:lookup": "tsx scripts/benchmark-lookup.ts",
     "import:oda": "tsx scripts/import-oda.ts"
   },
