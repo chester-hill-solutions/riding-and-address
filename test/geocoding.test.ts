@@ -1,9 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   generateGeocodingCacheKey,
   generateReverseGeocodingCacheKey,
-  parseGoogleAddressComponents
+  parseGoogleAddressComponents,
+  geocodeIfNeeded,
 } from '../src/geocoding';
+import { Env } from '../src/types';
 
 describe('generateGeocodingCacheKey', () => {
   it('generates a key with provider prefix', () => {
@@ -254,5 +256,67 @@ describe('parseGoogleAddressComponents', () => {
     expect(result?.country).toBe('Canada');
     expect(result?.postal_code).toBe('K1A 0B1');
     expect(result?.formatted_address).toBe('123 Main Street, Ottawa, ON K1A 0B1, Canada');
+  });
+});
+
+describe('geocodeIfNeeded with ODA enabled', () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error('External geocoding should not be called when ODA is enabled');
+    }) as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('uses ODA and does not call external providers', async () => {
+    let callIndex = 0;
+    const db = {
+      prepare: vi.fn(() => {
+        callIndex++;
+        return {
+          bind: vi.fn(() => ({
+            first: vi.fn(async () =>
+              callIndex === 1
+                ? {
+                    id: 1,
+                    province: 'ON',
+                    civic_number: '123',
+                    street_name: 'MAIN',
+                    street_type: 'ST',
+                    street_direction: '',
+                    unit: '',
+                    postal_code: 'M5V 2T6',
+                    city: 'Toronto',
+                    lat: 43.6532,
+                    lon: -79.3832,
+                    full_address: '123 Main St',
+                  }
+                : null
+            ),
+            all: vi.fn(async () => ({ results: [] })),
+          })),
+        };
+      }),
+    } as unknown as D1Database;
+
+    const env: Env = {
+      RIDINGS: {} as R2Bucket,
+      ODA_DB: db,
+      ODA_GEOCODING_ENABLED: 'true',
+      ODA_PROVINCES: 'ON,QC',
+    };
+
+    const result = await geocodeIfNeeded(env, {
+      address: '123 Main St',
+      city: 'Toronto',
+      state: 'ON',
+    });
+
+    expect(result.geocodeMethod).toBe('exact');
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });

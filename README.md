@@ -37,6 +37,34 @@ Provide either coordinates or a geocodable address:
 }
 ```
 
+### ODA Self-Hosted Geocoding
+
+When enabled, address geocoding uses Statistics Canada's [Open Database of Addresses (ODA)](https://www.statcan.gc.ca/en/lode/databases/oda) stored in Cloudflare D1 — no external geocoding APIs required.
+
+**Documentation:**
+- [API contract](docs/oda-geolocation-contract.md)
+- [Data import](docs/oda-data-import.md)
+- [Canada Post-style addresses](docs/canada-post-style-addresses.md)
+- [Fixture examples](docs/oda-fixtures.md)
+
+**Endpoints:**
+- `GET /api/geocode` — forward geocode (address/postal → coordinates)
+- `GET /api/reverse` — reverse geocode (coordinates → nearest address)
+- `GET /api/normalize-address` — Canada Post-style address normalization
+- `POST /api/oda/init` — initialize ODA schema (admin)
+- `GET /api/oda/stats` — import statistics (admin)
+
+**Setup:**
+```bash
+wrangler d1 create oda-addresses
+# Add ODA_DB binding to wrangler.toml (see commented example)
+npm run import:oda -- --file test/fixtures/oda/fixture.csv --provinces ON,QC --local
+```
+
+Set `ODA_GEOCODING_ENABLED = "true"` in `wrangler.toml` after import.
+
+**Limitations:** ODA v1.0 is 2021 data. Initial coverage is ON/QC. Returned addresses are Canada Post-style but not Canada Post-certified.
+
 ### Advanced Features
 
 #### Batch Processing

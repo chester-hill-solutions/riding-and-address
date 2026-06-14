@@ -17,6 +17,62 @@ export interface Env {
   WEBHOOKS?: KVNamespace;
   RIDING_DB?: D1Database;
   SPATIAL_DB_ENABLED?: string; // 'true' or '1' to enable spatial database
+  ODA_DB?: D1Database;
+  ODA_GEOCODING_ENABLED?: string;
+  ODA_PROVINCES?: string;
+  ODA_MIN_CONFIDENCE?: string;
+  ODA_NN_MAX_CANDIDATES?: string;
+  ODA_MAX_REVERSE_DISTANCE_METERS?: string;
+  ODA_MAX_AMBIGUOUS_MATCHES?: string;
+}
+
+// ODA geocoding types
+export interface CanadaPostStyleAddress {
+  line1: string;
+  line2?: string;
+  municipality: string;
+  province: string;
+  postalCode?: string;
+  country: 'CANADA';
+  formattedSingleLine: string;
+  formattedMultiline: string;
+  canadaPostCertified: false;
+}
+
+export interface OdaAddressComponents {
+  civic_number?: string;
+  street_name?: string;
+  street_type?: string;
+  street_direction?: string;
+  unit?: string;
+  locality?: string;
+  administrative_area_level_1?: string;
+  postal_code?: string;
+  country?: string;
+  formatted_address?: string;
+}
+
+export interface OdaDataSource {
+  provider: 'statcan-oda';
+  version: string;
+  province: string;
+  canadaPostCertified: false;
+}
+
+export type OdaGeocodeMethod =
+  | 'exact'
+  | 'postal_centroid'
+  | 'street_interpolated'
+  | 'city_centroid'
+  | 'nearest_neighbor';
+
+export interface OdaGeocodeMetadata {
+  geocodeMethod?: OdaGeocodeMethod;
+  confidence?: number;
+  distanceMeters?: number;
+  matchedFields?: string[];
+  mailingAddress?: CanadaPostStyleAddress;
+  dataSource?: OdaDataSource;
 }
 
 // Geocoding interfaces

@@ -3,6 +3,8 @@ import { normalizeAddressWithGoogle, type GeocodeBatchResult } from './geocoding
 import { incrementMetric, recordTiming } from './metrics';
 import { generateLookupCacheKey, getCachedLookupResult, setCachedLookupResult } from './cache';
 import { pickDataset, provincePathFromFederalProperties } from './utils';
+import { isOdaEnabled } from './oda-config';
+import { resolveNormalizedAddress } from './oda-handlers';
 
 const FEDERAL_PATH = '/api/federal';
 
@@ -123,8 +125,12 @@ export async function processBatchLookupWithBatchGeocoding(
       }
     }
     
-    const hasGoogleKey = () => !!(request?.headers?.get?.('X-Google-API-Key') ?? env.GOOGLE_MAPS_KEY);
-    const resolveNormalized = async (lat: number, lon: number): Promise<{ formattedAddress?: string; components?: import('./types').GoogleAddressComponents } | undefined> => {
+    const hasGoogleKey = () => !isOdaEnabled(env) && !!(request?.headers?.get?.('X-Google-API-Key') ?? env.GOOGLE_MAPS_KEY);
+    const resolveNormalized = async (lat: number, lon: number, query: QueryParams): Promise<{ formattedAddress?: string; components?: import('./types').GoogleAddressComponents } | undefined> => {
+      if (isOdaEnabled(env)) {
+        const v = await resolveNormalizedAddress(env, lat, lon, query, request, circuitBreaker);
+        return v ? { formattedAddress: v.normalizedAddress, components: v.addressComponents } : undefined;
+      }
       if (!hasGoogleKey()) return undefined;
       const v = await normalizeAddressWithGoogle(env, lat, lon, request, circuitBreaker);
       return v ?? undefined;
@@ -140,8 +146,8 @@ export async function processBatchLookupWithBatchGeocoding(
       const federalCached = await getCachedLookupResult(env, federalCacheKey);
       let normalizedAddress: string | undefined = federalCached?.normalizedAddress;
       let addressComponents = federalCached?.addressComponents;
-      if (hasGoogleKey()) {
-        const googleResult = await resolveNormalized(lat, lon);
+      if (hasGoogleKey() || isOdaEnabled(env)) {
+        const googleResult = await resolveNormalized(lat, lon, batchReq.query);
         if (googleResult) {
           normalizedAddress = googleResult.formattedAddress;
           addressComponents = googleResult.components;
@@ -229,8 +235,8 @@ export async function processBatchLookupWithBatchGeocoding(
 
         if (cachedResult) {
           // Always try to get normalized address via reverse geocoding when Google API key is available
-          if (hasGoogleKey()) {
-            const googleResult = await resolveNormalized(lat, lon);
+      if (hasGoogleKey() || isOdaEnabled(env)) {
+        const googleResult = await resolveNormalized(lat, lon, request.query);
             if (googleResult) {
               normalizedAddress = googleResult.formattedAddress;
               addressComponents = googleResult.components;
@@ -248,8 +254,8 @@ export async function processBatchLookupWithBatchGeocoding(
           };
         } else {
           const result = await lookupRiding(env, request.pathname, lon, lat);
-          if (hasGoogleKey()) {
-            const googleResult = await resolveNormalized(lat, lon);
+      if (hasGoogleKey() || isOdaEnabled(env)) {
+        const googleResult = await resolveNormalized(lat, lon, request.query);
             if (googleResult) {
               normalizedAddress = googleResult.formattedAddress;
               addressComponents = googleResult.components;
@@ -321,8 +327,8 @@ export async function processBatchLookupWithBatchGeocoding(
             let normalizedAddress: string | undefined = geocodingResult.normalizedAddress ?? cachedResult?.normalizedAddress;
             let addressComponents = geocodingResult.addressComponents ?? cachedResult?.addressComponents;
             // Always try to get normalized address via reverse geocoding when Google API key is available
-            if (hasGoogleKey()) {
-              const googleResult = await resolveNormalized(geocodingResult.lat, geocodingResult.lon);
+            if (hasGoogleKey() || isOdaEnabled(env)) {
+              const googleResult = await resolveNormalized(geocodingResult.lat, geocodingResult.lon, request.query);
               if (googleResult) {
                 normalizedAddress = googleResult.formattedAddress;
                 addressComponents = googleResult.components;

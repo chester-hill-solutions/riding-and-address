@@ -1,0 +1,7 @@
+Civic Number,Street Name,Street Type,Street Direction,Unit,Postal Code,City,Province,Latitude,Longitude,Full Address,Standardized Street Name,Standardized Street Type,Standardized Street Direction,Processed City,Province or Territory Unique Identifier
+123,MAIN,ST,,,M5V 2T6,Toronto,ON,43.6532,-79.3832,"123 Main St, Toronto ON M5V 2T6",MAIN,ST,,Toronto,35
+123,MAIN,ST,,1205,M5V 2T6,Toronto,ON,43.6533,-79.3833,"Unit 1205, 123 Main St, Toronto ON M5V 2T6",MAIN,ST,,Toronto,35
+456,KING,ST,W,,M5H 1A1,Toronto,ON,43.6489,-79.3817,"456 King St W, Toronto ON M5H 1A1",KING,ST,W,Toronto,35
+123,MAIN,ST,,,K1A 0A1,Ottawa,ON,45.4215,-75.6972,"123 Main St, Ottawa ON K1A 0A1",MAIN,ST,,Ottawa,35
+350,SAINT-PAUL,RUE,E,,H2Y 1H2,Montréal,QC,45.5088,-73.5540,"350 Rue Saint-Paul E, Montréal QC H2Y 1H2",SAINT-PAUL,RUE,E,Montréal,24
+1000,RUE,SAINT-DENIS,,,H2X 3K8,Montréal,QC,45.5145,-73.5620,"1000 Rue Saint-Denis, Montréal QC H2X 3K8",SAINT-DENIS,RUE,,Montréal,24

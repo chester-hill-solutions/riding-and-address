@@ -610,6 +610,30 @@ print(data)</code></pre>
                 <p>Find the Ontario provincial riding for any location in Ontario. Uses the 2022 Ontario provincial riding boundaries.</p>
             </div>
 
+            <h3>ODA Geolocation (Self-Hosted)</h3>
+            <p>When <code>ODA_GEOCODING_ENABLED=true</code>, these endpoints use Statistics Canada's Open Database of Addresses. See <code>docs/oda-geolocation-contract.md</code>.</p>
+            <div class="endpoint-section">
+                <div class="endpoint-header">
+                    <span class="method">GET</span>
+                    <span class="url">/api/geocode</span>
+                    <span class="description">Forward geocode via ODA</span>
+                </div>
+            </div>
+            <div class="endpoint-section">
+                <div class="endpoint-header">
+                    <span class="method">GET</span>
+                    <span class="url">/api/reverse</span>
+                    <span class="description">Reverse geocode via ODA</span>
+                </div>
+            </div>
+            <div class="endpoint-section">
+                <div class="endpoint-header">
+                    <span class="method">GET</span>
+                    <span class="url">/api/normalize-address</span>
+                    <span class="description">Canada Post-style address normalization</span>
+                </div>
+            </div>
+
             <h3>Batch Processing</h3>
             <div class="endpoint-section">
                 <div class="endpoint-header">
@@ -1659,6 +1683,67 @@ export function createOpenAPISpec(baseUrl: string) {
             },
           },
           security: [{ basicAuth: [] }, { apiKey: [] }],
+        },
+      },
+      "/api/geocode": {
+        get: {
+          summary: "Forward geocode using ODA",
+          description: "Geocode an address or postal code using the self-hosted ODA database. Requires ODA_GEOCODING_ENABLED.",
+          tags: ["ODA Geolocation"],
+          parameters: [
+            { name: "address", in: "query", schema: { type: "string" } },
+            { name: "postal", in: "query", schema: { type: "string" } },
+            { name: "city", in: "query", schema: { type: "string" } },
+            { name: "state", in: "query", schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Geocode result with confidence and mailingAddress" },
+            "422": { description: "AMBIGUOUS_LOCATION or LOW_CONFIDENCE_GEOCODE" },
+          },
+          security: [{ basicAuth: [] }],
+        },
+      },
+      "/api/reverse": {
+        get: {
+          summary: "Reverse geocode using ODA",
+          tags: ["ODA Geolocation"],
+          parameters: [
+            { name: "lat", in: "query", required: true, schema: { type: "number" } },
+            { name: "lon", in: "query", required: true, schema: { type: "number" } },
+          ],
+          responses: {
+            "200": { description: "Nearest ODA address with distanceMeters" },
+            "404": { description: "NO_NEARBY_ADDRESS" },
+          },
+          security: [{ basicAuth: [] }],
+        },
+      },
+      "/api/normalize-address": {
+        get: {
+          summary: "Normalize address to Canada Post-style format",
+          tags: ["ODA Geolocation"],
+          parameters: [
+            { name: "address", in: "query", schema: { type: "string" } },
+            { name: "postal", in: "query", schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Normalized mailing address" } },
+          security: [{ basicAuth: [] }],
+        },
+      },
+      "/api/oda/init": {
+        post: {
+          summary: "Initialize ODA database schema",
+          tags: ["ODA Admin"],
+          responses: { "200": { description: "Schema initialized" } },
+          security: [{ basicAuth: [] }],
+        },
+      },
+      "/api/oda/stats": {
+        get: {
+          summary: "ODA database statistics",
+          tags: ["ODA Admin"],
+          responses: { "200": { description: "Row counts and import metadata" } },
+          security: [{ basicAuth: [] }],
         },
       },
       "/batch": {

@@ -2,6 +2,15 @@
 
 import { Env, LookupResult, GeoJSONFeatureCollection, SpatialIndex, GeoJSONFeature, BatchLookupRequest, QueryParams } from './types';
 import { geocodeIfNeeded, geocodeBatch, normalizeAddressWithGoogle } from './geocoding';
+import {
+  handleGeocodeRoute,
+  handleReverseRoute,
+  handleNormalizeAddressRoute,
+  handleOdaInit,
+  handleOdaStats,
+  resolveNormalizedAddress,
+} from './oda-handlers';
+import { isOdaEnabled } from './oda-config';
 import { 
   geoCacheLRU, 
   spatialIndexCacheLRU, 
@@ -1044,6 +1053,59 @@ export default {
         }
       }
       
+      // ODA geolocation admin endpoints
+      if (pathname.startsWith('/api/oda')) {
+        if (pathname === '/api/oda/init' && request.method === 'POST') {
+          if (!checkBasicAuth(request, env)) {
+            return unauthorizedResponse(correlationId);
+          }
+          try {
+            return await handleOdaInit(env);
+          } catch (error) {
+            return badRequest(
+              error instanceof Error ? error.message : 'ODA initialization failed',
+              500
+            );
+          }
+        }
+
+        if (pathname === '/api/oda/stats' && request.method === 'GET') {
+          if (!checkBasicAuth(request, env)) {
+            return unauthorizedResponse(correlationId);
+          }
+          try {
+            return await handleOdaStats(env);
+          } catch (error) {
+            return badRequest(
+              error instanceof Error ? error.message : 'Failed to get ODA stats',
+              500
+            );
+          }
+        }
+      }
+
+      // ODA geolocation endpoints
+      if (pathname === '/api/geocode' && request.method === 'GET') {
+        if (!checkBasicAuth(request, env)) {
+          return unauthorizedResponse(correlationId);
+        }
+        return handleGeocodeRoute(request, env);
+      }
+
+      if (pathname === '/api/reverse' && request.method === 'GET') {
+        if (!checkBasicAuth(request, env)) {
+          return unauthorizedResponse(correlationId);
+        }
+        return handleReverseRoute(request, env);
+      }
+
+      if (pathname === '/api/normalize-address' && request.method === 'GET') {
+        if (!checkBasicAuth(request, env)) {
+          return unauthorizedResponse(correlationId);
+        }
+        return handleNormalizeAddressRoute(request, env);
+      }
+
       // Main lookup endpoint
       if (pathname.startsWith('/api')) {
         const lookupPathname = normalizeLookupPathname(pathname);
@@ -1102,11 +1164,17 @@ export default {
               point = { lon: geocodeResult.lon, lat: geocodeResult.lat };
               normalizedAddress = geocodeResult.normalizedAddress;
               addressComponents = geocodeResult.addressComponents;
-              if (request?.headers.get('X-Google-API-Key') || env.GOOGLE_MAPS_KEY) {
+              if (!isOdaEnabled(env) && (request?.headers.get('X-Google-API-Key') || env.GOOGLE_MAPS_KEY)) {
                 const googleResult = await normalizeAddressWithGoogle(env, geocodeResult.lat, geocodeResult.lon, request, cb);
                 if (googleResult) {
                   normalizedAddress = googleResult.formattedAddress;
                   addressComponents = googleResult.components;
+                }
+              } else if (isOdaEnabled(env)) {
+                const odaNorm = await resolveNormalizedAddress(env, geocodeResult.lat, geocodeResult.lon, sanitizedQuery, request, cb);
+                if (odaNorm) {
+                  normalizedAddress = odaNorm.normalizedAddress;
+                  addressComponents = odaNorm.addressComponents;
                 }
               }
             }
@@ -1244,12 +1312,17 @@ export default {
           let normalizedAddress = geocodeResult.normalizedAddress;
           let addressComponents = geocodeResult.addressComponents;
           
-          // Always try to get normalized address via reverse geocoding when Google API key is available
-          if (request?.headers.get('X-Google-API-Key') || env.GOOGLE_MAPS_KEY) {
+          if (!isOdaEnabled(env) && (request?.headers.get('X-Google-API-Key') || env.GOOGLE_MAPS_KEY)) {
             const googleResult = await normalizeAddressWithGoogle(env, geocodeResult.lat, geocodeResult.lon, request, cb);
             if (googleResult) {
               normalizedAddress = googleResult.formattedAddress;
               addressComponents = googleResult.components;
+            }
+          } else if (isOdaEnabled(env) && !normalizedAddress) {
+            const odaNorm = await resolveNormalizedAddress(env, lat, lon, sanitizedQuery, request, cb);
+            if (odaNorm) {
+              normalizedAddress = odaNorm.normalizedAddress;
+              addressComponents = odaNorm.addressComponents;
             }
           }
           
