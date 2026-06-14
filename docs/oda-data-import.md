@@ -55,23 +55,38 @@ wrangler d1 create oda-addresses
 curl -X POST https://your-worker.workers.dev/api/oda/init \
   -H "Authorization: Basic ..."
 
-# 4. Run import locally
-npm run import:oda -- --provinces ON,QC
+# 4. Run import (download from StatCan or use a local CSV)
+
+```bash
+# Download Ontario from StatCan and import to production D1
+CLOUDFLARE_ACCOUNT_ID=ad5ec479b9a421faa2ed06c3d1c2b23a \
+npm run import:oda -- --download --provinces ON --remote --skip-schema
+
+# Fixture / local CSV
+npm run import:oda -- --provinces ON,QC --file test/fixtures/oda/fixture.csv --remote --skip-schema
+
+# Pilot import (first N rows only)
+npm run import:oda -- --download --provinces ON --remote --skip-schema --max-rows 10000
+```
 
 # 5. Verify stats
+
+```bash
 curl https://your-worker.workers.dev/api/oda/stats \
   -H "Authorization: Basic ..."
 ```
 
 The import script (`scripts/import-oda.ts`):
 
-1. Downloads and unzips province CSV
-2. Normalizes rows via `src/oda-normalize.ts`
-3. Builds Canada Post-style mailing fields
-4. Batch inserts into D1
-5. Computes postal/city centroids and street ranges
-6. Populates R-tree index
+1. Downloads and unzips province CSV when `--download` is set (StatCan `ODA_{PR}_v1.zip`)
+2. Streams rows from CSV (supports `--max-rows` for pilots)
+3. Normalizes rows via `src/oda-normalize.ts` (fixture and StatCan column layouts)
+4. Builds Canada Post-style mailing fields
+5. Batch inserts into D1 (`--batch-size`, default 500)
+6. Computes postal/city centroids and street ranges
 7. Records import metadata in `oda_imports`
+
+Ontario (`ODA_ON_v1.csv`) is ~690 MB uncompressed (~6M addresses). Full import takes several hours over `--remote`.
 
 ## D1 scale check
 

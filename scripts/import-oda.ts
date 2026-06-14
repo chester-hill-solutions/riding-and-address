@@ -3,11 +3,12 @@
  * Import ODA CSV data into Cloudflare D1.
  *
  * Usage:
+ *   npm run import:oda -- --download --provinces ON --remote
  *   npm run import:oda -- --provinces ON,QC --file test/fixtures/oda/fixture.csv
  *   npm run import:oda -- --provinces ON --remote --database oda-addresses
  */
 
-import { createReadStream, mkdirSync, writeFileSync, existsSync } from 'fs';
+import { createReadStream, mkdirSync, writeFileSync, existsSync, unlinkSync } from 'fs';
 import { createInterface } from 'readline';
 import { execSync } from 'child_process';
 import { join } from 'path';
@@ -26,16 +27,19 @@ import {
 interface ImportOptions {
   provinces: string[];
   file?: string;
+  download: boolean;
   remote: boolean;
   database: string;
   batchSize: number;
   outputDir: string;
   skipSchema: boolean;
+  maxRows?: number;
 }
 
 function parseArgs(argv: string[]): ImportOptions {
   const options: ImportOptions = {
     provinces: ['ON', 'QC'],
+    download: false,
     remote: false,
     database: 'oda-addresses',
     batchSize: ODA_DEFAULTS.IMPORT_BATCH_SIZE,
@@ -49,6 +53,8 @@ function parseArgs(argv: string[]): ImportOptions {
       options.provinces = argv[++i].split(',').map((p) => p.trim().toUpperCase());
     } else if (arg === '--file' && argv[i + 1]) {
       options.file = argv[++i];
+    } else if (arg === '--download') {
+      options.download = true;
     } else if (arg === '--remote') {
       options.remote = true;
     } else if (arg === '--database' && argv[i + 1]) {
@@ -59,6 +65,8 @@ function parseArgs(argv: string[]): ImportOptions {
       options.outputDir = argv[++i];
     } else if (arg === '--skip-schema') {
       options.skipSchema = true;
+    } else if (arg === '--max-rows' && argv[i + 1]) {
+      options.maxRows = parseInt(argv[++i], 10);
     }
   }
 
@@ -97,11 +105,14 @@ function parseCsvLine(line: string, headers: string[]): Record<string, string> {
   return row;
 }
 
-async function readCsvRows(filePath: string): Promise<Record<string, string>[]> {
+async function* streamCsvRows(
+  filePath: string,
+  maxRows?: number
+): AsyncGenerator<Record<string, string>> {
   const stream = createReadStream(filePath, { encoding: 'utf-8' });
   const rl = createInterface({ input: stream, crlfDelay: Infinity });
   let headers: string[] | null = null;
-  const rows: Record<string, string>[] = [];
+  let yielded = 0;
 
   for await (const line of rl) {
     if (!line.trim()) continue;
@@ -109,10 +120,10 @@ async function readCsvRows(filePath: string): Promise<Record<string, string>[]> 
       headers = line.split(',').map((h) => h.trim());
       continue;
     }
-    rows.push(parseCsvLine(line, headers));
+    yield parseCsvLine(line, headers);
+    yielded++;
+    if (maxRows !== undefined && yielded >= maxRows) break;
   }
-
-  return rows;
 }
 
 function executeSqlFile(database: string, remote: boolean, filePath: string): void {
@@ -120,6 +131,18 @@ function executeSqlFile(database: string, remote: boolean, filePath: string): vo
   execSync(`npx wrangler d1 execute ${database} ${remoteFlag} --file=${filePath}`, {
     stdio: 'inherit',
   });
+}
+
+function writeAndExecuteBatch(
+  database: string,
+  remote: boolean,
+  statements: string[],
+  filePath: string
+): void {
+  if (statements.length === 0) return;
+  writeFileSync(filePath, statements.join('\n'));
+  executeSqlFile(database, remote, filePath);
+  unlinkSync(filePath);
 }
 
 function queryNextAddressId(database: string, remote: boolean): number {
@@ -153,33 +176,114 @@ function buildProvinceDeleteSql(province: string): string[] {
   ];
 }
 
-async function importProvinceFromRows(
+function downloadProvinceCsv(province: string, outputDir: string): string {
+  const url = PROVINCE_DOWNLOAD_URLS[province];
+  if (!url) {
+    throw new Error(`No download URL configured for province ${province}`);
+  }
+
+  const provinceDir = join(outputDir, province);
+  mkdirSync(provinceDir, { recursive: true });
+  const zipPath = join(provinceDir, `ODA_${province}_v1.zip`);
+  const csvPath = join(provinceDir, `ODA_${province}_v1.csv`);
+
+  if (!existsSync(csvPath)) {
+    if (!existsSync(zipPath)) {
+      console.log(`Downloading ${province} ODA from StatCan (${url})...`);
+      execSync(`curl -fsSL "${url}" -o "${zipPath}"`, { stdio: 'inherit' });
+    }
+    console.log(`Extracting ${zipPath}...`);
+    execSync(`unzip -o "${zipPath}" "ODA_${province}_v1.csv" -d "${provinceDir}"`, {
+      stdio: 'inherit',
+    });
+  }
+
+  if (!existsSync(csvPath)) {
+    throw new Error(`Expected CSV at ${csvPath} after extraction`);
+  }
+
+  return csvPath;
+}
+
+function resolveCsvPath(province: string, options: ImportOptions): string {
+  if (options.download) {
+    return downloadProvinceCsv(province, options.outputDir);
+  }
+  if (!options.file) {
+    throw new Error('Provide --file or use --download');
+  }
+  if (!existsSync(options.file)) {
+    throw new Error(`File not found: ${options.file}`);
+  }
+  return options.file;
+}
+
+async function flushCentroids(
   province: string,
-  csvRows: Record<string, string>[],
+  options: ImportOptions,
+  postalCentroids: Map<string, CentroidAccumulator>,
+  cityCentroids: Map<string, CentroidAccumulator & { city: string }>,
+  streetRanges: Map<string, CentroidAccumulator & { streetKey: string; cityKey: string }>,
+  batchIndex: number
+): Promise<number> {
+  const statements = buildCentroidSqlStatements(
+    province,
+    postalCentroids,
+    cityCentroids,
+    streetRanges
+  );
+  if (statements.length === 0) return batchIndex;
+
+  let chunk: string[] = [];
+  let index = batchIndex;
+
+  for (const statement of statements) {
+    chunk.push(statement);
+    if (chunk.length >= options.batchSize) {
+      const filePath = join(options.outputDir, `${province}-centroids-${index}.sql`);
+      writeAndExecuteBatch(options.database, options.remote, chunk, filePath);
+      chunk = [];
+      index++;
+    }
+  }
+
+  if (chunk.length > 0) {
+    const filePath = join(options.outputDir, `${province}-centroids-${index}.sql`);
+    writeAndExecuteBatch(options.database, options.remote, chunk, filePath);
+    index++;
+  }
+
+  return index;
+}
+
+async function importProvinceFromFile(
+  province: string,
+  csvPath: string,
   options: ImportOptions,
   startId: number
 ): Promise<{ imported: number; nextId: number }> {
   mkdirSync(options.outputDir, { recursive: true });
-
-  const normalizedRows = csvRows
-    .map(normalizeOdaCsvRow)
-    .filter((row): row is NonNullable<typeof row> => row !== null && row.province === province);
-
-  if (normalizedRows.length === 0) {
-    console.warn(`No rows for province ${province}`);
-    return { imported: 0, nextId: startId };
-  }
 
   const postalCentroids = new Map<string, CentroidAccumulator>();
   const cityCentroids = new Map<string, CentroidAccumulator & { city: string }>();
   const streetRanges = new Map<string, CentroidAccumulator & { streetKey: string; cityKey: string }>();
 
   let batch: string[] = buildProvinceDeleteSql(province);
-
   let rowId = startId;
   let imported = 0;
+  let skipped = 0;
+  let batchIndex = 0;
+  const progressEvery = 100_000;
 
-  for (const normalized of normalizedRows) {
+  console.log(`Importing ${province} from ${csvPath}...`);
+
+  for await (const csvRow of streamCsvRows(csvPath, options.maxRows)) {
+    const normalized = normalizeOdaCsvRow(csvRow);
+    if (!normalized || normalized.province !== province) {
+      skipped++;
+      continue;
+    }
+
     trackCentroidsFromRow(normalized, postalCentroids, cityCentroids, streetRanges);
     const insertRow = prepareOdaInsertRow(normalized);
     batch.push(buildAddressInsertSql(insertRow, rowId));
@@ -187,36 +291,58 @@ async function importProvinceFromRows(
     imported++;
 
     if (batch.length >= options.batchSize) {
-      const filePath = join(options.outputDir, `${province}-batch-${imported}.sql`);
-      writeFileSync(filePath, batch.join('\n'));
-      executeSqlFile(options.database, options.remote, filePath);
+      const filePath = join(options.outputDir, `${province}-addresses-${batchIndex}.sql`);
+      writeAndExecuteBatch(options.database, options.remote, batch, filePath);
       batch = [];
+      batchIndex++;
+    }
+
+    if (imported > 0 && imported % progressEvery === 0) {
+      console.log(`  ${province}: ${imported.toLocaleString()} addresses imported...`);
     }
   }
 
-  batch.push(...buildCentroidSqlStatements(province, postalCentroids, cityCentroids, streetRanges));
-  batch.push(
-    `INSERT INTO oda_imports (province, source_url, source_version, row_count, finished_at) VALUES ('${province}', '${PROVINCE_DOWNLOAD_URLS[province] || ''}', '${ODA_DEFAULTS.DATA_VERSION}', ${imported}, datetime('now'));`
+  if (imported === 0) {
+    console.warn(`No rows imported for province ${province} (skipped ${skipped.toLocaleString()} rows)`);
+    return { imported: 0, nextId: startId };
+  }
+
+  if (batch.length > 0) {
+    const filePath = join(options.outputDir, `${province}-addresses-${batchIndex}.sql`);
+    writeAndExecuteBatch(options.database, options.remote, batch, filePath);
+    batchIndex++;
+  }
+
+  batchIndex = await flushCentroids(
+    province,
+    options,
+    postalCentroids,
+    cityCentroids,
+    streetRanges,
+    batchIndex
   );
 
-  const finalPath = join(options.outputDir, `${province}-final.sql`);
-  writeFileSync(finalPath, batch.join('\n'));
-  executeSqlFile(options.database, options.remote, finalPath);
+  const metadataPath = join(options.outputDir, `${province}-metadata.sql`);
+  writeAndExecuteBatch(
+    options.database,
+    options.remote,
+    [
+      `INSERT INTO oda_imports (province, source_url, source_version, row_count, finished_at) VALUES ('${province}', '${PROVINCE_DOWNLOAD_URLS[province] || ''}', '${ODA_DEFAULTS.DATA_VERSION}', ${imported}, datetime('now'));`,
+    ],
+    metadataPath
+  );
 
-  console.log(`Imported ${imported} addresses for ${province}`);
+  console.log(
+    `Imported ${imported.toLocaleString()} addresses for ${province} (skipped ${skipped.toLocaleString()} rows)`
+  );
   return { imported, nextId: rowId };
 }
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
 
-  if (!options.file) {
-    console.error('Provide --file path to ODA CSV (or fixture CSV for testing)');
-    process.exit(1);
-  }
-
-  if (!existsSync(options.file)) {
-    console.error(`File not found: ${options.file}`);
+  if (!options.download && !options.file) {
+    console.error('Provide --file path to ODA CSV or use --download to fetch from StatCan');
     process.exit(1);
   }
 
@@ -224,12 +350,11 @@ async function main(): Promise<void> {
     initializeSchema(options);
   }
 
-  console.log(`Reading ${options.file}...`);
-  const rows = await readCsvRows(options.file);
-
   let nextId = queryNextAddressId(options.database, options.remote);
+
   for (const province of options.provinces) {
-    const result = await importProvinceFromRows(province, rows, options, nextId);
+    const csvPath = resolveCsvPath(province, options);
+    const result = await importProvinceFromFile(province, csvPath, options, nextId);
     nextId = result.nextId;
   }
 

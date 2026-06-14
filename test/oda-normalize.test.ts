@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildSearchKey,
   foldAccents,
+  normalizeOdaCsvRow,
   normalizeProvince,
   parseAddressQuery,
   parseFreeformAddress,
@@ -51,6 +52,25 @@ describe('oda-normalize', () => {
 
   it('builds city keys with province', () => {
     expect(buildCityKey('Toronto', 'ON')).toBe('TORONTO|ON');
+  });
+
+  it('normalizes StatCan ODA CSV rows', () => {
+    const row = normalizeOdaCsvRow({
+      latitude: '43.88570',
+      longitude: '-79.01632',
+      street_no: '56',
+      str_name_pcs: 'RUMBELLOW',
+      str_type_pcs: 'CRESCENT',
+      city_pcs: 'AJAX',
+      pruid: '35',
+      full_addr: '56 RUMBELLOW CRESCENT',
+    });
+    expect(row).not.toBeNull();
+    expect(row?.province).toBe('ON');
+    expect(row?.civicNumber).toBe('56');
+    expect(row?.streetName).toBe('RUMBELLOW');
+    expect(row?.streetType).toBe('CRESCENT');
+    expect(row?.city).toBe('AJAX');
   });
 });
 

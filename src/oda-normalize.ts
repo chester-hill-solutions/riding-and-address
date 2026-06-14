@@ -298,16 +298,37 @@ export function normalizeOdaCsvRow(row: Record<string, string>): NormalizedOdaRo
   const lon = parseFloat(row.Longitude || row.longitude || '');
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 
-  const provinceRaw = row['Province or Territory Unique Identifier'] || row.Province || '';
+  const provinceRaw =
+    row['Province or Territory Unique Identifier'] ||
+    row.Province ||
+    row.pruid ||
+    '';
   const province = normalizeProvince(provinceRaw) || provinceRaw;
-  const city = row['Processed City'] || row.City || '';
-  const civicNumber = (row['Civic Number'] || '').trim();
-  const streetName = row['Standardized Street Name'] || row['Street Name'] || '';
-  const streetType = row['Standardized Street Type'] || row['Street Type'] || '';
-  const streetDirection = row['Standardized Street Direction'] || row['Street Direction'] || '';
-  const unit = (row.Unit || '').trim();
+  if (!province || province.length !== 2) return null;
+
+  const city = row['Processed City'] || row.city_pcs || row.City || row.city || '';
+  const civicNumber = (row['Civic Number'] || row.street_no || '').trim();
+  const streetName =
+    row['Standardized Street Name'] ||
+    row.str_name_pcs ||
+    row['Street Name'] ||
+    row.str_name ||
+    '';
+  const streetType =
+    row['Standardized Street Type'] ||
+    row.str_type_pcs ||
+    row['Street Type'] ||
+    row.str_type ||
+    '';
+  const streetDirection =
+    row['Standardized Street Direction'] ||
+    row.str_dir_pcs ||
+    row['Street Direction'] ||
+    row.str_dir ||
+    '';
+  const unit = (row.Unit || row.unit || '').trim();
   const postalCode = normalizePostalCode(row['Postal Code'] || row.postal_code || '') || '';
-  const fullAddress = row['Full Address'] || '';
+  const fullAddress = row['Full Address'] || row.full_addr || '';
 
   return {
     civicNumber,

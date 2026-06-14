@@ -1,6 +1,7 @@
 .dev.vars
 .env
 .wrangler
+.oda-import
 
 node_modules
 *.geojson
