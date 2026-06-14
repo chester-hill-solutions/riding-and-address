@@ -39,7 +39,7 @@ export function buildLookupTestGeoJson(): Record<string, GeoJSONFeatureCollectio
       features: [
         feature({
           PR_NUM: '082',
-          ENGLISH_NAME: 'Toronto Centre',
+          ENGLISH_NA: 'Toronto Centre',
         }),
       ],
     },

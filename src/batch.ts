@@ -4,7 +4,6 @@ import {
   BatchLookupResponse,
   BatchJob,
   QueryParams,
-  LookupResult,
   GoogleAddressComponents,
   CircuitBreakerExecutor,
 } from './types';
@@ -17,9 +16,6 @@ import {
   type NormalizedAddressContext,
   type LookupRidingFn,
 } from './lookup-expansion';
-
-// Default batch size
-const DEFAULT_BATCH_SIZE = 10;
 
 // Maximum batch size limits
 export const MAX_BATCH_SIZE = 100;

@@ -9,6 +9,7 @@ import {
   generateCorrelationId,
   pickDataset,
   provincePathFromFederalProperties,
+  ridingNameFromProperties,
   checkBasicAuth,
   checkAdminAuth,
   validateAndSanitizeQuery,
@@ -232,6 +233,20 @@ describe('provincePathFromFederalProperties', () => {
   it('returns null for missing properties', () => {
     expect(provincePathFromFederalProperties(null)).toBeNull();
     expect(provincePathFromFederalProperties(undefined)).toBeNull();
+  });
+});
+
+describe('ridingNameFromProperties', () => {
+  it('prefers ENGLISH_NAME then ENGLISH_NA and federal fields', () => {
+    expect(ridingNameFromProperties({ ENGLISH_NAME: 'Toronto Centre' })).toBe('Toronto Centre');
+    expect(ridingNameFromProperties({ ENGLISH_NA: 'Spadina—Fort York' })).toBe('Spadina—Fort York');
+    expect(ridingNameFromProperties({ ED_NAMEE: 'Spadina—Harbourfront' })).toBe('Spadina—Harbourfront');
+    expect(ridingNameFromProperties({ FED_NAME: 'Ottawa Centre' })).toBe('Ottawa Centre');
+  });
+
+  it('returns undefined when no name fields are present', () => {
+    expect(ridingNameFromProperties({ FED_NUM: 35100 })).toBeUndefined();
+    expect(ridingNameFromProperties(null)).toBeUndefined();
   });
 });
 

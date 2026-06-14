@@ -511,6 +511,26 @@ export function provincePathFromFederalProperties(
   return PROV_TERR_TO_PROVINCE_PATH[key] ?? null;
 }
 
+/** Extract a display riding name from feature properties across federal/provincial datasets. */
+export function ridingNameFromProperties(
+  properties: Record<string, unknown> | null | undefined
+): string | undefined {
+  if (!properties) return undefined;
+  const candidates = [
+    properties.ENGLISH_NAME,
+    properties.ENGLISH_NA,
+    properties.NAME_EN,
+    properties.FED_NAME,
+    properties.ED_NAMEE,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
 // Query parsing
 export function parseQuery(request: Request): { query: QueryParams; validation: ValidationResult } {
   const url = new URL(request.url);

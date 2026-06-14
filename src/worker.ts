@@ -24,6 +24,7 @@ import {
   withTimeout, 
   withRetry, 
   pickDataset, 
+  ridingNameFromProperties,
   checkBasicAuth,
   checkAdminAuth, 
   badRequest, 
@@ -115,13 +116,8 @@ async function lookupRiding(env: Env, pathname: string, lon: number, lat: number
       try {
         const dbResult = await queryRidingFromDatabase(env, r2Key, lon, lat);
         if (dbResult) {
-          const englishName = dbResult.properties?.ENGLISH_NAME;
-          const nameEn = dbResult.properties?.NAME_EN;
-          const ridingName = (typeof englishName === 'string' ? englishName : null) 
-            || (typeof nameEn === 'string' ? nameEn : null) 
-            || 'Unknown';
           return {
-            riding: ridingName,
+            riding: ridingNameFromProperties(dbResult.properties) ?? 'Unknown',
             properties: dbResult.properties || {}
           };
         }
@@ -248,18 +244,10 @@ function lookupRidingWithIndex(spatialIndex: SpatialIndex, lon: number, lat: num
   for (const feat of candidates) {
     const props = featurePropertiesIfContains(feat, lon, lat);
     if (props) {
-      // Extract riding name from properties (same logic as database lookup)
-      const englishName = props.ENGLISH_NAME;
-      const nameEn = props.NAME_EN;
-      const fedName = props.FED_NAME;
-      const ridingName = (typeof englishName === 'string' ? englishName : null) 
-        || (typeof nameEn === 'string' ? nameEn : null)
-        || (typeof fedName === 'string' ? fedName : null)
-        || undefined;
       recordTiming('totalSpatialIndexTime', Date.now() - startTime);
-      return { 
+      return {
         properties: props,
-        riding: ridingName
+        riding: ridingNameFromProperties(props),
       };
     }
   }
