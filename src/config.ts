@@ -22,11 +22,12 @@ export const RETRY_CONFIG = {
 
 // Get timeout values from environment or use defaults
 export function getTimeoutConfig(env: Env) {
+  const batchTimeout = env.BATCH_TIMEOUT ? Number(env.BATCH_TIMEOUT) : undefined;
   return {
-    geocoding: env.BATCH_TIMEOUT || TIMEOUT_CONFIG.geocoding,
-    lookup: env.BATCH_TIMEOUT || TIMEOUT_CONFIG.lookup,
-    batch: env.BATCH_TIMEOUT || TIMEOUT_CONFIG.batch,
-    total: env.BATCH_TIMEOUT || TIMEOUT_CONFIG.total,
+    geocoding: TIMEOUT_CONFIG.geocoding,
+    lookup: TIMEOUT_CONFIG.lookup,
+    batch: batchTimeout ?? TIMEOUT_CONFIG.batch,
+    total: TIMEOUT_CONFIG.total,
     webhook: TIMEOUT_CONFIG.webhook
   };
 }

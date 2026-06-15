@@ -279,7 +279,7 @@ export function createOdaMemoryD1(db: OdaMemoryDb): D1Database {
     prepare: (sql: string) => ({
       bind: (...params: unknown[]) => {
         const kind = sqlKind(sql);
-        const isAll = kind === 'bbox' || kind === 'city_fuzzy';
+        const _isAll = kind === 'bbox' || kind === 'city_fuzzy';
         return {
           first: async () => {
             const result = executeQuery(db, sql, params);
