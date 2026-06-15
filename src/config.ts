@@ -35,7 +35,12 @@ export function getTimeoutConfig(env: Env) {
     lookup: TIMEOUT_CONFIG.lookup,
     batch: batchTimeout ?? TIMEOUT_CONFIG.batch,
     total: TIMEOUT_CONFIG.total,
-    webhook: TIMEOUT_CONFIG.webhook
+    webhook: TIMEOUT_CONFIG.webhook,
+    stages: {
+      oda: 5000,       // 5s for ODA geocoding
+      geogratis: 8000, // 8s for GeoGratis
+      fallback: 10000, // 10s for fallback providers
+    }
   };
 }
 

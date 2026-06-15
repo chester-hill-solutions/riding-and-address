@@ -228,7 +228,8 @@ describe('provincePathFromFederalProperties', () => {
   });
 
   it('returns null for unknown province', () => {
-    expect(provincePathFromFederalProperties({ PROV_TERR: 'BC' })).toBeNull();
+    expect(provincePathFromFederalProperties({ PROV_TERR: 'XX' })).toBeNull();
+    expect(provincePathFromFederalProperties({ PROV_TERR: 'UNKNOWN' })).toBeNull();
   });
 
   it('returns null for missing properties', () => {
