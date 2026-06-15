@@ -33,6 +33,8 @@
     "test:oda": "vitest run test/oda-normalize.test.ts test/oda-geocoding.test.ts test/oda-fixture-cases.test.ts test/canada-post-format.test.ts",
     "test:oda:live": "ODA_LIVE=1 vitest run test/oda-geocoding-live.test.ts",
     "benchmark:lookup": "tsx scripts/benchmark-lookup.ts",
+    "compare:opennorth": "tsx scripts/compare-opennorth.ts",
+    "compare:report": "tsx scripts/generate-comparison-report.ts",
     "import:oda": "tsx scripts/import-oda.ts"
   },
   "keywords": [],

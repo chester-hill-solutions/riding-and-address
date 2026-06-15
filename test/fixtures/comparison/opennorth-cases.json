@@ -1,0 +1,1073 @@
+[
+  {
+    "id": "A1",
+    "category": "A",
+    "label": "Downtown Toronto",
+    "endpoint": "/api/federal",
+    "query": {
+      "postal": "M5V2T6"
+    },
+    "groundTruth": "Spadina—Harbourfront"
+  },
+  {
+    "id": "A2",
+    "category": "A",
+    "label": "Parliament Hill",
+    "endpoint": "/api/federal",
+    "query": {
+      "postal": "K1A0A6"
+    }
+  },
+  {
+    "id": "A3",
+    "category": "A",
+    "label": "Montreal",
+    "endpoint": "/api/federal",
+    "query": {
+      "postal": "H2X1Y4"
+    }
+  },
+  {
+    "id": "A4",
+    "category": "A",
+    "label": "Vancouver",
+    "endpoint": "/api/federal",
+    "query": {
+      "postal": "V6B1A1"
+    }
+  },
+  {
+    "id": "A5",
+    "category": "A",
+    "label": "Rural cross-boundary",
+    "endpoint": "/api/federal",
+    "query": {
+      "postal": "K0A1K0"
+    }
+  },
+  {
+    "id": "A6",
+    "category": "A",
+    "label": "Halifax",
+    "endpoint": "/api/federal",
+    "query": {
+      "postal": "B3H4R2"
+    }
+  },
+  {
+    "id": "A7",
+    "category": "A",
+    "label": "Calgary",
+    "endpoint": "/api/federal",
+    "query": {
+      "postal": "T2P1J9"
+    }
+  },
+  {
+    "id": "A8",
+    "category": "A",
+    "label": "Postal with spaces",
+    "endpoint": "/api/federal",
+    "query": {
+      "postal": "M5V 2T6"
+    }
+  },
+  {
+    "id": "B1",
+    "category": "B",
+    "label": "Exact civic Toronto",
+    "endpoint": "/api/combined",
+    "query": {
+      "address": "123 Main St",
+      "city": "Toronto",
+      "province": "ON"
+    }
+  },
+  {
+    "id": "B2",
+    "category": "B",
+    "label": "Exact civic Ottawa",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "123 Main St",
+      "city": "Ottawa",
+      "province": "ON"
+    }
+  },
+  {
+    "id": "B3",
+    "category": "B",
+    "label": "Unit address",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "Unit 1205, 123 Main St",
+      "city": "Toronto",
+      "province": "ON"
+    }
+  },
+  {
+    "id": "B4",
+    "category": "B",
+    "label": "757 Victoria Park abbreviated",
+    "endpoint": "/api/combined",
+    "query": {
+      "address": "757 Victoria Park",
+      "city": "Toronto",
+      "province": "ON",
+      "include_province": "true"
+    },
+    "groundTruth": "Scarborough Southwest",
+    "notes": "Expected divergence vs postal centroid"
+  },
+  {
+    "id": "B5",
+    "category": "B",
+    "label": "757 Victoria Park full",
+    "endpoint": "/api/combined",
+    "query": {
+      "address": "757 Victoria Park Ave",
+      "city": "Toronto",
+      "province": "ON",
+      "include_province": "true"
+    },
+    "groundTruth": "Scarborough Southwest"
+  },
+  {
+    "id": "B6",
+    "category": "B",
+    "label": "Montreal accented",
+    "endpoint": "/api/qc",
+    "query": {
+      "address": "350 Rue Saint-Paul E",
+      "city": "Montréal",
+      "province": "QC"
+    }
+  },
+  {
+    "id": "B7",
+    "category": "B",
+    "label": "Montreal Saint-Denis",
+    "endpoint": "/api/qc",
+    "query": {
+      "address": "1000 Rue Saint-Denis",
+      "city": "Montréal",
+      "province": "QC"
+    }
+  },
+  {
+    "id": "B8",
+    "category": "B",
+    "label": "King St W",
+    "endpoint": "/api/on",
+    "query": {
+      "address": "456 King St W",
+      "city": "Toronto",
+      "province": "ON"
+    }
+  },
+  {
+    "id": "B9",
+    "category": "B",
+    "label": "Municipality return",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "123 Main St",
+      "city": "Toronto",
+      "province": "ON",
+      "return": "municipality"
+    }
+  },
+  {
+    "id": "B10",
+    "category": "B",
+    "label": "Nonexistent address",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "999 Nonexistent Blvd",
+      "city": "Toronto",
+      "province": "ON"
+    },
+    "skipOpenNorth": true
+  },
+  {
+    "id": "B11",
+    "category": "B",
+    "label": "Street only ambiguous",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "Main Street"
+    },
+    "skipOpenNorth": true
+  },
+  {
+    "id": "B12",
+    "category": "B",
+    "label": "City only weak",
+    "endpoint": "/api/federal",
+    "query": {
+      "city": "Toronto",
+      "province": "ON"
+    },
+    "skipOpenNorth": true
+  },
+  {
+    "id": "C1",
+    "category": "C",
+    "label": "Toronto core",
+    "endpoint": "/api/federal",
+    "query": {
+      "lat": "43.6532",
+      "lon": "-79.3832"
+    }
+  },
+  {
+    "id": "C2",
+    "category": "C",
+    "label": "Victoria Park point",
+    "endpoint": "/api/combined",
+    "query": {
+      "lat": "43.692101",
+      "lon": "-79.288688",
+      "include_province": "true"
+    },
+    "groundTruth": "Scarborough Southwest"
+  },
+  {
+    "id": "C3",
+    "category": "C",
+    "label": "Montreal",
+    "endpoint": "/api/qc",
+    "query": {
+      "lat": "45.5088",
+      "lon": "-73.5540"
+    }
+  },
+  {
+    "id": "C4",
+    "category": "C",
+    "label": "Ottawa",
+    "endpoint": "/api/federal",
+    "query": {
+      "lat": "45.4215",
+      "lon": "-75.6972"
+    }
+  },
+  {
+    "id": "C5",
+    "category": "C",
+    "label": "Offshore",
+    "endpoint": "/api/federal",
+    "query": {
+      "lat": "0",
+      "lon": "0"
+    }
+  },
+  {
+    "id": "D1",
+    "category": "D",
+    "label": "Combined default",
+    "endpoint": "/api/combined",
+    "query": {
+      "postal": "M5V2T6"
+    }
+  },
+  {
+    "id": "D2",
+    "category": "D",
+    "label": "Ontario provincial",
+    "endpoint": "/api/on",
+    "query": {
+      "postal": "M5V2T6"
+    }
+  },
+  {
+    "id": "D3",
+    "category": "D",
+    "label": "Quebec provincial",
+    "endpoint": "/api/qc",
+    "query": {
+      "postal": "H2Y1H2"
+    }
+  },
+  {
+    "id": "D4",
+    "category": "D",
+    "label": "Province off",
+    "endpoint": "/api/combined",
+    "query": {
+      "postal": "M5V2T6",
+      "include_province": "false"
+    }
+  },
+  {
+    "id": "E1",
+    "category": "E",
+    "label": "Invalid postal",
+    "endpoint": "/api/federal",
+    "query": {
+      "postal": "INVALID"
+    },
+    "openNorthPostal": "INVALID"
+  },
+  {
+    "id": "E2",
+    "category": "E",
+    "label": "Missing location",
+    "endpoint": "/api/federal",
+    "query": {},
+    "skipOpenNorth": true
+  },
+  {
+    "id": "E3",
+    "category": "E",
+    "label": "Lat without lon",
+    "endpoint": "/api/federal",
+    "query": {
+      "lat": "43.65"
+    },
+    "skipOpenNorth": true
+  },
+  {
+    "id": "E4",
+    "category": "E",
+    "label": "BC geocode not loaded",
+    "endpoint": "/api/geocode",
+    "query": {
+      "postal": "V6B1A1",
+      "province": "BC"
+    },
+    "skipOpenNorth": true
+  },
+  {
+    "id": "E5",
+    "category": "E",
+    "label": "International postal",
+    "endpoint": "/api/federal",
+    "query": {
+      "postal": "90210"
+    },
+    "openNorthPostal": "90210"
+  },
+  {
+    "id": "E6",
+    "category": "E",
+    "label": "Victoria Park coords boundary",
+    "endpoint": "/api/federal",
+    "query": {
+      "lat": "43.692101",
+      "lon": "-79.288688"
+    },
+    "groundTruth": "Scarborough Southwest"
+  },
+  {
+    "id": "F1",
+    "category": "F",
+    "label": "Postal centroid M4C1N2",
+    "endpoint": "/api/federal",
+    "query": {
+      "postal": "M4C1N2"
+    },
+    "groundTruth": "Scarborough Southwest",
+    "notes": "Expected divergence — ON postal centroid vs RL point",
+    "openNorthPostal": "M4C1N2"
+  },
+  {
+    "id": "F2",
+    "category": "F",
+    "label": "OpenNorth default 2017 set",
+    "endpoint": "/api/federal",
+    "query": {
+      "postal": "M5V2T6"
+    },
+    "notes": "Compare ON 2017 default set separately",
+    "openNorthPostal": "M5V2T6"
+  },
+  {
+    "id": "F3",
+    "category": "F",
+    "label": "Rural K0A1K0 concordance",
+    "endpoint": "/api/federal",
+    "query": {
+      "postal": "K0A1K0"
+    },
+    "openNorthPostal": "K0A1K0"
+  },
+  {
+    "id": "G1",
+    "label": "Pharmacy Ave",
+    "endpoint": "/api/combined",
+    "query": {
+      "address": "442 Pharmacy Ave",
+      "city": "Scarborough",
+      "province": "ON",
+      "postal": "M1L3G6"
+    },
+    "groundTruth": "Scarborough Southwest",
+    "category": "G"
+  },
+  {
+    "id": "G2",
+    "label": "Birchmount unit dash",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "908-560 Birchmount Rd",
+      "city": "Toronto",
+      "province": "ON"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G3",
+    "label": "Birchmount bare",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "560 Birchmount Road",
+      "city": "Scarborough",
+      "province": "ON"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G4",
+    "label": "Mendelssohn unit",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "325-10 Mendelssohn Street",
+      "city": "Scarborough",
+      "province": "ON"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G5",
+    "label": "St Clair unit tower",
+    "endpoint": "/api/combined",
+    "query": {
+      "address": "225-3560 St Clair Avenue East",
+      "city": "Scarborough",
+      "province": "ON",
+      "include_province": "true"
+    },
+    "groundTruth": "Scarborough Southwest",
+    "category": "G"
+  },
+  {
+    "id": "G6",
+    "label": "St Clair bare",
+    "endpoint": "/api/combined",
+    "query": {
+      "address": "3560 St Clair Avenue East",
+      "city": "Scarborough",
+      "province": "ON",
+      "include_province": "true"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G7",
+    "label": "Blantyre 168A",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "168A Blantyre Avenue",
+      "city": "Scarborough",
+      "province": "ON"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G8",
+    "label": "VP unit tower",
+    "endpoint": "/api/combined",
+    "query": {
+      "address": "605-757 Victoria Park Avenue",
+      "city": "Scarborough",
+      "province": "ON",
+      "include_province": "true"
+    },
+    "groundTruth": "Beaches—East York",
+    "notes": "Voter list says BEY; RL may say SSW",
+    "category": "G"
+  },
+  {
+    "id": "G9",
+    "label": "VP 917",
+    "endpoint": "/api/combined",
+    "query": {
+      "address": "917 Victoria Park Avenue",
+      "city": "Scarborough",
+      "province": "ON",
+      "include_province": "true"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G10",
+    "label": "Eglinton East",
+    "endpoint": "/api/combined",
+    "query": {
+      "address": "3171 Eglinton Avenue East",
+      "city": "Scarborough",
+      "province": "ON",
+      "include_province": "true"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G11",
+    "label": "Markham Rd tower",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "1404-180 Markham Road",
+      "city": "Scarborough",
+      "province": "ON"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G12",
+    "label": "Anaconda incomplete",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "91 Anaconda",
+      "city": "Scarborough",
+      "province": "ON"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G13",
+    "label": "Danforth east",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "3205 Danforth Avenue",
+      "city": "Scarborough",
+      "province": "ON"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G14",
+    "label": "Burlington ALL CAPS period",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "668 SHERATON RD.",
+      "city": "Burlington",
+      "province": "ON",
+      "postal": "L7L4B7"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G15",
+    "label": "Burlington UNIT suffix",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "5013 PINEDALE AVE. UNIT 28",
+      "city": "Burlington",
+      "province": "ON"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G16",
+    "label": "Burlington condo",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "1300 MAPLE CROSSING BLVD. UNIT 91",
+      "city": "Burlington",
+      "province": "ON"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G17",
+    "label": "Burlington lakeshore",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "5194 LAKESHORE RD.",
+      "city": "Burlington",
+      "province": "ON"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G18",
+    "label": "Sign ALL CAPS embedded postal",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "3376 SANDY LANE",
+      "city": "Burlington",
+      "province": "ON",
+      "postal": "L7M3S8"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G19",
+    "label": "Jardine Cres",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "2140 Jardine Cres",
+      "city": "Burlington",
+      "province": "ON",
+      "postal": "L7L7K1"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G20",
+    "label": "Rural Seaforth embedded",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "77 MARKET ST",
+      "city": "Seaforth",
+      "province": "ON",
+      "postal": "N0K1W0"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G21",
+    "label": "Dundas St E",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "314 Dundas St E",
+      "city": "Toronto",
+      "province": "ON"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G22",
+    "label": "Dundas unit inline",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "312 Unit 4 Dundas St E",
+      "city": "Toronto",
+      "province": "ON"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G23",
+    "label": "Broadview unit",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "105 Unit 2 Broadview Ave",
+      "city": "Toronto",
+      "province": "ON"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G24",
+    "label": "Gerrard St E",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "220 Gerrard St E",
+      "city": "Toronto",
+      "province": "ON"
+    },
+    "category": "G"
+  },
+  {
+    "id": "G25",
+    "label": "Hobson no city",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "1829 Hobson Drive",
+      "province": "ON"
+    },
+    "category": "G"
+  },
+  {
+    "id": "I1",
+    "label": "Hopkinson Crescentt typo",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "92 Hopkinson Cres - Crescentt",
+      "city": "Ajax",
+      "province": "ON",
+      "postal": "L1T4E1"
+    },
+    "groundTruth": "Ajax",
+    "category": "I"
+  },
+  {
+    "id": "I2",
+    "label": "Lake Driveway W",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "211 Lake Driveway W",
+      "city": "Ajax",
+      "province": "ON",
+      "postal": "L1S5A1"
+    },
+    "groundTruth": "Ajax",
+    "category": "I"
+  },
+  {
+    "id": "I3",
+    "label": "Coates Of Arms Lane",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "15 Coates Of Arms Lane",
+      "city": "Ajax",
+      "province": "ON",
+      "postal": "L1T3S2"
+    },
+    "groundTruth": "Ajax",
+    "category": "I"
+  },
+  {
+    "id": "I4",
+    "label": "607-132 Kingston Rd W",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "607-132 Kingston Rd W",
+      "city": "Ajax",
+      "province": "ON",
+      "postal": "L1T3W5"
+    },
+    "groundTruth": "Ajax",
+    "category": "I"
+  },
+  {
+    "id": "I5",
+    "label": "1612-77 Falby Crt",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "1612-77 Falby Crt",
+      "city": "Ajax",
+      "province": "ON",
+      "postal": "L1S4G7"
+    },
+    "groundTruth": "Ajax",
+    "category": "I"
+  },
+  {
+    "id": "I6",
+    "label": "Edgewood Unit hash",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "90 Edgewood Ave, Unit # 132",
+      "city": "Toronto",
+      "province": "ON",
+      "postal": "M4L3H1"
+    },
+    "groundTruth": "Beaches—East York",
+    "category": "I"
+  },
+  {
+    "id": "I7",
+    "label": "Woodbine Apt",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "1501 Woodbine Ave - Apt. 715",
+      "city": "East York",
+      "province": "ON",
+      "postal": "M4C4H1"
+    },
+    "groundTruth": "Beaches—East York",
+    "category": "I"
+  },
+  {
+    "id": "I8",
+    "label": "Delisle unit tower",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "1105-10 Delisle Ave",
+      "city": "Toronto",
+      "province": "ON",
+      "postal": "M4V3C6"
+    },
+    "groundTruth": "Toronto—St. Paul's",
+    "category": "I"
+  },
+  {
+    "id": "I9",
+    "label": "Nepean Bayshore",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "23 Bayshore Dr",
+      "city": "Nepean",
+      "province": "ON",
+      "postal": "K2B6M7"
+    },
+    "groundTruth": "Ottawa West—Nepean",
+    "category": "I"
+  },
+  {
+    "id": "I10",
+    "label": "London Sharon Dr",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "1616 Sharon Dr",
+      "city": "London",
+      "province": "ON",
+      "postal": "N6G2R6"
+    },
+    "groundTruth": "London North Centre",
+    "category": "I"
+  },
+  {
+    "id": "I-B1-1",
+    "category": "I",
+    "label": "liblist Brampton West #1",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "104 Speedwell St",
+      "city": "Brampton",
+      "province": "ON",
+      "postal": "L6X 5H1"
+    },
+    "groundTruth": "Brampton West"
+  },
+  {
+    "id": "I-B1-2",
+    "category": "I",
+    "label": "liblist Brampton West #2",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "108 Beachville Cir",
+      "city": "Brampton",
+      "province": "ON",
+      "postal": "L6X 0V3"
+    },
+    "groundTruth": "Brampton West"
+  },
+  {
+    "id": "I-B2-1",
+    "category": "I",
+    "label": "liblist Scarborough Southwest #1",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "25 Ridgemoor Ave",
+      "city": "Scarborough",
+      "province": "ON",
+      "postal": "M1N 1M5"
+    },
+    "groundTruth": "Scarborough Southwest"
+  },
+  {
+    "id": "I-B2-2",
+    "category": "I",
+    "label": "liblist Scarborough Southwest #2",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "702-1316 Kingston Rd",
+      "city": "Scarborough",
+      "province": "ON",
+      "postal": "M1N 1P6"
+    },
+    "groundTruth": "Scarborough Southwest"
+  },
+  {
+    "id": "I-B3-1",
+    "category": "I",
+    "label": "liblist Milton #1",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "184 Mountsberg Rd",
+      "city": "Campbellville",
+      "province": "ON",
+      "postal": "L0P 1B0"
+    },
+    "groundTruth": "Milton"
+  },
+  {
+    "id": "I-B3-2",
+    "category": "I",
+    "label": "liblist Milton #2",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "10 Timberrun Crt",
+      "city": "Campbellville",
+      "province": "ON",
+      "postal": "L0P 1B0"
+    },
+    "groundTruth": "Milton"
+  },
+  {
+    "id": "I-B4-1",
+    "category": "I",
+    "label": "liblist Beaches—East York #1",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "30 Glenfern Ave",
+      "city": "Toronto",
+      "province": "ON",
+      "postal": "M4E 1B7"
+    },
+    "groundTruth": "Beaches—East York"
+  },
+  {
+    "id": "I-B4-2",
+    "category": "I",
+    "label": "liblist Beaches—East York #2",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "30 Glenfern Ave",
+      "city": "Toronto",
+      "province": "ON",
+      "postal": "M4E 1B7"
+    },
+    "groundTruth": "Beaches—East York"
+  },
+  {
+    "id": "I-B5-1",
+    "category": "I",
+    "label": "liblist Ottawa West—Nepean #1",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "23 Bayshore Dr",
+      "city": "Nepean",
+      "province": "ON",
+      "postal": "K2B 6M7"
+    },
+    "groundTruth": "Ottawa West—Nepean"
+  },
+  {
+    "id": "I-B5-2",
+    "category": "I",
+    "label": "liblist Ottawa West—Nepean #2",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "2814 Grandeur Ave",
+      "city": "Ottawa",
+      "province": "ON",
+      "postal": "K2B 6Y9"
+    },
+    "groundTruth": "Ottawa West—Nepean"
+  },
+  {
+    "id": "I-B6-1",
+    "category": "I",
+    "label": "liblist Mississauga—Erin Mills #1",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "3272 Angel Pass Dr",
+      "city": "Mississauga",
+      "province": "ON",
+      "postal": "L5M 7K1"
+    },
+    "groundTruth": "Mississauga—Erin Mills"
+  },
+  {
+    "id": "I-B6-2",
+    "category": "I",
+    "label": "liblist Mississauga—Erin Mills #2",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "125-3035 Artesian Dr",
+      "city": "Mississauga",
+      "province": "ON",
+      "postal": "L5M 7S7"
+    },
+    "groundTruth": "Mississauga—Erin Mills"
+  },
+  {
+    "id": "I-B7-1",
+    "category": "I",
+    "label": "liblist Pickering—Uxbridge #1",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "2 James Hill Crt",
+      "city": "Uxbridge",
+      "province": "ON",
+      "postal": "L9P 1Y5"
+    },
+    "groundTruth": "Pickering—Uxbridge"
+  },
+  {
+    "id": "I-B7-2",
+    "category": "I",
+    "label": "liblist Pickering—Uxbridge #2",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "1012 Longbow Dr",
+      "city": "Pickering",
+      "province": "ON",
+      "postal": "L1V 5V9"
+    },
+    "groundTruth": "Pickering—Uxbridge"
+  },
+  {
+    "id": "I-B8-1",
+    "category": "I",
+    "label": "liblist Eglinton—Lawrence #1",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "62 Cheritan Ave",
+      "city": "Toronto",
+      "province": "ON",
+      "postal": "M4R 1S6"
+    },
+    "groundTruth": "Eglinton—Lawrence"
+  },
+  {
+    "id": "I-B8-2",
+    "category": "I",
+    "label": "liblist Eglinton—Lawrence #2",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "91 Roe Ave",
+      "city": "Toronto",
+      "province": "ON",
+      "postal": "M5M 2H6"
+    },
+    "groundTruth": "Eglinton—Lawrence"
+  },
+  {
+    "id": "I-B9-1",
+    "category": "I",
+    "label": "liblist Kingston and the Islands #1",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "260 Main St",
+      "city": "Kingston",
+      "province": "ON",
+      "postal": "K7K 6W4"
+    },
+    "groundTruth": "Kingston and the Islands"
+  },
+  {
+    "id": "I-B9-2",
+    "category": "I",
+    "label": "liblist Kingston and the Islands #2",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "6-391 Division St",
+      "city": "Kingston",
+      "province": "ON",
+      "postal": "K7K 4A6"
+    },
+    "groundTruth": "Kingston and the Islands"
+  },
+  {
+    "id": "I-B10-1",
+    "category": "I",
+    "label": "liblist Scarborough—Guildwood #1",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "21 Bellechasse St",
+      "city": "Scarborough",
+      "province": "ON",
+      "postal": "M1H 2G2"
+    },
+    "groundTruth": "Scarborough—Guildwood"
+  },
+  {
+    "id": "I-B10-2",
+    "category": "I",
+    "label": "liblist Scarborough—Guildwood #2",
+    "endpoint": "/api/federal",
+    "query": {
+      "address": "1501-88 Grangeway Ave",
+      "city": "Scarborough",
+      "province": "ON",
+      "postal": "M1H 0A2"
+    },
+    "groundTruth": "Scarborough—Guildwood"
+  }
+]

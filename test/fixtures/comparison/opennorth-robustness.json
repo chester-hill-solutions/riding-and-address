@@ -1,0 +1,2818 @@
+{
+  "runAt": "2026-06-14T21:36:21.225Z",
+  "classificationSummary": {
+    "Disagree": 7,
+    "Agree": 23,
+    "RL error": 47,
+    "Expected divergence": 4,
+    "RL only": 1,
+    "Inconclusive": 3,
+    "Error handled": 3,
+    "RL=ON; ground truth differs": 5
+  },
+  "results": [
+    {
+      "id": "A1",
+      "category": "A",
+      "label": "Downtown Toronto",
+      "endpoint": "/api/federal",
+      "query": {
+        "postal": "M5V2T6"
+      },
+      "groundTruth": "Spadina—Harbourfront",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 127.1194579999999,
+        "cacheStatus": "HIT",
+        "federalRiding": "University—Rosedale",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.65325,
+          "lon": -79.38325
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 139.42845799999986,
+        "federalRiding": "Spadina—Harbourfront",
+        "openNorthRidings": [
+          "Spadina—Harbourfront"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "Disagree"
+    },
+    {
+      "id": "A2",
+      "category": "A",
+      "label": "Parliament Hill",
+      "endpoint": "/api/federal",
+      "query": {
+        "postal": "K1A0A6"
+      },
+      "ridingLookup": {
+        "status": 200,
+        "ms": 154.9092499999997,
+        "cacheStatus": "HIT",
+        "federalRiding": "Ottawa Centre",
+        "provincialRiding": null,
+        "point": {
+          "lat": 45.423640999999975,
+          "lon": -75.70084400000002
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 63.1089579999998,
+        "federalRiding": "Ottawa Centre",
+        "openNorthRidings": [
+          "Ottawa Centre"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "A3",
+      "category": "A",
+      "label": "Montreal",
+      "endpoint": "/api/federal",
+      "query": {
+        "postal": "H2X1Y4"
+      },
+      "ridingLookup": {
+        "status": 200,
+        "ms": 143.63858299999993,
+        "cacheStatus": "HIT",
+        "federalRiding": "Laurier—Sainte-Marie",
+        "provincialRiding": null,
+        "point": {
+          "lat": 45.512936000000025,
+          "lon": -73.56779499999999
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 54.62570800000003,
+        "federalRiding": "Laurier—Sainte-Marie",
+        "openNorthRidings": [
+          "Laurier—Sainte-Marie"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "A4",
+      "category": "A",
+      "label": "Vancouver",
+      "endpoint": "/api/federal",
+      "query": {
+        "postal": "V6B1A1"
+      },
+      "ridingLookup": {
+        "status": 200,
+        "ms": 146.68254199999956,
+        "cacheStatus": "HIT",
+        "federalRiding": "Vancouver Centre",
+        "provincialRiding": null,
+        "point": {
+          "lat": 49.27642100000003,
+          "lon": -123.114464
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 59.28041699999994,
+        "federalRiding": "Vancouver East",
+        "openNorthRidings": [
+          "Vancouver East"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "Disagree"
+    },
+    {
+      "id": "A5",
+      "category": "A",
+      "label": "Rural cross-boundary",
+      "endpoint": "/api/federal",
+      "query": {
+        "postal": "K0A1K0"
+      },
+      "ridingLookup": {
+        "status": 200,
+        "ms": 55.69995899999958,
+        "cacheStatus": "HIT",
+        "federalRiding": "Nepean",
+        "provincialRiding": null,
+        "point": {
+          "lat": 45.27363600000001,
+          "lon": -75.73984899999999
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 78.58220900000015,
+        "federalRiding": "Carleton",
+        "openNorthRidings": [
+          "Carleton"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "Disagree"
+    },
+    {
+      "id": "A6",
+      "category": "A",
+      "label": "Halifax",
+      "endpoint": "/api/federal",
+      "query": {
+        "postal": "B3H4R2"
+      },
+      "ridingLookup": {
+        "status": 200,
+        "ms": 147.97712500000034,
+        "cacheStatus": "HIT",
+        "federalRiding": "Halifax",
+        "provincialRiding": null,
+        "point": {
+          "lat": 44.638334499999985,
+          "lon": -63.572663999999975
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 53.72283299999981,
+        "federalRiding": "Halifax",
+        "openNorthRidings": [
+          "Halifax"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "A7",
+      "category": "A",
+      "label": "Calgary",
+      "endpoint": "/api/federal",
+      "query": {
+        "postal": "T2P1J9"
+      },
+      "ridingLookup": {
+        "status": 200,
+        "ms": 150.88650000000052,
+        "cacheStatus": "HIT",
+        "federalRiding": "Calgary Centre",
+        "provincialRiding": null,
+        "point": {
+          "lat": 51.05256650000001,
+          "lon": -114.07787350000001
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 69.0956670000005,
+        "federalRiding": "Calgary Centre",
+        "openNorthRidings": [
+          "Calgary Centre"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "A8",
+      "category": "A",
+      "label": "Postal with spaces",
+      "endpoint": "/api/federal",
+      "query": {
+        "postal": "M5V 2T6"
+      },
+      "ridingLookup": {
+        "status": 200,
+        "ms": 37.316250000000764,
+        "cacheStatus": "HIT",
+        "federalRiding": "University—Rosedale",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.65325,
+          "lon": -79.38325
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 59.097874999999476,
+        "federalRiding": "Spadina—Harbourfront",
+        "openNorthRidings": [
+          "Spadina—Harbourfront"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "Disagree"
+    },
+    {
+      "id": "B1",
+      "category": "B",
+      "label": "Exact civic Toronto",
+      "endpoint": "/api/combined",
+      "query": {
+        "address": "123 Main St",
+        "city": "Toronto",
+        "province": "ON"
+      },
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30124.135959000003,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "B2",
+      "category": "B",
+      "label": "Exact civic Ottawa",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "123 Main St",
+        "city": "Ottawa",
+        "province": "ON"
+      },
+      "ridingLookup": {
+        "status": 200,
+        "ms": 166.43887499999983,
+        "cacheStatus": "HIT",
+        "federalRiding": "Ottawa Centre",
+        "provincialRiding": null,
+        "point": {
+          "lat": 45.41087,
+          "lon": -75.67883
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 255.36100000000442,
+        "federalRiding": "Ottawa Centre",
+        "openNorthRidings": [
+          "Ottawa Centre"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "B3",
+      "category": "B",
+      "label": "Unit address",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "Unit 1205, 123 Main St",
+        "city": "Toronto",
+        "province": "ON"
+      },
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30151.47099999999,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "B4",
+      "category": "B",
+      "label": "757 Victoria Park abbreviated",
+      "endpoint": "/api/combined",
+      "query": {
+        "address": "757 Victoria Park",
+        "city": "Toronto",
+        "province": "ON",
+        "include_province": "true"
+      },
+      "groundTruth": "Scarborough Southwest",
+      "notes": "Expected divergence vs postal centroid",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 357.4434580000234,
+        "cacheStatus": "HIT",
+        "federalRiding": "Scarborough Southwest",
+        "provincialRiding": "Scarborough Southwest",
+        "point": {
+          "lat": 43.69210129999999,
+          "lon": -79.28868820000002
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 190.36787499999627,
+        "federalRiding": "Scarborough Southwest",
+        "openNorthRidings": [
+          "Scarborough Southwest"
+        ]
+      },
+      "classification": "Expected divergence"
+    },
+    {
+      "id": "B5",
+      "category": "B",
+      "label": "757 Victoria Park full",
+      "endpoint": "/api/combined",
+      "query": {
+        "address": "757 Victoria Park Ave",
+        "city": "Toronto",
+        "province": "ON",
+        "include_province": "true"
+      },
+      "groundTruth": "Scarborough Southwest",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30217.82695799999,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "B6",
+      "category": "B",
+      "label": "Montreal accented",
+      "endpoint": "/api/qc",
+      "query": {
+        "address": "350 Rue Saint-Paul E",
+        "city": "Montréal",
+        "province": "QC"
+      },
+      "ridingLookup": {
+        "status": 500,
+        "ms": 9785.270166000002,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "R2 object not found: quebecridings-2025.geojson"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "B7",
+      "category": "B",
+      "label": "Montreal Saint-Denis",
+      "endpoint": "/api/qc",
+      "query": {
+        "address": "1000 Rue Saint-Denis",
+        "city": "Montréal",
+        "province": "QC"
+      },
+      "ridingLookup": {
+        "status": 500,
+        "ms": 10124.999542000005,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "R2 object not found: quebecridings-2025.geojson"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "B8",
+      "category": "B",
+      "label": "King St W",
+      "endpoint": "/api/on",
+      "query": {
+        "address": "456 King St W",
+        "city": "Toronto",
+        "province": "ON"
+      },
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30191.31791699998,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "B9",
+      "category": "B",
+      "label": "Municipality return",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "123 Main St",
+        "city": "Toronto",
+        "province": "ON",
+        "return": "municipality"
+      },
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30236.47066699993,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "B10",
+      "category": "B",
+      "label": "Nonexistent address",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "999 Nonexistent Blvd",
+        "city": "Toronto",
+        "province": "ON"
+      },
+      "skipOpenNorth": true,
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30189.998249999946,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": null,
+      "classification": "RL error"
+    },
+    {
+      "id": "B11",
+      "category": "B",
+      "label": "Street only ambiguous",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "Main Street"
+      },
+      "skipOpenNorth": true,
+      "ridingLookup": {
+        "status": 200,
+        "ms": 155.91708299994934,
+        "cacheStatus": "HIT",
+        "federalRiding": "Desnethé—Missinippi—Churchill River",
+        "provincialRiding": null,
+        "point": {
+          "lat": 56.02974941929826,
+          "lon": -103.81785139438534
+        }
+      },
+      "openNorth": null,
+      "classification": "RL only"
+    },
+    {
+      "id": "B12",
+      "category": "B",
+      "label": "City only weak",
+      "endpoint": "/api/federal",
+      "query": {
+        "city": "Toronto",
+        "province": "ON"
+      },
+      "skipOpenNorth": true,
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30199.53387500008,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": null,
+      "classification": "RL error"
+    },
+    {
+      "id": "C1",
+      "category": "C",
+      "label": "Toronto core",
+      "endpoint": "/api/federal",
+      "query": {
+        "lat": "43.6532",
+        "lon": "-79.3832"
+      },
+      "ridingLookup": {
+        "status": 200,
+        "ms": 150.4820409999229,
+        "cacheStatus": "HIT",
+        "federalRiding": "University—Rosedale",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.6532,
+          "lon": -79.3832
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 202.07120799995027,
+        "federalRiding": "University—Rosedale",
+        "openNorthRidings": [
+          "University—Rosedale"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "C2",
+      "category": "C",
+      "label": "Victoria Park point",
+      "endpoint": "/api/combined",
+      "query": {
+        "lat": "43.692101",
+        "lon": "-79.288688",
+        "include_province": "true"
+      },
+      "groundTruth": "Scarborough Southwest",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 233.36183300008997,
+        "cacheStatus": "HIT",
+        "federalRiding": "Scarborough Southwest",
+        "provincialRiding": "Scarborough Southwest",
+        "point": {
+          "lat": 43.692101,
+          "lon": -79.288688
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 54.087999999988824,
+        "federalRiding": "Scarborough Southwest",
+        "openNorthRidings": [
+          "Scarborough Southwest"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "C3",
+      "category": "C",
+      "label": "Montreal",
+      "endpoint": "/api/qc",
+      "query": {
+        "lat": "45.5088",
+        "lon": "-73.5540"
+      },
+      "ridingLookup": {
+        "status": 500,
+        "ms": 8060.146249999991,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "R2 object not found: quebecridings-2025.geojson"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 137.64383299998008,
+        "federalRiding": "Laurier—Sainte-Marie",
+        "openNorthRidings": [
+          "Laurier—Sainte-Marie"
+        ]
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "C4",
+      "category": "C",
+      "label": "Ottawa",
+      "endpoint": "/api/federal",
+      "query": {
+        "lat": "45.4215",
+        "lon": "-75.6972"
+      },
+      "ridingLookup": {
+        "status": 200,
+        "ms": 187.3867920000339,
+        "cacheStatus": "HIT",
+        "federalRiding": "Ottawa Centre",
+        "provincialRiding": null,
+        "point": {
+          "lat": 45.4215,
+          "lon": -75.6972
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 48.15245799999684,
+        "federalRiding": "Ottawa Centre",
+        "openNorthRidings": [
+          "Ottawa Centre"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "C5",
+      "category": "C",
+      "label": "Offshore",
+      "endpoint": "/api/federal",
+      "query": {
+        "lat": "0",
+        "lon": "0"
+      },
+      "ridingLookup": {
+        "status": 200,
+        "ms": 148.95625000004657,
+        "cacheStatus": "HIT",
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": {
+          "lat": 0,
+          "lon": 0
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 75.65158399997745,
+        "federalRiding": null,
+        "openNorthRidings": []
+      },
+      "classification": "Inconclusive"
+    },
+    {
+      "id": "D1",
+      "category": "D",
+      "label": "Combined default",
+      "endpoint": "/api/combined",
+      "query": {
+        "postal": "M5V2T6"
+      },
+      "ridingLookup": {
+        "status": 200,
+        "ms": 222.73970799997915,
+        "cacheStatus": "HIT",
+        "federalRiding": "University—Rosedale",
+        "provincialRiding": "Spadina—Fort York",
+        "point": {
+          "lat": 43.65325,
+          "lon": -79.38325
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 53.258832999970764,
+        "federalRiding": "Spadina—Harbourfront",
+        "openNorthRidings": [
+          "Spadina—Harbourfront"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "Disagree"
+    },
+    {
+      "id": "D2",
+      "category": "D",
+      "label": "Ontario provincial",
+      "endpoint": "/api/on",
+      "query": {
+        "postal": "M5V2T6"
+      },
+      "ridingLookup": {
+        "status": 200,
+        "ms": 113.31112500000745,
+        "cacheStatus": "HIT",
+        "federalRiding": "Spadina—Fort York",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.65325,
+          "lon": -79.38325
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 74.81987499992829,
+        "federalRiding": "Spadina—Harbourfront",
+        "openNorthRidings": [
+          "Spadina—Harbourfront"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "Disagree"
+    },
+    {
+      "id": "D3",
+      "category": "D",
+      "label": "Quebec provincial",
+      "endpoint": "/api/qc",
+      "query": {
+        "postal": "H2Y1H2"
+      },
+      "ridingLookup": {
+        "status": 500,
+        "ms": 9078.113000000012,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "R2 object not found: quebecridings-2025.geojson"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 185.04591700003948,
+        "federalRiding": "Laurier—Sainte-Marie",
+        "openNorthRidings": [
+          "Laurier—Sainte-Marie"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "D4",
+      "category": "D",
+      "label": "Province off",
+      "endpoint": "/api/combined",
+      "query": {
+        "postal": "M5V2T6",
+        "include_province": "false"
+      },
+      "ridingLookup": {
+        "status": 200,
+        "ms": 114.62650000001304,
+        "cacheStatus": "HIT",
+        "federalRiding": "University—Rosedale",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.65325,
+          "lon": -79.38325
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 88.07770899997558,
+        "federalRiding": "Spadina—Harbourfront",
+        "openNorthRidings": [
+          "Spadina—Harbourfront"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "Disagree"
+    },
+    {
+      "id": "E1",
+      "category": "E",
+      "label": "Invalid postal",
+      "endpoint": "/api/federal",
+      "query": {
+        "postal": "INVALID"
+      },
+      "openNorthPostal": "INVALID",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 152.33887500001583,
+        "cacheStatus": "HIT",
+        "federalRiding": "Halifax",
+        "provincialRiding": null,
+        "point": {
+          "lat": 44.64797400000001,
+          "lon": -63.573437
+        }
+      },
+      "openNorth": {
+        "status": 404,
+        "ms": 33.79154100001324,
+        "federalRiding": null,
+        "openNorthRidings": [],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 0
+      },
+      "classification": "Inconclusive"
+    },
+    {
+      "id": "E2",
+      "category": "E",
+      "label": "Missing location",
+      "endpoint": "/api/federal",
+      "query": {},
+      "skipOpenNorth": true,
+      "ridingLookup": {
+        "status": 400,
+        "ms": 35.71891699999105,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "INVALID_QUERY",
+        "rawError": "At least one location parameter must be provided"
+      },
+      "openNorth": null,
+      "classification": "Error handled"
+    },
+    {
+      "id": "E3",
+      "category": "E",
+      "label": "Lat without lon",
+      "endpoint": "/api/federal",
+      "query": {
+        "lat": "43.65"
+      },
+      "skipOpenNorth": true,
+      "ridingLookup": {
+        "status": 400,
+        "ms": 28.933749999967404,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "INVALID_QUERY",
+        "rawError": "Both lat and lon must be provided together"
+      },
+      "openNorth": null,
+      "classification": "Error handled"
+    },
+    {
+      "id": "E4",
+      "category": "E",
+      "label": "BC geocode not loaded",
+      "endpoint": "/api/geocode",
+      "query": {
+        "postal": "V6B1A1",
+        "province": "BC"
+      },
+      "skipOpenNorth": true,
+      "ridingLookup": {
+        "status": 404,
+        "ms": 32.6504169999389,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "PROVINCE_NOT_LOADED",
+        "rawError": "Province BC is not loaded in ODA database"
+      },
+      "openNorth": null,
+      "classification": "Error handled"
+    },
+    {
+      "id": "E5",
+      "category": "E",
+      "label": "International postal",
+      "endpoint": "/api/federal",
+      "query": {
+        "postal": "90210"
+      },
+      "openNorthPostal": "90210",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 109.82541699998546,
+        "cacheStatus": "HIT",
+        "federalRiding": "Halifax",
+        "provincialRiding": null,
+        "point": {
+          "lat": 44.64797400000001,
+          "lon": -63.573437
+        }
+      },
+      "openNorth": {
+        "status": 404,
+        "ms": 31.829875000054017,
+        "federalRiding": null,
+        "openNorthRidings": [],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 0
+      },
+      "classification": "Inconclusive"
+    },
+    {
+      "id": "E6",
+      "category": "E",
+      "label": "Victoria Park coords boundary",
+      "endpoint": "/api/federal",
+      "query": {
+        "lat": "43.692101",
+        "lon": "-79.288688"
+      },
+      "groundTruth": "Scarborough Southwest",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 108.85812500002794,
+        "cacheStatus": "HIT",
+        "federalRiding": "Scarborough Southwest",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.692101,
+          "lon": -79.288688
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 70.49399999994785,
+        "federalRiding": "Scarborough Southwest",
+        "openNorthRidings": [
+          "Scarborough Southwest"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "F1",
+      "category": "F",
+      "label": "Postal centroid M4C1N2",
+      "endpoint": "/api/federal",
+      "query": {
+        "postal": "M4C1N2"
+      },
+      "groundTruth": "Scarborough Southwest",
+      "notes": "Expected divergence — ON postal centroid vs RL point",
+      "openNorthPostal": "M4C1N2",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 162.27166700002272,
+        "cacheStatus": "HIT",
+        "federalRiding": "Beaches—East York",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.691783999999984,
+          "lon": -79.30802899999998
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 72.60366600006819,
+        "federalRiding": "Beaches—East York",
+        "openNorthRidings": [
+          "Beaches—East York"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "Expected divergence"
+    },
+    {
+      "id": "F2",
+      "category": "F",
+      "label": "OpenNorth default 2017 set",
+      "endpoint": "/api/federal",
+      "query": {
+        "postal": "M5V2T6"
+      },
+      "notes": "Compare ON 2017 default set separately",
+      "openNorthPostal": "M5V2T6",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 47.37162500002887,
+        "cacheStatus": "HIT",
+        "federalRiding": "University—Rosedale",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.65325,
+          "lon": -79.38325
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 68.61966700002085,
+        "federalRiding": "Spadina—Harbourfront",
+        "openNorthRidings": [
+          "Spadina—Harbourfront"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "Expected divergence"
+    },
+    {
+      "id": "F3",
+      "category": "F",
+      "label": "Rural K0A1K0 concordance",
+      "endpoint": "/api/federal",
+      "query": {
+        "postal": "K0A1K0"
+      },
+      "openNorthPostal": "K0A1K0",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 115.96612500003539,
+        "cacheStatus": "HIT",
+        "federalRiding": "Nepean",
+        "provincialRiding": null,
+        "point": {
+          "lat": 45.27363600000001,
+          "lon": -75.73984899999999
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 70.31083400000352,
+        "federalRiding": "Carleton",
+        "openNorthRidings": [
+          "Carleton"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "Expected divergence"
+    },
+    {
+      "id": "G1",
+      "label": "Pharmacy Ave",
+      "endpoint": "/api/combined",
+      "query": {
+        "address": "442 Pharmacy Ave",
+        "city": "Scarborough",
+        "province": "ON",
+        "postal": "M1L3G6"
+      },
+      "groundTruth": "Scarborough Southwest",
+      "category": "G",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 287.950084000011,
+        "cacheStatus": "HIT",
+        "federalRiding": "Scarborough Southwest",
+        "provincialRiding": "Scarborough Southwest",
+        "point": {
+          "lat": 43.70386,
+          "lon": -79.28862
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 155.6375420000404,
+        "federalRiding": "Scarborough Southwest",
+        "openNorthRidings": [
+          "Scarborough Southwest"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "G2",
+      "label": "Birchmount unit dash",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "908-560 Birchmount Rd",
+        "city": "Toronto",
+        "province": "ON"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30171.480375000043,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "G3",
+      "label": "Birchmount bare",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "560 Birchmount Road",
+        "city": "Scarborough",
+        "province": "ON"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 299.5433750000084,
+        "cacheStatus": "HIT",
+        "federalRiding": "Scarborough Southwest",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.71234,
+          "lon": -79.27101
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 195.85570799990091,
+        "federalRiding": "Scarborough Southwest",
+        "openNorthRidings": [
+          "Scarborough Southwest"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "G4",
+      "label": "Mendelssohn unit",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "325-10 Mendelssohn Street",
+        "city": "Scarborough",
+        "province": "ON"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30269.454041999998,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "G5",
+      "label": "St Clair unit tower",
+      "endpoint": "/api/combined",
+      "query": {
+        "address": "225-3560 St Clair Avenue East",
+        "city": "Scarborough",
+        "province": "ON",
+        "include_province": "true"
+      },
+      "groundTruth": "Scarborough Southwest",
+      "category": "G",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30199.129958000034,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "G6",
+      "label": "St Clair bare",
+      "endpoint": "/api/combined",
+      "query": {
+        "address": "3560 St Clair Avenue East",
+        "city": "Scarborough",
+        "province": "ON",
+        "include_province": "true"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 455.7076250000391,
+        "cacheStatus": "HIT",
+        "federalRiding": "Scarborough Southwest",
+        "provincialRiding": "Scarborough Southwest",
+        "point": {
+          "lat": 43.71703,
+          "lon": -79.26069
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 218.2517499998212,
+        "federalRiding": "Scarborough Southwest",
+        "openNorthRidings": [
+          "Scarborough Southwest"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "G7",
+      "label": "Blantyre 168A",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "168A Blantyre Avenue",
+        "city": "Scarborough",
+        "province": "ON"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 220.22716700006276,
+        "cacheStatus": "HIT",
+        "federalRiding": "Scarborough Southwest",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.68049,
+          "lon": -79.28124
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 144.9343330000993,
+        "federalRiding": "Scarborough Southwest",
+        "openNorthRidings": [
+          "Scarborough Southwest"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "G8",
+      "label": "VP unit tower",
+      "endpoint": "/api/combined",
+      "query": {
+        "address": "605-757 Victoria Park Avenue",
+        "city": "Scarborough",
+        "province": "ON",
+        "include_province": "true"
+      },
+      "groundTruth": "Beaches—East York",
+      "notes": "Voter list says BEY; RL may say SSW",
+      "category": "G",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30143.366958,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "G9",
+      "label": "VP 917",
+      "endpoint": "/api/combined",
+      "query": {
+        "address": "917 Victoria Park Avenue",
+        "city": "Scarborough",
+        "province": "ON",
+        "include_province": "true"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 303.0616250000894,
+        "cacheStatus": "HIT",
+        "federalRiding": "Scarborough Southwest",
+        "provincialRiding": "Scarborough Southwest",
+        "point": {
+          "lat": 43.70108,
+          "lon": -79.29244
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 162.7930410001427,
+        "federalRiding": "Scarborough Southwest",
+        "openNorthRidings": [
+          "Scarborough Southwest"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "G10",
+      "label": "Eglinton East",
+      "endpoint": "/api/combined",
+      "query": {
+        "address": "3171 Eglinton Avenue East",
+        "city": "Scarborough",
+        "province": "ON",
+        "include_province": "true"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 342.4635840000119,
+        "cacheStatus": "HIT",
+        "federalRiding": "Scarborough Southwest",
+        "provincialRiding": "Scarborough Southwest",
+        "point": {
+          "lat": 43.74262,
+          "lon": -79.22005
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 125.10016699996777,
+        "federalRiding": "Scarborough Southwest",
+        "openNorthRidings": [
+          "Scarborough Southwest"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "G11",
+      "label": "Markham Rd tower",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "1404-180 Markham Road",
+        "city": "Scarborough",
+        "province": "ON"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30288.55587500008,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "G12",
+      "label": "Anaconda incomplete",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "91 Anaconda",
+        "city": "Scarborough",
+        "province": "ON"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 179.46116599999368,
+        "cacheStatus": "HIT",
+        "federalRiding": "Scarborough Southwest",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.71777,
+          "lon": -79.27395
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 236.8125,
+        "federalRiding": "Scarborough Southwest",
+        "openNorthRidings": [
+          "Scarborough Southwest"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "G13",
+      "label": "Danforth east",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "3205 Danforth Avenue",
+        "city": "Scarborough",
+        "province": "ON"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 168.33808300015517,
+        "cacheStatus": "HIT",
+        "federalRiding": "Scarborough Southwest",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.6921,
+          "lon": -79.28328
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 139.33291699993424,
+        "federalRiding": "Scarborough Southwest",
+        "openNorthRidings": [
+          "Scarborough Southwest"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "G14",
+      "label": "Burlington ALL CAPS period",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "668 SHERATON RD.",
+        "city": "Burlington",
+        "province": "ON",
+        "postal": "L7L4B7"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30253.76450000005,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 184.3935829999391,
+        "federalRiding": "Burlington",
+        "openNorthRidings": [
+          "Burlington"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "G15",
+      "label": "Burlington UNIT suffix",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "5013 PINEDALE AVE. UNIT 28",
+        "city": "Burlington",
+        "province": "ON"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30167.877917000093,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "G16",
+      "label": "Burlington condo",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "1300 MAPLE CROSSING BLVD. UNIT 91",
+        "city": "Burlington",
+        "province": "ON"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30215.383374999976,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "G17",
+      "label": "Burlington lakeshore",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "5194 LAKESHORE RD.",
+        "city": "Burlington",
+        "province": "ON"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30383.14674999984,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "G18",
+      "label": "Sign ALL CAPS embedded postal",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "3376 SANDY LANE",
+        "city": "Burlington",
+        "province": "ON",
+        "postal": "L7M3S8"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30220.45283399988,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 255.30600000009872,
+        "federalRiding": "Burlington North—Milton West",
+        "openNorthRidings": [
+          "Burlington North—Milton West"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "G19",
+      "label": "Jardine Cres",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "2140 Jardine Cres",
+        "city": "Burlington",
+        "province": "ON",
+        "postal": "L7L7K1"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 158.4338750001043,
+        "cacheStatus": "HIT",
+        "federalRiding": "Burlington North—Milton West",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.40453,
+          "lon": -79.78787
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 135.57987500005402,
+        "federalRiding": "Burlington North—Milton West",
+        "openNorthRidings": [
+          "Burlington North—Milton West"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "G20",
+      "label": "Rural Seaforth embedded",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "77 MARKET ST",
+        "city": "Seaforth",
+        "province": "ON",
+        "postal": "N0K1W0"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30192.996791999787,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 215.2135840000119,
+        "federalRiding": "Huron—Bruce",
+        "openNorthRidings": [
+          "Huron—Bruce"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "G21",
+      "label": "Dundas St E",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "314 Dundas St E",
+        "city": "Toronto",
+        "province": "ON"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30185.19750000001,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "G22",
+      "label": "Dundas unit inline",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "312 Unit 4 Dundas St E",
+        "city": "Toronto",
+        "province": "ON"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30233.077291999944,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "G23",
+      "label": "Broadview unit",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "105 Unit 2 Broadview Ave",
+        "city": "Toronto",
+        "province": "ON"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30302.668166999705,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "G24",
+      "label": "Gerrard St E",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "220 Gerrard St E",
+        "city": "Toronto",
+        "province": "ON"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30155.626374999993,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "G25",
+      "label": "Hobson no city",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "1829 Hobson Drive",
+        "province": "ON"
+      },
+      "category": "G",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30146.901707999874,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 0,
+        "ms": 0,
+        "rawError": "no postal or point for OpenNorth"
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I1",
+      "label": "Hopkinson Crescentt typo",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "92 Hopkinson Cres - Crescentt",
+        "city": "Ajax",
+        "province": "ON",
+        "postal": "L1T4E1"
+      },
+      "groundTruth": "Ajax",
+      "category": "I",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30212.792916000355,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 222.15775000024587,
+        "federalRiding": "Ajax",
+        "openNorthRidings": [
+          "Ajax"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I2",
+      "label": "Lake Driveway W",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "211 Lake Driveway W",
+        "city": "Ajax",
+        "province": "ON",
+        "postal": "L1S5A1"
+      },
+      "groundTruth": "Ajax",
+      "category": "I",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30213.656208000146,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 233.99475000007078,
+        "federalRiding": "Ajax",
+        "openNorthRidings": [
+          "Ajax"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I3",
+      "label": "Coates Of Arms Lane",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "15 Coates Of Arms Lane",
+        "city": "Ajax",
+        "province": "ON",
+        "postal": "L1T3S2"
+      },
+      "groundTruth": "Ajax",
+      "category": "I",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30201.616291000042,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 266.2974999998696,
+        "federalRiding": "Ajax",
+        "openNorthRidings": [
+          "Ajax"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I4",
+      "label": "607-132 Kingston Rd W",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "607-132 Kingston Rd W",
+        "city": "Ajax",
+        "province": "ON",
+        "postal": "L1T3W5"
+      },
+      "groundTruth": "Ajax",
+      "category": "I",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30223.380584000144,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 239.71824999991804,
+        "federalRiding": "Ajax",
+        "openNorthRidings": [
+          "Ajax"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I5",
+      "label": "1612-77 Falby Crt",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "1612-77 Falby Crt",
+        "city": "Ajax",
+        "province": "ON",
+        "postal": "L1S4G7"
+      },
+      "groundTruth": "Ajax",
+      "category": "I",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30186.12308300007,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 213.30670899990946,
+        "federalRiding": "Ajax",
+        "openNorthRidings": [
+          "Ajax"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I6",
+      "label": "Edgewood Unit hash",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "90 Edgewood Ave, Unit # 132",
+        "city": "Toronto",
+        "province": "ON",
+        "postal": "M4L3H1"
+      },
+      "groundTruth": "Beaches—East York",
+      "category": "I",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30270.38716700021,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 251.13100000005215,
+        "federalRiding": "Beaches—East York",
+        "openNorthRidings": [
+          "Beaches—East York"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I7",
+      "label": "Woodbine Apt",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "1501 Woodbine Ave - Apt. 715",
+        "city": "East York",
+        "province": "ON",
+        "postal": "M4C4H1"
+      },
+      "groundTruth": "Beaches—East York",
+      "category": "I",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30205.549457999878,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 236.98579200031236,
+        "federalRiding": "Beaches—East York",
+        "openNorthRidings": [
+          "Beaches—East York"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I8",
+      "label": "Delisle unit tower",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "1105-10 Delisle Ave",
+        "city": "Toronto",
+        "province": "ON",
+        "postal": "M4V3C6"
+      },
+      "groundTruth": "Toronto—St. Paul's",
+      "category": "I",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30140.048957999796,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 315.1324579999782,
+        "federalRiding": "Toronto—St. Paul's",
+        "openNorthRidings": [
+          "Toronto—St. Paul's"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I9",
+      "label": "Nepean Bayshore",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "23 Bayshore Dr",
+        "city": "Nepean",
+        "province": "ON",
+        "postal": "K2B6M7"
+      },
+      "groundTruth": "Ottawa West—Nepean",
+      "category": "I",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30209.758125000168,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 251.29354199999943,
+        "federalRiding": "Ottawa West—Nepean",
+        "openNorthRidings": [
+          "Ottawa West—Nepean"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I10",
+      "label": "London Sharon Dr",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "1616 Sharon Dr",
+        "city": "London",
+        "province": "ON",
+        "postal": "N6G2R6"
+      },
+      "groundTruth": "London North Centre",
+      "category": "I",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 182.6011250000447,
+        "cacheStatus": "HIT",
+        "federalRiding": "London Centre",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.02005,
+          "lon": -81.28838
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 138.23925000010058,
+        "federalRiding": "London Centre",
+        "openNorthRidings": [
+          "London Centre"
+        ]
+      },
+      "classification": "RL=ON; ground truth differs"
+    },
+    {
+      "id": "I-B1-1",
+      "category": "I",
+      "label": "liblist Brampton West #1",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "104 Speedwell St",
+        "city": "Brampton",
+        "province": "ON",
+        "postal": "L6X 5H1"
+      },
+      "groundTruth": "Brampton West",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 226.58395900018513,
+        "cacheStatus": "HIT",
+        "federalRiding": "Brampton South",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.66795,
+          "lon": -79.79499
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 138.10620799986646,
+        "federalRiding": "Brampton South",
+        "openNorthRidings": [
+          "Brampton South"
+        ]
+      },
+      "classification": "RL=ON; ground truth differs"
+    },
+    {
+      "id": "I-B1-2",
+      "category": "I",
+      "label": "liblist Brampton West #2",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "108 Beachville Cir",
+        "city": "Brampton",
+        "province": "ON",
+        "postal": "L6X 0V3"
+      },
+      "groundTruth": "Brampton West",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30197.08799999999,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 164.25170899974182,
+        "federalRiding": "Brampton South",
+        "openNorthRidings": [
+          "Brampton South"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I-B2-1",
+      "category": "I",
+      "label": "liblist Scarborough Southwest #1",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "25 Ridgemoor Ave",
+        "city": "Scarborough",
+        "province": "ON",
+        "postal": "M1N 1M5"
+      },
+      "groundTruth": "Scarborough Southwest",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 180.48412499995902,
+        "cacheStatus": "HIT",
+        "federalRiding": "Scarborough Southwest",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.70495,
+          "lon": -79.24914
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 151.57949999999255,
+        "federalRiding": "Scarborough Southwest",
+        "openNorthRidings": [
+          "Scarborough Southwest"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "I-B2-2",
+      "category": "I",
+      "label": "liblist Scarborough Southwest #2",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "702-1316 Kingston Rd",
+        "city": "Scarborough",
+        "province": "ON",
+        "postal": "M1N 1P6"
+      },
+      "groundTruth": "Scarborough Southwest",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30313.796334000304,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 354.0071660000831,
+        "federalRiding": "Scarborough Southwest",
+        "openNorthRidings": [
+          "Scarborough Southwest"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I-B3-1",
+      "category": "I",
+      "label": "liblist Milton #1",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "184 Mountsberg Rd",
+        "city": "Campbellville",
+        "province": "ON",
+        "postal": "L0P 1B0"
+      },
+      "groundTruth": "Milton",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30193.79050000012,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 226.74370900029317,
+        "federalRiding": "Burlington North—Milton West",
+        "openNorthRidings": [
+          "Burlington North—Milton West"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I-B3-2",
+      "category": "I",
+      "label": "liblist Milton #2",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "10 Timberrun Crt",
+        "city": "Campbellville",
+        "province": "ON",
+        "postal": "L0P 1B0"
+      },
+      "groundTruth": "Milton",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30190.004583000205,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 222.27729199966416,
+        "federalRiding": "Burlington North—Milton West",
+        "openNorthRidings": [
+          "Burlington North—Milton West"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I-B4-1",
+      "category": "I",
+      "label": "liblist Beaches—East York #1",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "30 Glenfern Ave",
+        "city": "Toronto",
+        "province": "ON",
+        "postal": "M4E 1B7"
+      },
+      "groundTruth": "Beaches—East York",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30238.387624999974,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 200.66254199994728,
+        "federalRiding": "Beaches—East York",
+        "openNorthRidings": [
+          "Beaches—East York"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I-B4-2",
+      "category": "I",
+      "label": "liblist Beaches—East York #2",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "30 Glenfern Ave",
+        "city": "Toronto",
+        "province": "ON",
+        "postal": "M4E 1B7"
+      },
+      "groundTruth": "Beaches—East York",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30203.373292000033,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 250.99162499979138,
+        "federalRiding": "Beaches—East York",
+        "openNorthRidings": [
+          "Beaches—East York"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I-B5-1",
+      "category": "I",
+      "label": "liblist Ottawa West—Nepean #1",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "23 Bayshore Dr",
+        "city": "Nepean",
+        "province": "ON",
+        "postal": "K2B 6M7"
+      },
+      "groundTruth": "Ottawa West—Nepean",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30196.55062500015,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 203.2393330000341,
+        "federalRiding": "Ottawa West—Nepean",
+        "openNorthRidings": [
+          "Ottawa West—Nepean"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I-B5-2",
+      "category": "I",
+      "label": "liblist Ottawa West—Nepean #2",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "2814 Grandeur Ave",
+        "city": "Ottawa",
+        "province": "ON",
+        "postal": "K2B 6Y9"
+      },
+      "groundTruth": "Ottawa West—Nepean",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 164.7223749998957,
+        "cacheStatus": "HIT",
+        "federalRiding": "Ottawa West—Nepean",
+        "provincialRiding": null,
+        "point": {
+          "lat": 45.3625,
+          "lon": -75.80137
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 130.93512499984354,
+        "federalRiding": "Ottawa West—Nepean",
+        "openNorthRidings": [
+          "Ottawa West—Nepean"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "I-B6-1",
+      "category": "I",
+      "label": "liblist Mississauga—Erin Mills #1",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "3272 Angel Pass Dr",
+        "city": "Mississauga",
+        "province": "ON",
+        "postal": "L5M 7K1"
+      },
+      "groundTruth": "Mississauga—Erin Mills",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 206.71658399980515,
+        "cacheStatus": "HIT",
+        "federalRiding": "Mississauga—Erin Mills",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.53998,
+          "lon": -79.71713
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 125.36908300034702,
+        "federalRiding": "Mississauga—Erin Mills",
+        "openNorthRidings": [
+          "Mississauga—Erin Mills"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "I-B6-2",
+      "category": "I",
+      "label": "liblist Mississauga—Erin Mills #2",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "125-3035 Artesian Dr",
+        "city": "Mississauga",
+        "province": "ON",
+        "postal": "L5M 7S7"
+      },
+      "groundTruth": "Mississauga—Erin Mills",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30195.748000000138,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 212.09029200021178,
+        "federalRiding": "Mississauga—Erin Mills",
+        "openNorthRidings": [
+          "Mississauga—Erin Mills"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I-B7-1",
+      "category": "I",
+      "label": "liblist Pickering—Uxbridge #1",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "2 James Hill Crt",
+        "city": "Uxbridge",
+        "province": "ON",
+        "postal": "L9P 1Y5"
+      },
+      "groundTruth": "Pickering—Uxbridge",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 236.39695800002664,
+        "cacheStatus": "HIT",
+        "federalRiding": "York—Durham",
+        "provincialRiding": null,
+        "point": {
+          "lat": 44.1017,
+          "lon": -79.12748
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 185.48083299957216,
+        "federalRiding": "York—Durham",
+        "openNorthRidings": [
+          "York—Durham"
+        ]
+      },
+      "classification": "RL=ON; ground truth differs"
+    },
+    {
+      "id": "I-B7-2",
+      "category": "I",
+      "label": "liblist Pickering—Uxbridge #2",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "1012 Longbow Dr",
+        "city": "Pickering",
+        "province": "ON",
+        "postal": "L1V 5V9"
+      },
+      "groundTruth": "Pickering—Uxbridge",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 307.3895419999026,
+        "cacheStatus": "HIT",
+        "federalRiding": "Pickering—Brooklin",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.83515,
+          "lon": -79.10534
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 225.22166700009257,
+        "federalRiding": "Pickering—Brooklin",
+        "openNorthRidings": [
+          "Pickering—Brooklin"
+        ]
+      },
+      "classification": "RL=ON; ground truth differs"
+    },
+    {
+      "id": "I-B8-1",
+      "category": "I",
+      "label": "liblist Eglinton—Lawrence #1",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "62 Cheritan Ave",
+        "city": "Toronto",
+        "province": "ON",
+        "postal": "M4R 1S6"
+      },
+      "groundTruth": "Eglinton—Lawrence",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30167.14237499982,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 172.99120799964294,
+        "federalRiding": "Eglinton—Lawrence",
+        "openNorthRidings": [
+          "Eglinton—Lawrence"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I-B8-2",
+      "category": "I",
+      "label": "liblist Eglinton—Lawrence #2",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "91 Roe Ave",
+        "city": "Toronto",
+        "province": "ON",
+        "postal": "M5M 2H6"
+      },
+      "groundTruth": "Eglinton—Lawrence",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30200.183583999984,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 288.2443749997765,
+        "federalRiding": "Eglinton—Lawrence",
+        "openNorthRidings": [
+          "Eglinton—Lawrence"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    },
+    {
+      "id": "I-B9-1",
+      "category": "I",
+      "label": "liblist Kingston and the Islands #1",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "260 Main St",
+        "city": "Kingston",
+        "province": "ON",
+        "postal": "K7K 6W4"
+      },
+      "groundTruth": "Kingston and the Islands",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 267.6859579999,
+        "cacheStatus": "HIT",
+        "federalRiding": "Kingston and the Islands",
+        "provincialRiding": null,
+        "point": {
+          "lat": 44.24278,
+          "lon": -76.46266
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 206.6787919998169,
+        "federalRiding": "Kingston and the Islands",
+        "openNorthRidings": [
+          "Kingston and the Islands"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "I-B9-2",
+      "category": "I",
+      "label": "liblist Kingston and the Islands #2",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "6-391 Division St",
+        "city": "Kingston",
+        "province": "ON",
+        "postal": "K7K 4A6"
+      },
+      "groundTruth": "Kingston and the Islands",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 250.05108300037682,
+        "cacheStatus": "HIT",
+        "federalRiding": "Kingston and the Islands",
+        "provincialRiding": null,
+        "point": {
+          "lat": 44.24012786885247,
+          "lon": -76.49391754098365
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 128.0622919993475,
+        "federalRiding": "Kingston and the Islands",
+        "openNorthRidings": [
+          "Kingston and the Islands"
+        ]
+      },
+      "classification": "Agree"
+    },
+    {
+      "id": "I-B10-1",
+      "category": "I",
+      "label": "liblist Scarborough—Guildwood #1",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "21 Bellechasse St",
+        "city": "Scarborough",
+        "province": "ON",
+        "postal": "M1H 2G2"
+      },
+      "groundTruth": "Scarborough—Guildwood",
+      "ridingLookup": {
+        "status": 200,
+        "ms": 213.98829100001603,
+        "cacheStatus": "HIT",
+        "federalRiding": "Scarborough—Woburn",
+        "provincialRiding": null,
+        "point": {
+          "lat": 43.76159,
+          "lon": -79.24566
+        }
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 130.32299999985844,
+        "federalRiding": "Scarborough—Woburn",
+        "openNorthRidings": [
+          "Scarborough—Woburn"
+        ]
+      },
+      "classification": "RL=ON; ground truth differs"
+    },
+    {
+      "id": "I-B10-2",
+      "category": "I",
+      "label": "liblist Scarborough—Guildwood #2",
+      "endpoint": "/api/federal",
+      "query": {
+        "address": "1501-88 Grangeway Ave",
+        "city": "Scarborough",
+        "province": "ON",
+        "postal": "M1H 0A2"
+      },
+      "groundTruth": "Scarborough—Guildwood",
+      "ridingLookup": {
+        "status": 500,
+        "ms": 30175.765790999867,
+        "federalRiding": null,
+        "provincialRiding": null,
+        "point": null,
+        "errorCode": "LOOKUP_ERROR",
+        "rawError": "Geocoding timeout after 30000ms"
+      },
+      "openNorth": {
+        "status": 200,
+        "ms": 249.0049170004204,
+        "federalRiding": "Scarborough—Woburn",
+        "openNorthRidings": [
+          "Scarborough—Woburn"
+        ],
+        "openNorthConcordanceCount": 0,
+        "openNorthCentroidCount": 1
+      },
+      "classification": "RL error"
+    }
+  ]
+}
