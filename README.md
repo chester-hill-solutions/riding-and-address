@@ -14,21 +14,21 @@ The API provides lookup endpoints for different levels of government:
 
 | Province/Territory | Endpoint | Status | Dataset Year |
 |---------------------|----------|--------|-------------|
-| Ontario | `GET /api/on` | ✅ LIVE | 2022 |
-| Quebec | `GET /api/qc` | ✅ LIVE | 2025 |
-| British Columbia | `GET /api/bc` | ✅ READY | 2022 |
-| Alberta | `GET /api/ab` | ✅ READY | 2022 |
-| Nova Scotia | `GET /api/ns` | ✅ READY | 2022 |
-| New Brunswick | `GET /api/nb` | ✅ READY | 2022 |
-| Manitoba | `GET /api/mb` | ✅ READY | 2022 |
-| Saskatchewan | `GET /api/sk` | ✅ READY | 2022 |
-| Newfoundland and Labrador | `GET /api/nl` | ✅ READY | 2022 |
-| Prince Edward Island | `GET /api/pe` | ✅ READY | 2022 |
-| Northwest Territories | `GET /api/nt` | ✅ READY | 2022 |
-| Nunavut | `GET /api/nu` | ✅ READY | 2022 |
-| Yukon | `GET /api/yt` | ✅ READY | 2022 |
+| Ontario | `GET /api/on` | live | 2022 |
+| Quebec | `GET /api/qc` | live | 2025 |
+| British Columbia | `GET /api/bc` | registered | 2022 |
+| Alberta | `GET /api/ab` | registered | 2022 |
+| Nova Scotia | `GET /api/ns` | registered | 2022 |
+| New Brunswick | `GET /api/nb` | registered | 2022 |
+| Manitoba | `GET /api/mb` | registered | 2022 |
+| Saskatchewan | `GET /api/sk` | registered | 2022 |
+| Newfoundland and Labrador | `GET /api/nl` | registered | 2022 |
+| Prince Edward Island | `GET /api/pe` | registered | 2022 |
+| Northwest Territories | `GET /api/nt` | registered | 2022 |
+| Nunavut | `GET /api/nu` | registered | 2022 |
+| Yukon | `GET /api/yt` | registered | 2022 |
 
-**Note:** "READY" means the endpoint is registered in the API but the dataset must be uploaded to R2 before lookups succeed. See [docs/ADDING-A-PROVINCE.md](docs/ADDING-A-PROVINCE.md) for the exact upload process.
+**Note:** `live` means the dataset is uploaded to R2 and lookups succeed. `registered` means the endpoint is wired in code but the R2 object is not yet required for health checks. See [`src/datasets.ts`](src/datasets.ts) for the authoritative registry and status values.
 
 ### Query Parameters
 

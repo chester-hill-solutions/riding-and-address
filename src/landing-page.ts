@@ -1,14 +1,13 @@
-import { getAllProvincialDatasets } from './utils';
+import { PROVINCIAL_DATASETS } from './datasets';
 
 export function createLandingPage(baseUrl: string): string {
-  const provincialDatasets = getAllProvincialDatasets();
-  const endpointOptions = provincialDatasets.map(
-    d => `<option value="${d.path}">${d.path} — ${d.name} provincial (${d.year})</option>`
+  const endpointOptions = PROVINCIAL_DATASETS.map(
+    d => `<option value="${d.path}">${d.path} — ${d.name} provincial (${d.year}, ${d.status})</option>`
   ).join('\n              ');
-  const pillOptions = provincialDatasets.map(
-    d => `<span class="pill"><strong>${d.code.toUpperCase()}</strong> ${d.year} provincial</span>`
+  const pillOptions = PROVINCIAL_DATASETS.map(
+    d => `<span class="pill"><strong>${d.code.toUpperCase()}</strong> ${d.year} ${d.status}</span>`
   ).join('\n          ');
-  const routeOptions = provincialDatasets.map(
+  const routeOptions = PROVINCIAL_DATASETS.map(
     d => `<a class="route" href="${baseUrl}/docs">
         <span class="method">GET</span>
         <span class="route-path">${d.path}</span>

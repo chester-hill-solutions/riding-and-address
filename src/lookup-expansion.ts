@@ -8,7 +8,8 @@ import {
   DeferTaskFn,
 } from './types';
 import { generateLookupCacheKey, getCachedLookupResult, setCachedLookupResult } from './cache';
-import { pickDataset, provincePathFromFederalProperties, withTimeout } from './utils';
+import { pickDataset, provincePathFromFederalProperties } from './datasets';
+import { withTimeout } from './utils';
 import { resolveLookupPath } from './return-selector';
 import { resolveNormalizedAddress } from './oda-handlers';
 import { isOdaEnabled } from './oda-config';

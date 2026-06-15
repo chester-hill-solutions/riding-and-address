@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getTimeoutConfig } from '../src/config';
+import { getTimeoutConfig, GEOCODING_STAGE_TIMEOUTS } from '../src/config';
 import { Env } from '../src/types';
 
 describe('getTimeoutConfig', () => {
@@ -25,10 +25,8 @@ describe('getTimeoutConfig', () => {
     expect(config.batch).toBe(30000);
   });
 
-  it('exposes per-stage geocoding ceilings', () => {
+  it('exposes per-stage geocoding ceilings from GEOCODING_STAGE_TIMEOUTS', () => {
     const config = getTimeoutConfig({} as Env);
-    expect(config.stages.oda).toBeGreaterThan(0);
-    expect(config.stages.geogratis).toBeGreaterThan(0);
-    expect(config.stages.fallback).toBeGreaterThan(0);
+    expect(config.stages).toEqual({ ...GEOCODING_STAGE_TIMEOUTS });
   });
 });

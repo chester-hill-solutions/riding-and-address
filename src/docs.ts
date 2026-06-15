@@ -1,6 +1,6 @@
 // Documentation and UI functions
 
-import { getAllProvincialPaths } from './utils';
+import { getAllProvincialPaths, PROVINCIAL_DATASETS } from './datasets';
 
 export { createLandingPage } from './landing-page';
 
@@ -181,12 +181,14 @@ const RETURN_RESPONSE_PROPERTIES = {
 
 function buildProvincialEndpointSpecs(): Record<string, unknown> {
   const paths: Record<string, unknown> = {};
-  for (const path of getAllProvincialPaths()) {
-    const code = path.replace('/api/', '').toUpperCase();
-    paths[path] = {
+  for (const dataset of PROVINCIAL_DATASETS) {
+    const statusNote = dataset.status === 'registered'
+      ? ' (registered — dataset upload to R2 pending)'
+      : '';
+    paths[dataset.path] = {
       get: {
-        summary: `Lookup ${code} provincial riding by location`,
-        description: `Find the ${code} provincial riding for a given location`,
+        summary: `Lookup ${dataset.name} provincial riding by location`,
+        description: `Find the ${dataset.name} provincial riding for a given location${statusNote}`,
         tags: ["Provincial Ridings"],
         parameters: LOOKUP_QUERY_PARAMETERS,
         responses: {

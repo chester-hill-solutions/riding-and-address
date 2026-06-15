@@ -19,19 +19,21 @@ Expand riding-and-address API coverage from 3 datasets (Federal, Ontario, Quebec
 | qc | Quebec | ✅ LIVE | `quebecridings-2025.geojson` | 2025 |
 
 ## Target State
-| Code | Province/Territory | Status | Priority | Data Source |
-|------|-------------------|--------|----------|-------------|
-| bc | British Columbia | 🔲 BACKLOG | P1 | Elections BC |
-| ab | Alberta | 🔲 BACKLOG | P1 | Elections Alberta |
-| ns | Nova Scotia | 🔲 BACKLOG | P1 | Elections Nova Scotia |
-| nb | New Brunswick | 🔲 BACKLOG | P1 | Elections New Brunswick |
-| mb | Manitoba | 🔲 BACKLOG | P2 | Elections Manitoba |
-| sk | Saskatchewan | 🔲 BACKLOG | P2 | Elections Saskatchewan |
-| nl | Newfoundland and Labrador | 🔲 BACKLOG | P2 | Elections NL |
-| pe | Prince Edward Island | 🔲 BACKLOG | P2 | Elections PEI |
-| nt | Northwest Territories | 🔲 BACKLOG | P3 | Elections NWT |
-| nu | Nunavut | 🔲 BACKLOG | P3 | Elections Nunavut |
-| yt | Yukon | 🔲 BACKLOG | P3 | Elections Yukon |
+| Code | Province/Territory | Registry status | R2 | Priority | Data Source |
+|------|-------------------|-----------------|-----|----------|-------------|
+| bc | British Columbia | registered | pending | P1 | Elections BC |
+| ab | Alberta | registered | pending | P1 | Elections Alberta |
+| ns | Nova Scotia | registered | pending | P1 | Elections Nova Scotia |
+| nb | New Brunswick | registered | pending | P1 | Elections New Brunswick |
+| mb | Manitoba | registered | pending | P2 | Elections Manitoba |
+| sk | Saskatchewan | registered | pending | P2 | Elections Saskatchewan |
+| nl | Newfoundland and Labrador | registered | pending | P2 | Elections NL |
+| pe | Prince Edward Island | registered | pending | P2 | Elections PEI |
+| nt | Northwest Territories | registered | pending | P3 | Elections NWT |
+| nu | Nunavut | registered | pending | P3 | Elections Nunavut |
+| yt | Yukon | registered | pending | P3 | Elections Yukon |
+
+Registry status (`live` / `registered`) is defined in `src/datasets.ts`. Flip to `live` after R2 upload.
 
 ---
 
@@ -43,7 +45,8 @@ Expand riding-and-address API coverage from 3 datasets (Federal, Ontario, Quebec
 
 #### Ticket S1-T1: Refactor `pickDataset` to support province registry pattern
 **Effort:** 0.5 day
-**File:** `src/utils.ts`
+**File:** `src/datasets.ts`
+**Status:** Done
 
 Convert `pickDataset` from hardcoded if-else to a registry-driven lookup. Create a `PROVINCIAL_DATASETS` constant array that declares each province's code, R2 key, and metadata. This eliminates the need to touch routing logic every time a province is added.
 
@@ -59,7 +62,8 @@ Update `pickDataset` to search this array. Update `PROV_TERR_TO_PROVINCE_PATH` t
 
 #### Ticket S1-T2: Refactor `PROV_TERR_TO_PROVINCE_PATH` for dynamic expansion
 **Effort:** 0.5 day
-**File:** `src/utils.ts`
+**File:** `src/datasets.ts`
+**Status:** Done
 
 Replace the hardcoded `PROV_TERR_TO_PROVINCE_PATH` record with a build-time or runtime generator that produces the full set of aliases (code, full name, common abbreviations) from `PROVINCIAL_DATASETS`. This ensures that when `include_province=true` is used on a federal lookup, the system can resolve provincial data for any province in the registry.
 
@@ -72,6 +76,7 @@ Modify `createOpenAPISpec` to dynamically generate the `/api/{code}` path entrie
 #### Ticket S1-T4: Add provincial endpoint smoke tests
 **Effort:** 0.5 day
 **File:** `test/provincial-routes.test.ts` (new)
+**Status:** Done (registry-driven route resolution tests)
 
 Create a test suite that iterates over `PROVINCIAL_DATASETS` and verifies that each declared endpoint returns a valid response (or a 404 if the dataset is not yet uploaded). This prevents regressions when new provinces are added.
 
@@ -263,6 +268,7 @@ Ensure batch requests can target any provincial endpoint (`/api/bc`, `/api/ab`, 
 #### Ticket S6-T3: Update cache warming for all provincial datasets
 **Effort:** 0.5 day
 **File:** `src/cache.ts`, `src/worker.ts`
+**Status:** Done (warms live datasets via `getLiveWarmTargets()`)
 
 Ensure `performCacheWarming` iterates over all datasets in `PROVINCIAL_DATASETS` (plus federal) and warms each one. Currently it may only warm the federal dataset.
 

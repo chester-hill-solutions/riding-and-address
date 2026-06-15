@@ -143,12 +143,20 @@ aws s3 cp ./bcridings-2022.geojson s3://ridings/bcridings-2022.geojson --endpoin
 
 ### 6. Register the Province in the Dataset Registry
 
-Open `src/utils.ts` and add the province to the `PROVINCIAL_DATASETS` array:
+Open `src/datasets.ts` and add the province to the `PROVINCIAL_DATASETS` array:
 
 ```typescript
-export const PROVINCIAL_DATASETS: ProvincialDataset[] = [
+export const PROVINCIAL_DATASETS: readonly ProvincialDataset[] = [
   // ... existing entries ...
-  { code: "bc", r2Key: "bcridings-2022.geojson", name: "British Columbia", year: 2022, path: "/api/bc", aliases: ["BC", "B.C.", "BRITISH COLUMBIA"] },
+  {
+    code: 'bc',
+    r2Key: 'bcridings-2022.geojson',
+    name: 'British Columbia',
+    year: 2022,
+    path: '/api/bc',
+    aliases: ['BC', 'B.C.', 'BRITISH COLUMBIA'],
+    status: 'registered',
+  },
   // ...
 ];
 ```
@@ -163,17 +171,18 @@ export const PROVINCIAL_DATASETS: ProvincialDataset[] = [
   - Standard abbreviation (e.g., `BC`)
   - Full name (e.g., `BRITISH COLUMBIA`)
   - Common variations (e.g., `B.C.`)
+- `status`: `registered` when first adding the endpoint in code; change to `live` after the R2 upload succeeds (required for health checks and cache warming)
 
-**The registry is the single source of truth.** Once added:
+**The registry in `src/datasets.ts` is the single source of truth.** Once added:
 - `pickDataset('/api/bc')` will resolve to the correct R2 key
 - `provincePathFromFederalProperties()` will match `PROV_TERR: "BC"` to `/api/bc`
 - The OpenAPI spec will automatically include `/api/bc`
 - The landing page will show `/api/bc` in the endpoint dropdown
 - The batch endpoint will accept `/api/bc` as a valid pathname
 
-### 7. Test with Known Addresses
+### 7. Promote to `live` and test with known addresses
 
-After deployment, verify the endpoint works:
+After R2 upload, set `status: 'live'` for the province in `src/datasets.ts`, then verify:
 
 ```bash
 # Test with a known address
@@ -223,10 +232,10 @@ If this is the first time adding a province, you may need to:
 
 ## Registry Reference
 
-Current registry in `src/utils.ts`:
+Current registry in `src/datasets.ts` (see file for full list). Each entry includes `status: 'live' | 'registered'`.
 
 ```typescript
-export const PROVINCIAL_DATASETS: ProvincialDataset[] = [
+export const PROVINCIAL_DATASETS: readonly ProvincialDataset[] = [
   { code: "on", r2Key: "ontarioridings-2022.geojson", name: "Ontario", year: 2022, path: "/api/on", aliases: ["ON", "ONT", "ONTARIO"] },
   { code: "qc", r2Key: "quebecridings-2025.geojson", name: "Quebec", year: 2025, path: "/api/qc", aliases: ["QC", "QUE", "QUEBEC", "QUÉBEC"] },
   { code: "bc", r2Key: "bcridings-2022.geojson", name: "British Columbia", year: 2022, path: "/api/bc", aliases: ["BC", "B.C.", "BRITISH COLUMBIA"] },
@@ -250,7 +259,8 @@ export const PROVINCIAL_DATASETS: ProvincialDataset[] = [
 - [ ] Verified feature properties include riding name
 - [ ] Named file correctly: `{codeshort}ridings-{year}.geojson`
 - [ ] Uploaded to R2 bucket
-- [ ] Added entry to `PROVINCIAL_DATASETS` in `src/utils.ts`
+- [ ] Added entry to `PROVINCIAL_DATASETS` in `src/datasets.ts` with `status: 'registered'`
+- [ ] Set `status: 'live'` after R2 upload succeeds
 - [ ] Verified `aliases` include all common abbreviations
 - [ ] Tested endpoint with known addresses
 - [ ] Tested `include_province=true` from federal lookup

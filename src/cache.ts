@@ -2,7 +2,7 @@ import { Env, GeoJSONFeatureCollection, GeoJSONGeometry, SpatialIndex, CacheWarm
 import { geocodeIfNeeded } from './geocoding';
 import { TIME_CONSTANTS, TIME_CONSTANTS_SECONDS } from './config';
 import { geocodingCircuitBreaker } from './circuit-breaker';
-import { pickDataset } from './utils';
+import { pickDataset, getLiveWarmTargets } from './datasets';
 
 // Cache configuration
 export const CACHE_CONFIG = {
@@ -194,12 +194,8 @@ export async function warmCacheForLocation(
   lookupRiding: (env: Env, pathname: string, lon: number, lat: number) => Promise<LookupResult>
 ): Promise<boolean> {
   try {
-    // Warm all three datasets for this location
-    const datasets = [
-      { pathname: "/api/federal", r2Key: "federalridings-2024.geojson" },
-      { pathname: "/api/qc", r2Key: "quebecridings-2025.geojson" },
-      { pathname: "/api/on", r2Key: "ontarioridings-2022.geojson" }
-    ];
+    // Warm live datasets for this location
+    const datasets = getLiveWarmTargets();
 
     for (const dataset of datasets) {
       try {
@@ -244,11 +240,7 @@ export async function warmCacheForPostalCode(
     const locationWarmed = await warmCacheForLocation(env, lat, lon, `Postal Code ${postalCode}`, loadGeo, lookupRiding);
     
     // Also warm lookup cache by postal code directly
-    const datasets = [
-      { pathname: "/api/federal", r2Key: "federalridings-2024.geojson" },
-      { pathname: "/api/qc", r2Key: "quebecridings-2025.geojson" },
-      { pathname: "/api/on", r2Key: "ontarioridings-2022.geojson" }
-    ];
+    const datasets = getLiveWarmTargets();
     
     for (const dataset of datasets) {
       try {

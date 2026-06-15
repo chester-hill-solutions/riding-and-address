@@ -31,16 +31,12 @@ export const RETRY_CONFIG = {
 export function getTimeoutConfig(env: Env) {
   const batchTimeout = env.BATCH_TIMEOUT ? Number(env.BATCH_TIMEOUT) : undefined;
   return {
-    geocoding: TIMEOUT_CONFIG.geocoding,
-    lookup: TIMEOUT_CONFIG.lookup,
+    geocoding: env.GEOCODING_TIMEOUT ?? TIMEOUT_CONFIG.geocoding,
+    lookup: env.LOOKUP_TIMEOUT ?? TIMEOUT_CONFIG.lookup,
     batch: batchTimeout ?? TIMEOUT_CONFIG.batch,
-    total: TIMEOUT_CONFIG.total,
+    total: env.TOTAL_TIMEOUT ?? TIMEOUT_CONFIG.total,
     webhook: TIMEOUT_CONFIG.webhook,
-    stages: {
-      oda: 5000,       // 5s for ODA geocoding
-      geogratis: 8000, // 8s for GeoGratis
-      fallback: 10000, // 10s for fallback providers
-    }
+    stages: { ...GEOCODING_STAGE_TIMEOUTS },
   };
 }
 

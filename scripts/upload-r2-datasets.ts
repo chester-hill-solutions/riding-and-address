@@ -13,7 +13,7 @@
 import { execSync } from 'child_process';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { RIDING_DATASET_KEYS } from '../src/datasets';
+import { getAllR2Keys } from '../src/datasets';
 
 const BUCKET = 'ridings';
 const SEARCH_DIRS = ['data/ridings', '.'];
@@ -31,7 +31,7 @@ function main(): void {
   const missing: string[] = [];
   const uploaded: string[] = [];
 
-  for (const key of RIDING_DATASET_KEYS) {
+  for (const key of getAllR2Keys()) {
     const local = findLocalFile(key);
     if (!local) {
       missing.push(key);
@@ -46,7 +46,7 @@ function main(): void {
   }
 
   console.log('\n--- Verification (R2 head) ---');
-  for (const key of RIDING_DATASET_KEYS) {
+  for (const key of getAllR2Keys()) {
     try {
       execSync(`wrangler r2 object get ${BUCKET}/${key} --file /dev/null`, { stdio: 'pipe' });
       console.log(`OK  ${key}`);

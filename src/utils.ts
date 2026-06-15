@@ -3,6 +3,21 @@ import { TIMEOUT_CONFIG, RETRY_CONFIG, getRetryConfig } from './config';
 import { parseGeocodeMethodParam } from './geocode-query';
 import { parseReturnSelector, parseIncludeProvince, resolveIncludeProvince } from './return-selector';
 
+// Re-export dataset registry for backward compatibility
+export {
+  pickDataset,
+  provincePathFromFederalProperties,
+  getAllProvincialPaths,
+  getAllProvincialDatasets,
+  getProvincialDatasetByPath,
+  getProvincialDatasetByCode,
+  PROVINCIAL_DATASETS,
+  FEDERAL_DATASET,
+  type ProvincialDataset,
+  type ProvincialPath,
+  type DatasetStatus,
+} from './datasets';
+
 // Re-export for backward compatibility
 export const DEFAULT_TIMEOUTS = TIMEOUT_CONFIG;
 export const DEFAULT_RETRY_CONFIG = RETRY_CONFIG;
@@ -489,93 +504,6 @@ export function getCorrelationId(request: Request): string {
   return request.headers.get("X-Correlation-ID") || 
          request.headers.get("X-Request-ID") || 
          generateCorrelationId();
-}
-
-// Dataset selection
-export interface ProvincialDataset {
-  code: string;
-  r2Key: string;
-  name: string;
-  year: number;
-  path: string;
-  aliases: string[];
-}
-
-export const PROVINCIAL_DATASETS: ProvincialDataset[] = [
-  { code: "on", r2Key: "ontarioridings-2022.geojson", name: "Ontario", year: 2022, path: "/api/on", aliases: ["ON", "ONT", "ONTARIO"] },
-  { code: "qc", r2Key: "quebecridings-2025.geojson", name: "Quebec", year: 2025, path: "/api/qc", aliases: ["QC", "QUE", "QUEBEC", "QUÉBEC"] },
-  { code: "bc", r2Key: "bcridings-2022.geojson", name: "British Columbia", year: 2022, path: "/api/bc", aliases: ["BC", "B.C.", "BRITISH COLUMBIA"] },
-  { code: "ab", r2Key: "abridings-2022.geojson", name: "Alberta", year: 2022, path: "/api/ab", aliases: ["AB", "ALBERTA"] },
-  { code: "ns", r2Key: "nsridings-2022.geojson", name: "Nova Scotia", year: 2022, path: "/api/ns", aliases: ["NS", "NOVA SCOTIA"] },
-  { code: "nb", r2Key: "nbridings-2022.geojson", name: "New Brunswick", year: 2022, path: "/api/nb", aliases: ["NB", "NEW BRUNSWICK"] },
-  { code: "mb", r2Key: "mbridings-2022.geojson", name: "Manitoba", year: 2022, path: "/api/mb", aliases: ["MB", "MANITOBA"] },
-  { code: "sk", r2Key: "skridings-2022.geojson", name: "Saskatchewan", year: 2022, path: "/api/sk", aliases: ["SK", "SASKATCHEWAN"] },
-  { code: "nl", r2Key: "nlridings-2022.geojson", name: "Newfoundland and Labrador", year: 2022, path: "/api/nl", aliases: ["NL", "NEWFOUNDLAND", "NEWFOUNDLAND AND LABRADOR", "LABRADOR"] },
-  { code: "pe", r2Key: "peridings-2022.geojson", name: "Prince Edward Island", year: 2022, path: "/api/pe", aliases: ["PE", "PEI", "PRINCE EDWARD ISLAND"] },
-  { code: "nt", r2Key: "ntridings-2022.geojson", name: "Northwest Territories", year: 2022, path: "/api/nt", aliases: ["NT", "NWT", "NORTHWEST TERRITORIES"] },
-  { code: "nu", r2Key: "nuridings-2022.geojson", name: "Nunavut", year: 2022, path: "/api/nu", aliases: ["NU", "NUNAVUT"] },
-  { code: "yt", r2Key: "ytridings-2022.geojson", name: "Yukon", year: 2022, path: "/api/yt", aliases: ["YT", "YUKON", "YUKON TERRITORY"] },
-];
-
-const FEDERAL_DATASET = { code: "federal", r2Key: "federalridings-2024.geojson", name: "Federal", year: 2024, path: "/api/federal", aliases: [] };
-
-export function pickDataset(pathname: string): { r2Key: string } {
-  // Federal paths
-  if (pathname === "/api" || pathname === "/api/federal" || pathname === "/api/combined") {
-    return { r2Key: FEDERAL_DATASET.r2Key };
-  }
-  // Provincial paths
-  const dataset = PROVINCIAL_DATASETS.find(d => d.path === pathname);
-  if (dataset) {
-    return { r2Key: dataset.r2Key };
-  }
-  // Default fallback
-  return { r2Key: FEDERAL_DATASET.r2Key };
-}
-
-export function getProvincialDatasetByPath(pathname: string): ProvincialDataset | undefined {
-  return PROVINCIAL_DATASETS.find(d => d.path === pathname);
-}
-
-export function getProvincialDatasetByCode(code: string): ProvincialDataset | undefined {
-  return PROVINCIAL_DATASETS.find(d => d.code === code.toLowerCase());
-}
-
-function buildProvincePathMap(): Record<string, string> {
-  const map: Record<string, string> = {};
-  for (const dataset of PROVINCIAL_DATASETS) {
-    for (const alias of dataset.aliases) {
-      map[alias.toUpperCase()] = dataset.path;
-    }
-  }
-  return map;
-}
-
-const PROV_TERR_TO_PROVINCE_PATH: Record<string, string> = buildProvincePathMap();
-
-export function getAllProvincialPaths(): string[] {
-  return PROVINCIAL_DATASETS.map(d => d.path);
-}
-
-export function getAllProvincialDatasets(): ProvincialDataset[] {
-  return [...PROVINCIAL_DATASETS];
-}
-
-/**
- * Maps federal feature province field (PROV_TERR or PROV_CODE) to a provincial lookup path.
- */
-export function provincePathFromFederalProperties(
-  properties: Record<string, unknown> | null | undefined
-): string | null {
-  if (!properties) return null;
-  const raw = properties.PROV_TERR ?? properties.PROV_CODE;
-  if (typeof raw !== "string" || !raw.trim()) return null;
-  const key = raw
-    .trim()
-    .toUpperCase()
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "");
-  return PROV_TERR_TO_PROVINCE_PATH[key] ?? null;
 }
 
 /** Extract a display riding name from feature properties across federal/provincial datasets. */
