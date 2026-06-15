@@ -16,17 +16,17 @@ The API provides lookup endpoints for different levels of government:
 |---------------------|----------|--------|-------------|
 | Ontario | `GET /api/on` | live | 2022 |
 | Quebec | `GET /api/qc` | live | 2025 |
-| British Columbia | `GET /api/bc` | registered | 2022 |
-| Alberta | `GET /api/ab` | registered | 2022 |
-| Nova Scotia | `GET /api/ns` | registered | 2022 |
-| New Brunswick | `GET /api/nb` | registered | 2022 |
-| Manitoba | `GET /api/mb` | registered | 2022 |
-| Saskatchewan | `GET /api/sk` | registered | 2022 |
-| Newfoundland and Labrador | `GET /api/nl` | registered | 2022 |
-| Prince Edward Island | `GET /api/pe` | registered | 2022 |
-| Northwest Territories | `GET /api/nt` | registered | 2022 |
-| Nunavut | `GET /api/nu` | registered | 2022 |
-| Yukon | `GET /api/yt` | registered | 2022 |
+| British Columbia | `GET /api/bc` | live | 2022 |
+| Alberta | `GET /api/ab` | live | 2022 |
+| Nova Scotia | `GET /api/ns` | live | 2022 |
+| New Brunswick | `GET /api/nb` | live | 2022 |
+| Manitoba | `GET /api/mb` | live | 2022 |
+| Saskatchewan | `GET /api/sk` | live | 2022 |
+| Newfoundland and Labrador | `GET /api/nl` | live | 2022 |
+| Prince Edward Island | `GET /api/pe` | live | 2022 |
+| Northwest Territories | `GET /api/nt` | live | 2022 |
+| Nunavut | `GET /api/nu` | live | 2022 |
+| Yukon | `GET /api/yt` | live | 2022 |
 
 **Note:** `live` means the dataset is uploaded to R2 and lookups succeed. `registered` means the endpoint is wired in code but the R2 object is not yet required for health checks. See [`src/datasets.ts`](src/datasets.ts) for the authoritative registry and status values.
 

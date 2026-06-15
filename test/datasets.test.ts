@@ -27,20 +27,18 @@ describe('checkRidingDatasets', () => {
     expect(missingDatasetKeys(datasets)).toEqual([]);
   });
 
-  it('reports missing live quebec dataset as unhealthy', async () => {
-    const present = new Set(getLiveR2Keys().filter((k) => k !== 'quebecridings-2025.geojson'));
+  it('reports missing live provincial dataset as unhealthy', async () => {
+    const present = new Set(getLiveR2Keys().filter((k) => k !== 'bcridings-2022.geojson'));
     const env = { RIDINGS: mockR2(present) } as Env;
     const datasets = await checkRidingDatasets(env);
     expect(allRequiredDatasetsPresent(datasets)).toBe(false);
-    expect(missingDatasetKeys(datasets)).toEqual(['quebecridings-2025.geojson']);
+    expect(missingDatasetKeys(datasets)).toEqual(['bcridings-2022.geojson']);
   });
 
-  it('reports registered provinces missing from R2 without failing health', async () => {
+  it('treats all provinces as live datasets required for health', async () => {
     const env = { RIDINGS: mockR2(new Set(getLiveR2Keys())) } as Env;
     const datasets = await checkRidingDatasets(env);
-    const registered = datasets.filter((d) => d.status === 'registered');
-    expect(registered.length).toBeGreaterThan(0);
-    expect(registered.every((d) => !d.present)).toBe(true);
+    expect(datasets.filter((d) => d.status === 'registered')).toHaveLength(0);
     expect(allRequiredDatasetsPresent(datasets)).toBe(true);
   });
 

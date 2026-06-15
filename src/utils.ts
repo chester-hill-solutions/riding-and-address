@@ -517,6 +517,7 @@ export function ridingNameFromProperties(
     properties.NAME_EN,
     properties.FED_NAME,
     properties.ED_NAMEE,
+    properties.ED_NAME,
     properties.NM_CEP,
   ];
   for (const candidate of candidates) {

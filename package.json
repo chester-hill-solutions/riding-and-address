@@ -36,6 +36,7 @@
     "compare:opennorth": "tsx scripts/compare-opennorth.ts",
     "compare:report": "tsx scripts/generate-comparison-report.ts",
     "upload:r2-datasets": "tsx scripts/upload-r2-datasets.ts",
+    "acquire:provincial-ridings": "python3 scripts/acquire-provincial-ridings.py",
     "import:oda": "tsx scripts/import-oda.ts"
   },
   "keywords": [],

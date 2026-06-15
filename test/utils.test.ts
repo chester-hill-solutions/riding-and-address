@@ -194,6 +194,7 @@ describe('ridingNameFromProperties', () => {
     expect(ridingNameFromProperties({ ENGLISH_NAME: 'Toronto Centre' })).toBe('Toronto Centre');
     expect(ridingNameFromProperties({ ENGLISH_NA: 'Spadina—Fort York' })).toBe('Spadina—Fort York');
     expect(ridingNameFromProperties({ ED_NAMEE: 'Spadina—Harbourfront' })).toBe('Spadina—Harbourfront');
+    expect(ridingNameFromProperties({ ED_NAME: 'Vancouver-False Creek' })).toBe('Vancouver-False Creek');
     expect(ridingNameFromProperties({ FED_NAME: 'Ottawa Centre' })).toBe('Ottawa Centre');
     expect(ridingNameFromProperties({ NM_CEP: 'Jean-Talon' })).toBe('Jean-Talon');
   });

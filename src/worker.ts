@@ -33,7 +33,7 @@ import {
   getClientId,
   getCorrelationId,
 } from './utils';
-import { pickDataset, checkRidingDatasets, allRequiredDatasetsPresent, missingDatasetKeys } from './datasets';
+import { pickDataset, checkRidingDatasets, allRequiredDatasetsPresent, missingDatasetKeys, getAllR2Keys } from './datasets';
 import { handleLookupRequest } from './lookup-handler';
 import { resolveLookupPath } from './return-selector';
 import { 
@@ -656,7 +656,7 @@ export default {
             enabled: dbConfig.ENABLED,
             useRtreeIndex: dbConfig.USE_RTREE_INDEX,
             batchInsertSize: dbConfig.BATCH_INSERT_SIZE,
-            datasets: ['federalridings-2024.geojson', 'quebecridings-2025.geojson', 'ontarioridings-2022.geojson']
+            datasets: getAllR2Keys()
           }), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",

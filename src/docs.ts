@@ -1,6 +1,9 @@
 // Documentation and UI functions
 
-import { getAllProvincialPaths, PROVINCIAL_DATASETS } from './datasets';
+import { getAllProvincialPaths, getAllR2Keys, PROVINCIAL_DATASETS } from './datasets';
+
+const RIDING_DATASET_KEYS = getAllR2Keys();
+const PROVINCIAL_DATASET_STEMS = PROVINCIAL_DATASETS.map((d) => d.r2Key.replace(/\.geojson$/, ''));
 
 export { createLandingPage } from './landing-page';
 
@@ -467,7 +470,7 @@ export function createOpenAPISpec(baseUrl: string) {
                           properties: { type: "object" },
                           dataset: {
                             type: "string",
-                            enum: ["ontarioridings-2022", "quebecridings-2025"],
+                            enum: PROVINCIAL_DATASET_STEMS,
                           },
                         },
                       },
@@ -934,11 +937,7 @@ export function createOpenAPISpec(baseUrl: string) {
                   properties: {
                     dataset: {
                       type: "string",
-                      enum: [
-                        "federalridings-2024.geojson",
-                        "quebecridings-2025.geojson",
-                        "ontarioridings-2022.geojson",
-                      ],
+                      enum: RIDING_DATASET_KEYS,
                       default: "federalridings-2024.geojson",
                     },
                   },
@@ -1023,11 +1022,7 @@ export function createOpenAPISpec(baseUrl: string) {
               required: false,
               schema: {
                 type: "string",
-                enum: [
-                  "federalridings-2024.geojson",
-                  "quebecridings-2025.geojson",
-                  "ontarioridings-2022.geojson",
-                ],
+                enum: RIDING_DATASET_KEYS,
                 default: "federalridings-2024.geojson",
               },
             },
@@ -1079,11 +1074,7 @@ export function createOpenAPISpec(baseUrl: string) {
               required: false,
               schema: {
                 type: "string",
-                enum: [
-                  "federalridings-2024.geojson",
-                  "quebecridings-2025.geojson",
-                  "ontarioridings-2022.geojson",
-                ],
+                enum: RIDING_DATASET_KEYS,
                 default: "federalridings-2024.geojson",
               },
             },
@@ -1120,11 +1111,7 @@ export function createOpenAPISpec(baseUrl: string) {
               required: false,
               schema: {
                 type: "string",
-                enum: [
-                  "federalridings-2024.geojson",
-                  "quebecridings-2025.geojson",
-                  "ontarioridings-2022.geojson",
-                ],
+                enum: RIDING_DATASET_KEYS,
                 default: "federalridings-2024.geojson",
               },
             },

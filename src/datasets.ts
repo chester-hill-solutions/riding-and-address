@@ -37,17 +37,17 @@ export const FEDERAL_DATASET: FederalDataset = {
 export const PROVINCIAL_DATASETS: readonly ProvincialDataset[] = [
   { code: 'on', r2Key: 'ontarioridings-2022.geojson', name: 'Ontario', year: 2022, path: '/api/on', aliases: ['ON', 'ONT', 'ONTARIO'], status: 'live' },
   { code: 'qc', r2Key: 'quebecridings-2025.geojson', name: 'Quebec', year: 2025, path: '/api/qc', aliases: ['QC', 'QUE', 'QUEBEC', 'QUÉBEC'], status: 'live' },
-  { code: 'bc', r2Key: 'bcridings-2022.geojson', name: 'British Columbia', year: 2022, path: '/api/bc', aliases: ['BC', 'B.C.', 'BRITISH COLUMBIA'], status: 'registered' },
-  { code: 'ab', r2Key: 'abridings-2022.geojson', name: 'Alberta', year: 2022, path: '/api/ab', aliases: ['AB', 'ALBERTA'], status: 'registered' },
-  { code: 'ns', r2Key: 'nsridings-2022.geojson', name: 'Nova Scotia', year: 2022, path: '/api/ns', aliases: ['NS', 'NOVA SCOTIA'], status: 'registered' },
-  { code: 'nb', r2Key: 'nbridings-2022.geojson', name: 'New Brunswick', year: 2022, path: '/api/nb', aliases: ['NB', 'NEW BRUNSWICK'], status: 'registered' },
-  { code: 'mb', r2Key: 'mbridings-2022.geojson', name: 'Manitoba', year: 2022, path: '/api/mb', aliases: ['MB', 'MANITOBA'], status: 'registered' },
-  { code: 'sk', r2Key: 'skridings-2022.geojson', name: 'Saskatchewan', year: 2022, path: '/api/sk', aliases: ['SK', 'SASKATCHEWAN'], status: 'registered' },
-  { code: 'nl', r2Key: 'nlridings-2022.geojson', name: 'Newfoundland and Labrador', year: 2022, path: '/api/nl', aliases: ['NL', 'NEWFOUNDLAND', 'NEWFOUNDLAND AND LABRADOR', 'LABRADOR'], status: 'registered' },
-  { code: 'pe', r2Key: 'peridings-2022.geojson', name: 'Prince Edward Island', year: 2022, path: '/api/pe', aliases: ['PE', 'PEI', 'PRINCE EDWARD ISLAND'], status: 'registered' },
-  { code: 'nt', r2Key: 'ntridings-2022.geojson', name: 'Northwest Territories', year: 2022, path: '/api/nt', aliases: ['NT', 'NWT', 'NORTHWEST TERRITORIES'], status: 'registered' },
-  { code: 'nu', r2Key: 'nuridings-2022.geojson', name: 'Nunavut', year: 2022, path: '/api/nu', aliases: ['NU', 'NUNAVUT'], status: 'registered' },
-  { code: 'yt', r2Key: 'ytridings-2022.geojson', name: 'Yukon', year: 2022, path: '/api/yt', aliases: ['YT', 'YUKON', 'YUKON TERRITORY'], status: 'registered' },
+  { code: 'bc', r2Key: 'bcridings-2022.geojson', name: 'British Columbia', year: 2022, path: '/api/bc', aliases: ['BC', 'B.C.', 'BRITISH COLUMBIA'], status: 'live' },
+  { code: 'ab', r2Key: 'abridings-2022.geojson', name: 'Alberta', year: 2022, path: '/api/ab', aliases: ['AB', 'ALBERTA'], status: 'live' },
+  { code: 'ns', r2Key: 'nsridings-2022.geojson', name: 'Nova Scotia', year: 2022, path: '/api/ns', aliases: ['NS', 'NOVA SCOTIA'], status: 'live' },
+  { code: 'nb', r2Key: 'nbridings-2022.geojson', name: 'New Brunswick', year: 2022, path: '/api/nb', aliases: ['NB', 'NEW BRUNSWICK'], status: 'live' },
+  { code: 'mb', r2Key: 'mbridings-2022.geojson', name: 'Manitoba', year: 2022, path: '/api/mb', aliases: ['MB', 'MANITOBA'], status: 'live' },
+  { code: 'sk', r2Key: 'skridings-2022.geojson', name: 'Saskatchewan', year: 2022, path: '/api/sk', aliases: ['SK', 'SASKATCHEWAN'], status: 'live' },
+  { code: 'nl', r2Key: 'nlridings-2022.geojson', name: 'Newfoundland and Labrador', year: 2022, path: '/api/nl', aliases: ['NL', 'NEWFOUNDLAND', 'NEWFOUNDLAND AND LABRADOR', 'LABRADOR'], status: 'live' },
+  { code: 'pe', r2Key: 'peridings-2022.geojson', name: 'Prince Edward Island', year: 2022, path: '/api/pe', aliases: ['PE', 'PEI', 'PRINCE EDWARD ISLAND'], status: 'live' },
+  { code: 'nt', r2Key: 'ntridings-2022.geojson', name: 'Northwest Territories', year: 2022, path: '/api/nt', aliases: ['NT', 'NWT', 'NORTHWEST TERRITORIES'], status: 'live' },
+  { code: 'nu', r2Key: 'nuridings-2022.geojson', name: 'Nunavut', year: 2022, path: '/api/nu', aliases: ['NU', 'NUNAVUT'], status: 'live' },
+  { code: 'yt', r2Key: 'ytridings-2022.geojson', name: 'Yukon', year: 2022, path: '/api/yt', aliases: ['YT', 'YUKON', 'YUKON TERRITORY'], status: 'live' },
 ];
 
 export type RidingDatasetKey = typeof FEDERAL_DATASET.r2Key | (typeof PROVINCIAL_DATASETS)[number]['r2Key'];

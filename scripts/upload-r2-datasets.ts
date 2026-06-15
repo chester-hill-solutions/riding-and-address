@@ -9,6 +9,7 @@
  * Usage:
  *   npx tsx scripts/upload-r2-datasets.ts
  *   npx tsx scripts/upload-r2-datasets.ts --verify-only
+ *   npx tsx scripts/upload-r2-datasets.ts --remote
  */
 import { execSync } from 'child_process';
 import { existsSync } from 'fs';
@@ -28,6 +29,8 @@ function findLocalFile(key: string): string | null {
 
 function main(): void {
   const verifyOnly = process.argv.includes('--verify-only');
+  const remote = process.argv.includes('--remote');
+  const remoteFlag = remote ? ' --remote' : '';
   const missing: string[] = [];
   const uploaded: string[] = [];
 
@@ -38,7 +41,7 @@ function main(): void {
       continue;
     }
     if (!verifyOnly) {
-      execSync(`wrangler r2 object put ${BUCKET}/${key} --file "${local}"`, {
+      execSync(`wrangler r2 object put ${BUCKET}/${key} --file "${local}"${remoteFlag}`, {
         stdio: 'inherit',
       });
       uploaded.push(key);
@@ -48,7 +51,7 @@ function main(): void {
   console.log('\n--- Verification (R2 head) ---');
   for (const key of getAllR2Keys()) {
     try {
-      execSync(`wrangler r2 object get ${BUCKET}/${key} --file /dev/null`, { stdio: 'pipe' });
+      execSync(`wrangler r2 object get ${BUCKET}/${key} --file /dev/null${remoteFlag}`, { stdio: 'pipe' });
       console.log(`OK  ${key}`);
     } catch {
       console.log(`MISSING  ${key}`);
