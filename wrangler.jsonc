@@ -60,6 +60,9 @@
     // Batch processing configuration
     "BATCH_SIZE": 50,
     "BATCH_TIMEOUT": 30000,
+    "GEOCODING_TIMEOUT": 10000,
+    "LOOKUP_TIMEOUT": 5000,
+    "TOTAL_TIMEOUT": 60000,
     "RATE_LIMIT": 100,
     "GEOCODER": "google",
     "ODA_GEOCODING_ENABLED": "true",

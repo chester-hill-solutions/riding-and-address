@@ -35,6 +35,7 @@
     "benchmark:lookup": "tsx scripts/benchmark-lookup.ts",
     "compare:opennorth": "tsx scripts/compare-opennorth.ts",
     "compare:report": "tsx scripts/generate-comparison-report.ts",
+    "upload:r2-datasets": "tsx scripts/upload-r2-datasets.ts",
     "import:oda": "tsx scripts/import-oda.ts"
   },
   "keywords": [],

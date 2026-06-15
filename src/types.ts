@@ -11,6 +11,9 @@ export interface Env {
   CIRCUIT_BREAKER_DO?: DurableObjectNamespace;
   BATCH_SIZE?: number;
   BATCH_TIMEOUT?: number;
+  GEOCODING_TIMEOUT?: number;
+  LOOKUP_TIMEOUT?: number;
+  TOTAL_TIMEOUT?: number;
   RATE_LIMIT?: number;
   GEOCODING_CACHE?: KVNamespace;
   LOOKUP_CACHE?: KVNamespace;
@@ -248,6 +251,10 @@ export interface QueryParams {
   include_province?: string;
   /** Parsed include_province flag (set during validation) */
   includeProvince?: boolean;
+  /** Raw geocode_method from query string or batch body */
+  geocode_method?: string;
+  /** Parsed geocode method (set during validation) */
+  geocodeMethod?: 'auto' | 'postal_centroid';
 }
 
 export interface LookupResult {
@@ -411,6 +418,9 @@ export interface Metrics {
   errorCount: number;
   totalLookupTime: number;
   totalGeocodingTime: number;
+  geocodingOdaTime: number;
+  geocodingGeoGratisTime: number;
+  geocodingFallbackTime: number;
   totalR2Time: number;
   totalBatchTime: number;
   totalWebhookTime: number;

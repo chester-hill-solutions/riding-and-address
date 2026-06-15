@@ -9,8 +9,10 @@ import {
   Metrics,
   DeferTaskFn,
 } from './types';
-import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS, TIME_CONSTANTS_SECONDS, QUALITY_THRESHOLDS } from './config';
+import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS, TIME_CONSTANTS_SECONDS, QUALITY_THRESHOLDS, GEOCODING_STAGE_TIMEOUTS } from './config';
 import { withRetry, withTimeout, NonRetriableError } from './utils';
+import { isPostalOnlyQuery, wantsPostalCentroidOnly } from './geocode-query';
+import { recordTiming } from './metrics';
 import { 
   safeValidateGeoGratis,
   safeValidateGoogleGeocode,
@@ -18,7 +20,7 @@ import {
   safeValidateNominatim
 } from './validation';
 import { isOdaEnabled } from './oda-config';
-import { geocodeWithOda, OdaGeocodeError } from './oda-geocoding';
+import { geocodeWithOda, geocodePostalCentroidWithOda, geocodeBatchWithOda, OdaGeocodeError } from './oda-geocoding';
 import {
   buildGeocodeQueryString,
   expandStreetAddress,
@@ -638,6 +640,69 @@ async function geocodeWithNominatim(qp: QueryParams, query: string): Promise<Geo
   return { lon: Number(first.lon), lat: Number(first.lat) };
 }
 
+function remainingMs(budgetMs: number, startTime: number): number {
+  return Math.max(0, budgetMs - (Date.now() - startTime));
+}
+
+function stageLimit(budgetMs: number, startTime: number, stageDefault: number): number {
+  return Math.max(500, Math.min(stageDefault, remainingMs(budgetMs, startTime)));
+}
+
+async function runOdaGeocodeStage(
+  env: Env,
+  qp: QueryParams,
+  circuitBreaker: { execute: (key: string, fn: () => Promise<unknown>) => Promise<unknown> } | undefined,
+  deferTask: DeferTaskFn | undefined,
+  budgetMs: number,
+  startTime: number,
+  metrics?: {
+    incrementMetric: (key: keyof Metrics, value?: number) => void;
+    recordTiming: (key: keyof Metrics, duration: number) => void;
+  }
+): Promise<GeocodeResult | null> {
+  const odaCacheKey = generateGeocodingCacheKey(qp, 'oda');
+  const odaCached = await getCachedGeocoding(env, odaCacheKey);
+  if (odaCached) {
+    metrics?.incrementMetric('geocodingCacheHits');
+    return odaCached;
+  }
+
+  metrics?.incrementMetric('geocodingCacheMisses');
+  const odaStageMs = stageLimit(budgetMs, startTime, GEOCODING_STAGE_TIMEOUTS.oda);
+  const odaStarted = Date.now();
+
+  const runPostalCentroid = wantsPostalCentroidOnly(qp) || isPostalOnlyQuery(qp);
+  const odaFn = async (): Promise<GeocodeResult> => {
+    const result = runPostalCentroid
+      ? await geocodePostalCentroidWithOda(env, qp)
+      : await geocodeWithOda(env, qp);
+    return result;
+  };
+
+  try {
+    const odaPromise = circuitBreaker
+      ? circuitBreaker.execute('geocoding:oda', odaFn)
+      : odaFn();
+    const odaResult = (await withTimeout(odaPromise, odaStageMs, 'ODA geocoding')) as GeocodeResult;
+    recordTiming('geocodingOdaTime', Date.now() - odaStarted);
+    await runOrDefer(deferTask, setCachedGeocoding(env, odaCacheKey, odaResult, 'oda'));
+    metrics?.incrementMetric('geocodingSuccesses');
+    return odaResult;
+  } catch (error) {
+    recordTiming('geocodingOdaTime', Date.now() - odaStarted);
+    if (wantsPostalCentroidOnly(qp)) {
+      throw error;
+    }
+    if (error instanceof OdaGeocodeError) {
+      console.warn(
+        `[GEOCODING] ODA miss (${error.code}), falling back to GeoGratis/${env.GEOCODER || 'nominatim'}`
+      );
+      return null;
+    }
+    throw error;
+  }
+}
+
 // Main geocoding function
 /**
  * Geocodes a query (address/postal code) to coordinates if needed.
@@ -678,32 +743,24 @@ export async function geocodeIfNeeded(
     metrics?.incrementMetric('geocodingRequests');
 
     if (isOdaEnabled(env)) {
-      const odaCacheKey = generateGeocodingCacheKey(qp, 'oda');
-      const odaCached = await getCachedGeocoding(env, odaCacheKey);
-      if (odaCached) {
-        metrics?.incrementMetric('geocodingCacheHits');
-        metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
-        return odaCached;
-      }
-
-      metrics?.incrementMetric('geocodingCacheMisses');
-      try {
-        const odaFn = async (): Promise<GeocodeResult> => geocodeWithOda(env, qp);
-        const odaResult = circuitBreaker
-          ? ((await circuitBreaker.execute('geocoding:oda', odaFn)) as GeocodeResult)
-          : await odaFn();
-        await runOrDefer(deferTask, setCachedGeocoding(env, odaCacheKey, odaResult, 'oda'));
-        metrics?.incrementMetric('geocodingSuccesses');
+      const odaResult = await runOdaGeocodeStage(
+        env,
+        qp,
+        circuitBreaker,
+        deferTask,
+        timeoutMs,
+        startTime,
+        metrics
+      );
+      if (odaResult) {
         metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
         return odaResult;
-      } catch (error) {
-        if (error instanceof OdaGeocodeError) {
-          console.warn(
-            `[GEOCODING] ODA miss (${error.code}), falling back to GeoGratis/${env.GEOCODER || 'nominatim'}`
-          );
-        } else {
-          throw error;
-        }
+      }
+      if (wantsPostalCentroidOnly(qp)) {
+        throw new OdaGeocodeError('Postal centroid not found', 'ADDRESS_NOT_FOUND', 404);
+      }
+      if (isPostalOnlyQuery(qp) && remainingMs(timeoutMs, startTime) <= 0) {
+        throw new Error('Geocoding timeout after ' + timeoutMs + 'ms');
       }
     }
     
@@ -728,8 +785,11 @@ export async function geocodeIfNeeded(
     }
     
     // Try GeoGratis API
+    const geogratisStarted = Date.now();
     try {
-      const geogratisResult = await geocodeWithGeoGratis(qp);
+      const geogratisStageMs = stageLimit(timeoutMs, startTime, GEOCODING_STAGE_TIMEOUTS.geogratis);
+      const geogratisResult = await withTimeout(geocodeWithGeoGratis(qp), geogratisStageMs, 'GeoGratis geocoding');
+      recordTiming('geocodingGeoGratisTime', Date.now() - geogratisStarted);
       
       if (geogratisResult) {
         const isInterpolated = geogratisResult.qualifier === 'INTERPOLATED_POSITION';
@@ -766,11 +826,13 @@ export async function geocodeIfNeeded(
         console.warn(`[GEOCODING] GeoGratis failed, falling back to ${env.GEOCODER || 'nominatim'}`);
       }
     } catch (error) {
+      recordTiming('geocodingGeoGratisTime', Date.now() - geogratisStarted);
       // GeoGratis threw an error
       console.warn(`[GEOCODING] GeoGratis error, falling back to ${env.GEOCODER || 'nominatim'}:`, error instanceof Error ? error.message : 'Unknown error');
     }
     
     // Fallback to existing provider logic
+    const fallbackStarted = Date.now();
     const provider = (env.GEOCODER || "nominatim").toLowerCase();
     
     // Check cache for fallback provider
@@ -793,6 +855,7 @@ export async function geocodeIfNeeded(
     // Use circuit breaker and retry for geocoding
     let result: GeocodeResult;
     try {
+      const fallbackStageMs = stageLimit(timeoutMs, startTime, GEOCODING_STAGE_TIMEOUTS.fallback);
       const geocodeFn = async (): Promise<GeocodeResult> => {
         if (provider === "google") {
           return await geocodeWithGoogle(qp, query, env, request);
@@ -804,16 +867,18 @@ export async function geocodeIfNeeded(
       };
 
       const retryConfig = getRetryConfig();
-      if (circuitBreaker) {
-        result = await circuitBreaker.execute(`geocoding:${provider}`, async () => {
-          return await withRetry(geocodeFn, retryConfig, `Geocoding ${provider}`);
-        }) as GeocodeResult;
-      } else {
-        result = await withRetry(geocodeFn, retryConfig, `Geocoding ${provider}`);
-      }
+      const fallbackPromise = circuitBreaker
+        ? circuitBreaker.execute(`geocoding:${provider}`, async () => {
+            return await withRetry(geocodeFn, retryConfig, `Geocoding ${provider}`);
+          })
+        : withRetry(geocodeFn, retryConfig, `Geocoding ${provider}`);
+
+      result = (await withTimeout(fallbackPromise, fallbackStageMs, 'Fallback geocoding')) as GeocodeResult;
+      recordTiming('geocodingFallbackTime', Date.now() - fallbackStarted);
       
       metrics?.incrementMetric('geocodingSuccesses');
     } catch (error) {
+      recordTiming('geocodingFallbackTime', Date.now() - fallbackStarted);
       console.error(`[GEOCODING] Geocoding failed after ${Date.now() - startTime}ms:`, error instanceof Error ? error.message : 'Unknown error');
       metrics?.incrementMetric('geocodingFailures');
       if (error instanceof Error && error.message.includes('Circuit breaker is OPEN')) {
@@ -1024,6 +1089,25 @@ export async function geocodeBatch(
 ): Promise<GeocodeBatchResult[]> {
   if (!BATCH_GEOCODING_CONFIG.ENABLED || queries.length === 0) {
     return [];
+  }
+
+  if (isOdaEnabled(env)) {
+    const allPostalOrCoords = queries.every(
+      (q) =>
+        (q.lat !== undefined && q.lon !== undefined) ||
+        isPostalOnlyQuery(q) ||
+        q.geocodeMethod === 'postal_centroid'
+    );
+    if (allPostalOrCoords) {
+      const odaResults = await geocodeBatchWithOda(env, queries);
+      return odaResults.map((r) => ({
+        lon: r.lon,
+        lat: r.lat,
+        success: r.success,
+        error: r.error,
+        normalizedAddress: r.normalizedAddress,
+      }));
+    }
   }
 
   const results: GeocodeBatchResult[] = [];

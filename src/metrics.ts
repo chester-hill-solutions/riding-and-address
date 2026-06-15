@@ -38,6 +38,9 @@ const metrics: Metrics = {
   errorCount: 0,
   totalLookupTime: 0,
   totalGeocodingTime: 0,
+  geocodingOdaTime: 0,
+  geocodingGeoGratisTime: 0,
+  geocodingFallbackTime: 0,
   totalR2Time: 0,
   totalBatchTime: 0,
   totalWebhookTime: 0

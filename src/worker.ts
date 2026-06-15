@@ -36,6 +36,11 @@ import {
 } from './utils';
 import { handleLookupRequest } from './lookup-handler';
 import { resolveLookupPath } from './return-selector';
+import {
+  checkRidingDatasets,
+  allRequiredDatasetsPresent,
+  missingDatasetKeys,
+} from './datasets';
 import { 
   createSpatialIndex, 
   findCandidateFeatures, 
@@ -385,13 +390,18 @@ export default {
           geocoding: await geocodingCircuitBreaker.getStateInfo('geocoding:nominatim'),
           r2: await r2CircuitBreaker.getStateInfo('r2:federalridings-2024.geojson')
         };
+        const datasets = await checkRidingDatasets(env);
+        const datasetsOk = allRequiredDatasetsPresent(datasets);
+        const missingDatasets = missingDatasetKeys(datasets);
 
         return new Response(JSON.stringify({
-          status: 'healthy',
+          status: datasetsOk ? 'healthy' : 'unhealthy',
           timestamp: Date.now(),
           metrics,
           circuitBreakers: circuitBreakerStates,
-          cacheWarming: getCacheWarmingStatus()
+          cacheWarming: getCacheWarmingStatus(),
+          datasets,
+          ...(missingDatasets.length > 0 && { missingDatasets }),
         }), {
           headers: {
             "content-type": "application/json; charset=UTF-8",

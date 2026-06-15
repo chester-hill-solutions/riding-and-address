@@ -1,5 +1,6 @@
 import { Env, QueryParams, GeoJSONGeometry } from './types';
 import { TIMEOUT_CONFIG, RETRY_CONFIG, getRetryConfig } from './config';
+import { parseGeocodeMethodParam } from './geocode-query';
 import { parseReturnSelector, parseIncludeProvince, resolveIncludeProvince } from './return-selector';
 
 // Re-export for backward compatibility
@@ -306,6 +307,17 @@ export function validateAndSanitizeQuery(query: QueryParams, pathname: string): 
     sanitized.includeProvince = includeProvinceParse.value;
   }
 
+  if (query.geocode_method !== undefined) {
+    const geocodeMethodParse = parseGeocodeMethodParam(query.geocode_method);
+    if (!geocodeMethodParse.valid) {
+      return { valid: false, error: geocodeMethodParse.error };
+    }
+    sanitized.geocode_method = query.geocode_method;
+    sanitized.geocodeMethod = geocodeMethodParse.value;
+  } else {
+    sanitized.geocodeMethod = 'auto';
+  }
+
   sanitized.returnFields = sanitized.returnFields ?? [];
   sanitized.includeProvince = resolveIncludeProvince(
     pathname,
@@ -526,6 +538,7 @@ export function ridingNameFromProperties(
     properties.NAME_EN,
     properties.FED_NAME,
     properties.ED_NAMEE,
+    properties.NM_CEP,
   ];
   for (const candidate of candidates) {
     if (typeof candidate === 'string' && candidate.trim()) {
@@ -557,6 +570,7 @@ export function parseQuery(request: Request): { query: QueryParams; validation: 
     country: q.get("country") || undefined,
     return: q.get("return") || undefined,
     include_province: includeProvinceFromSearchParams(q),
+    geocode_method: q.get("geocode_method") || undefined,
     lat: q.get("lat") ? Number(q.get("lat")) : undefined,
     lon: q.get("lon") || q.get("lng") || q.get("long") ? Number(q.get("lon") || q.get("lng") || q.get("long")) : undefined
   };

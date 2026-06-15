@@ -9,6 +9,7 @@ Guides for operating, extending, and integrating with the Riding Lookup API.
 | [Hosting decision](hosting.md) | Cloudflare Workers vs GCP migration notes |
 | [Performance](performance.md) | Latency benchmarks, caching, and issue #8 optimizations |
 | [OpenNorth comparison](comparison-opennorth.md) | Speed and robustness vs Represent API |
+| [Postal vs point lookup](postal-vs-point-lookup.md) | Why postal results differ from OpenNorth |
 | [ODA data import](oda-data-import.md) | Download, import, resume, and verify StatCan ODA in D1 |
 
 ## ODA geocoding

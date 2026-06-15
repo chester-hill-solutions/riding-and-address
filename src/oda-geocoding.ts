@@ -9,7 +9,9 @@ import {
 import {
   CONFIDENCE_BY_METHOD,
   getOdaConfig,
+  isOdaEnabled,
 } from './oda-config';
+import { isPostalOnlyQuery } from './geocode-query';
 import {
   buildCityKey,
   buildSearchKey,
@@ -499,6 +501,190 @@ export async function geocodeWithOda(env: Env, qp: QueryParams): Promise<OdaGeoc
   }
 
   throw new OdaGeocodeError('Address not found in ODA database', 'ADDRESS_NOT_FOUND', 404);
+}
+
+/**
+ * Postal-centroid-only lookup (skips civic exact match and street interpolation).
+ * Used for postal-only queries and geocode_method=postal_centroid.
+ */
+export async function geocodePostalCentroidWithOda(env: Env, qp: QueryParams): Promise<OdaGeocodeResult> {
+  const config = getOdaConfig(env);
+  if (!env.ODA_DB) {
+    throw new OdaGeocodeError('ODA database not configured', 'ODA_NOT_CONFIGURED', 503);
+  }
+  if (!qp.postal) {
+    throw new OdaGeocodeError('Postal code required', 'INVALID_QUERY', 400);
+  }
+
+  const parsed = parseAddressQuery({
+    postal: qp.postal,
+    city: qp.city,
+    state: qp.state,
+  });
+  const provinces = resolveProvinces(parsed, config.provinces);
+  const postal = normalizePostalCode(qp.postal);
+  if (!postal) {
+    throw new OdaGeocodeError('Invalid postal code', 'INVALID_QUERY', 400);
+  }
+
+  const centroid = await findPostalCentroid(env, postal, provinces);
+  if (!centroid) {
+    throw new OdaGeocodeError('Postal code not found in ODA database', 'ADDRESS_NOT_FOUND', 404);
+  }
+
+  return assertConfidence(
+    buildResult(
+      {
+        lat: centroid.lat,
+        lon: centroid.lon,
+        province: centroid.province,
+        postal_code: centroid.postal_code,
+        city: parsed.city || '',
+        civic_number: '',
+        street_name: '',
+        street_type: '',
+        street_direction: '',
+        unit: '',
+      },
+      'postal_centroid',
+      config,
+      ['postal']
+    ),
+    config.minConfidence
+  );
+}
+
+export type OdaBatchGeocodeItem = {
+  lon: number;
+  lat: number;
+  success: boolean;
+  error?: string;
+  normalizedAddress?: string;
+  geocodeMethod?: OdaGeocodeMetadata['geocodeMethod'];
+  confidence?: number;
+};
+
+/**
+ * Batch postal-centroid geocoding via ODA (deduplicates by normalized postal code).
+ */
+export async function geocodeBatchPostalCentroidsWithOda(
+  env: Env,
+  queries: QueryParams[]
+): Promise<OdaBatchGeocodeItem[]> {
+  const results: OdaBatchGeocodeItem[] = queries.map(() => ({
+    lon: 0,
+    lat: 0,
+    success: false,
+    error: 'Not processed',
+  }));
+
+  if (!isOdaEnabled(env) || !env.ODA_DB) {
+    const err = 'ODA geocoding not enabled';
+    return results.map(() => ({ lon: 0, lat: 0, success: false, error: err }));
+  }
+
+  const postalToIndices = new Map<string, number[]>();
+
+  for (let i = 0; i < queries.length; i++) {
+    const qp = queries[i];
+    if (!qp.postal) {
+      results[i] = { lon: 0, lat: 0, success: false, error: 'Postal code required' };
+      continue;
+    }
+    const postal = normalizePostalCode(qp.postal);
+    if (!postal) {
+      results[i] = { lon: 0, lat: 0, success: false, error: 'Invalid postal code' };
+      continue;
+    }
+    const list = postalToIndices.get(postal) ?? [];
+    list.push(i);
+    postalToIndices.set(postal, list);
+  }
+
+  for (const [postal, indices] of postalToIndices) {
+    const sample = queries[indices[0]];
+    try {
+      const geocoded = await geocodePostalCentroidWithOda(env, { ...sample, postal });
+      const item: OdaBatchGeocodeItem = {
+        lon: geocoded.lon,
+        lat: geocoded.lat,
+        success: true,
+        normalizedAddress: geocoded.normalizedAddress,
+        geocodeMethod: geocoded.geocodeMethod,
+        confidence: geocoded.confidence,
+      };
+      for (const idx of indices) {
+        results[idx] = item;
+      }
+    } catch (error) {
+      const message =
+        error instanceof OdaGeocodeError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : 'Geocoding failed';
+      for (const idx of indices) {
+        results[idx] = { lon: 0, lat: 0, success: false, error: message };
+      }
+    }
+  }
+
+  return results;
+}
+
+export async function geocodeBatchWithOda(
+  env: Env,
+  queries: QueryParams[]
+): Promise<OdaBatchGeocodeItem[]> {
+  const results: OdaBatchGeocodeItem[] = [];
+
+  for (const qp of queries) {
+    if (qp.lat !== undefined && qp.lon !== undefined) {
+      results.push({ lon: qp.lon, lat: qp.lat, success: true, geocodeMethod: 'exact' });
+      continue;
+    }
+    if (isPostalOnlyQuery(qp) || qp.geocodeMethod === 'postal_centroid') {
+      try {
+        const geocoded = await geocodePostalCentroidWithOda(env, qp);
+        results.push({
+          lon: geocoded.lon,
+          lat: geocoded.lat,
+          success: true,
+          normalizedAddress: geocoded.normalizedAddress,
+          geocodeMethod: geocoded.geocodeMethod,
+          confidence: geocoded.confidence,
+        });
+      } catch (error) {
+        results.push({
+          lon: 0,
+          lat: 0,
+          success: false,
+          error: error instanceof Error ? error.message : 'Geocoding failed',
+        });
+      }
+      continue;
+    }
+    try {
+      const geocoded = await geocodeWithOda(env, qp);
+      results.push({
+        lon: geocoded.lon,
+        lat: geocoded.lat,
+        success: true,
+        normalizedAddress: geocoded.normalizedAddress,
+        geocodeMethod: geocoded.geocodeMethod,
+        confidence: geocoded.confidence,
+      });
+    } catch (error) {
+      results.push({
+        lon: 0,
+        lat: 0,
+        success: false,
+        error: error instanceof Error ? error.message : 'Geocoding failed',
+      });
+    }
+  }
+
+  return results;
 }
 
 export async function reverseGeocodeWithOda(

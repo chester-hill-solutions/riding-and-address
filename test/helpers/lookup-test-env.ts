@@ -51,6 +51,15 @@ export function buildLookupTestGeoJson(): Record<string, GeoJSONFeatureCollectio
         }),
       ],
     },
+    'quebecridings-2025.geojson': {
+      type: 'FeatureCollection',
+      features: [
+        featureAt({
+          PR_NUM: '040',
+          ENGLISH_NA: 'Laurier—Sainte-Marie',
+        }),
+      ],
+    },
   };
 }
 

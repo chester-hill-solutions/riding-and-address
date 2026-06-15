@@ -229,7 +229,7 @@ Comparison report generated 2026-06-14 from live production data.
 ## Recommendations
 
 1. **Upload `quebecridings-2025.geojson` to R2** to fix `/api/qc` in production.
-2. **Document `M5V2T6` postal divergence** for integrators comparing against OpenNorth postal centroids.
+2. **Document `M5V2T6` postal divergence** — see [postal-vs-point-lookup.md](postal-vs-point-lookup.md) for integrators comparing against OpenNorth postal centroids.
 3. **Batch clients:** respect rate limits; for address-heavy batches use `POST /batch` or ≥4s spacing to avoid ODA circuit breaker.
 4. **Comparison re-runs:** `BENCHMARK_BASIC_AUTH=... npm run compare:opennorth` then `npm run compare:report`.
 

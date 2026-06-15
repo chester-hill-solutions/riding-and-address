@@ -11,6 +11,13 @@ export const TIMEOUT_CONFIG = {
   webhook: 30000         // 30 seconds for webhook delivery
 };
 
+/** Per-provider ceilings within the overall geocoding budget. */
+export const GEOCODING_STAGE_TIMEOUTS = {
+  oda: 3000,
+  geogratis: 5000,
+  fallback: 5000,
+} as const;
+
 // Retry configuration
 export const RETRY_CONFIG = {
   maxAttempts: 3,
@@ -23,11 +30,12 @@ export const RETRY_CONFIG = {
 // Get timeout values from environment or use defaults
 export function getTimeoutConfig(env: Env) {
   return {
-    geocoding: env.BATCH_TIMEOUT || TIMEOUT_CONFIG.geocoding,
-    lookup: env.BATCH_TIMEOUT || TIMEOUT_CONFIG.lookup,
-    batch: env.BATCH_TIMEOUT || TIMEOUT_CONFIG.batch,
-    total: env.BATCH_TIMEOUT || TIMEOUT_CONFIG.total,
-    webhook: TIMEOUT_CONFIG.webhook
+    geocoding: env.GEOCODING_TIMEOUT ?? TIMEOUT_CONFIG.geocoding,
+    lookup: env.LOOKUP_TIMEOUT ?? TIMEOUT_CONFIG.lookup,
+    batch: env.BATCH_TIMEOUT ?? TIMEOUT_CONFIG.batch,
+    total: env.TOTAL_TIMEOUT ?? TIMEOUT_CONFIG.total,
+    webhook: TIMEOUT_CONFIG.webhook,
+    stages: GEOCODING_STAGE_TIMEOUTS,
   };
 }
 

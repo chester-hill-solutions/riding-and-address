@@ -243,6 +243,7 @@ describe('ridingNameFromProperties', () => {
     expect(ridingNameFromProperties({ ENGLISH_NA: 'Spadina—Fort York' })).toBe('Spadina—Fort York');
     expect(ridingNameFromProperties({ ED_NAMEE: 'Spadina—Harbourfront' })).toBe('Spadina—Harbourfront');
     expect(ridingNameFromProperties({ FED_NAME: 'Ottawa Centre' })).toBe('Ottawa Centre');
+    expect(ridingNameFromProperties({ NM_CEP: 'Jean-Talon' })).toBe('Jean-Talon');
   });
 
   it('returns undefined when no name fields are present', () => {

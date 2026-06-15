@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { BatchLookupRequest } from './types';
+import { parseGeocodeMethodParam } from './geocode-query';
 import { parseReturnSelector, parseIncludeProvince, resolveIncludeProvince } from './return-selector';
 
 /**
@@ -223,6 +224,7 @@ const QueryParamsSchema = z.object({
   country: z.string().optional(),
   return: z.string().optional(),
   include_province: z.string().optional(),
+  geocode_method: z.string().optional(),
 }).refine(
   (query) =>
     (query.lat !== undefined && query.lon !== undefined) ||
@@ -248,6 +250,7 @@ function enrichBatchLookupRequests(requests: BatchLookupRequest[]): BatchLookupR
   return requests.map((request) => {
     let returnFields = request.query.returnFields;
     let includeProvince = request.query.includeProvince;
+    let geocodeMethod = request.query.geocodeMethod;
 
     if (request.query.return !== undefined) {
       const returnParse = parseReturnSelector(request.query.return);
@@ -277,6 +280,22 @@ function enrichBatchLookupRequests(requests: BatchLookupRequest[]): BatchLookupR
       includeProvince = includeProvinceParse.value;
     }
 
+    if (request.query.geocode_method !== undefined) {
+      const geocodeMethodParse = parseGeocodeMethodParam(request.query.geocode_method);
+      if (!geocodeMethodParse.valid) {
+        throw new z.ZodError([
+          {
+            code: 'custom',
+            message: geocodeMethodParse.error ?? 'Invalid geocode_method',
+            path: ['query', 'geocode_method'],
+          },
+        ]);
+      }
+      geocodeMethod = geocodeMethodParse.value;
+    } else {
+      geocodeMethod = geocodeMethod ?? 'auto';
+    }
+
     const returnSelectorProvided = request.query.return !== undefined;
 
     return {
@@ -284,6 +303,7 @@ function enrichBatchLookupRequests(requests: BatchLookupRequest[]): BatchLookupR
       query: {
         ...request.query,
         returnFields: returnFields ?? [],
+        geocodeMethod,
         includeProvince: resolveIncludeProvince(
           request.pathname,
           includeProvince,

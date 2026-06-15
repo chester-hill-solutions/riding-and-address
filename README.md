@@ -268,10 +268,15 @@ wrangler secret put BASIC_AUTH
 #### 9) Set environment variables
 Configure in `wrangler.jsonc` under `"vars"`:
 ```toml
-BATCH_SIZE = 50          # Maximum items per batch
-BATCH_TIMEOUT = 30000    # Timeout in milliseconds  
-RATE_LIMIT = 100         # Requests per minute per IP
+BATCH_SIZE = 50              # Maximum items per batch
+BATCH_TIMEOUT = 30000        # Batch request ceiling (ms)
+GEOCODING_TIMEOUT = 10000    # Single geocode chain budget (ms)
+LOOKUP_TIMEOUT = 5000        # Point-in-polygon lookup (ms)
+TOTAL_TIMEOUT = 60000        # Maximum total request time (ms)
+RATE_LIMIT = 100             # Requests per minute per IP
 ```
+
+Postal-only fast path and `geocode_method=postal_centroid` are documented in [docs/postal-vs-point-lookup.md](docs/postal-vs-point-lookup.md).
 
 ### Develop and deploy
 

@@ -25,6 +25,8 @@ export interface NormalizedAddressContext {
   normalizedAddress?: string;
   addressComponents?: GoogleAddressComponents;
   mailingAddress?: CanadaPostStyleAddress;
+  geocodeMethod?: string;
+  geocodeConfidence?: number;
 }
 
 export interface ExpandedLookupPayload {
@@ -34,6 +36,7 @@ export interface ExpandedLookupPayload {
   municipality?: string;
   normalizedAddress?: string;
   addressComponents?: GoogleAddressComponents;
+  geocode?: { method: string; confidence?: number };
   cacheStatus: 'HIT' | 'MISS' | 'PARTIAL';
 }
 
@@ -55,6 +58,8 @@ export type GeocodeIfNeededFn = (
   normalizedAddress?: string;
   addressComponents?: GoogleAddressComponents;
   mailingAddress?: CanadaPostStyleAddress;
+  geocodeMethod?: string;
+  confidence?: number;
 }>;
 
 export type { DeferTaskFn };
@@ -247,6 +252,13 @@ export function buildExpandedLookupPayload(
     cacheStatus: options.cacheStatus ?? 'MISS',
   };
 
+  if (addressContext.geocodeMethod) {
+    payload.geocode = {
+      method: addressContext.geocodeMethod,
+      confidence: addressContext.geocodeConfidence,
+    };
+  }
+
   if (includeProvince && resolveLookupPath(lookupPathname).isFederal) {
     payload.province_data = options.provinceData ?? null;
   }
@@ -266,6 +278,7 @@ export function expandedLookupResponseFields(expanded: ExpandedLookupPayload): {
   municipality?: string;
   normalizedAddress?: string;
   addressComponents?: GoogleAddressComponents;
+  geocode?: { method: string; confidence?: number };
 } {
   return {
     riding: expanded.riding,
@@ -274,6 +287,7 @@ export function expandedLookupResponseFields(expanded: ExpandedLookupPayload): {
     ...(expanded.municipality && { municipality: expanded.municipality }),
     ...(expanded.normalizedAddress && { normalizedAddress: expanded.normalizedAddress }),
     ...(expanded.addressComponents && { addressComponents: expanded.addressComponents }),
+    ...(expanded.geocode && { geocode: expanded.geocode }),
   };
 }
 
@@ -319,6 +333,8 @@ async function resolveCoordinates(
       normalizedAddress: geocodeResult.normalizedAddress,
       addressComponents: geocodeResult.addressComponents,
       mailingAddress: geocodeResult.mailingAddress,
+      geocodeMethod: geocodeResult.geocodeMethod,
+      geocodeConfidence: geocodeResult.confidence,
       ...options.addressContext,
     },
   };
