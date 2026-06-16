@@ -88,7 +88,15 @@ export async function processBatchLookupWithBatchGeocoding(
     ): Promise<
       Pick<
         BatchLookupResponse,
-        'point' | 'properties' | 'riding' | 'province_data' | 'municipality' | 'normalizedAddress' | 'addressComponents'
+        | 'point'
+        | 'properties'
+        | 'riding'
+        | 'province_data'
+        | 'municipality'
+        | 'normalizedAddress'
+        | 'addressComponents'
+        | 'mailingAddress'
+        | 'geocode'
       >
     > => {
       const expanded = await performExpandedLookup(
@@ -146,6 +154,9 @@ export async function processBatchLookupWithBatchGeocoding(
             const addressContext: NormalizedAddressContext = {
               normalizedAddress: geocodingResult.normalizedAddress,
               addressComponents: geocodingResult.addressComponents,
+              mailingAddress: geocodingResult.mailingAddress,
+              geocodeMethod: geocodingResult.geocodeMethod,
+              geocodeConfidence: geocodingResult.confidence,
             };
             const payload = await runExpandedLookup(
               batchRequest,

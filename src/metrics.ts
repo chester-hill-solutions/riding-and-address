@@ -41,6 +41,9 @@ const metrics: Metrics = {
   geocodingOdaTime: 0,
   geocodingGeoGratisTime: 0,
   geocodingFallbackTime: 0,
+  odaD1Reads: 0,
+  odaD1QueriesMaxPerRequest: 0,
+  odaStageTimeouts: 0,
   totalR2Time: 0,
   totalBatchTime: 0,
   totalWebhookTime: 0
@@ -64,6 +67,13 @@ export function incrementMetric(key: keyof Metrics, value: number = 1): void {
 export function recordTiming(key: keyof Metrics, duration: number): void {
   checkAndResetMetrics();
   metrics[key] += duration;
+}
+
+export function updateOdaD1QueriesMaxPerRequest(count: number): void {
+  checkAndResetMetrics();
+  if (count > metrics.odaD1QueriesMaxPerRequest) {
+    metrics.odaD1QueriesMaxPerRequest = count;
+  }
 }
 
 export function getMetrics(): Metrics {

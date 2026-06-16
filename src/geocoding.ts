@@ -9,6 +9,7 @@ import {
   Metrics,
   DeferTaskFn,
   CircuitBreakerExecutor,
+  CanadaPostStyleAddress,
 } from './types';
 import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS, TIME_CONSTANTS_SECONDS, QUALITY_THRESHOLDS, GEOCODING_STAGE_TIMEOUTS } from './config';
 import { withRetry, withTimeout, NonRetriableError } from './utils';
@@ -270,7 +271,30 @@ export type GeocodeResult = {
   addressComponents?: GoogleAddressComponents;
 } & OdaGeocodeMetadata;
 
-export type GeocodeBatchResult = { lon: number; lat: number; success: boolean; error?: string; normalizedAddress?: string; addressComponents?: GoogleAddressComponents };
+export type GeocodeBatchResult = {
+  lon: number;
+  lat: number;
+  success: boolean;
+  error?: string;
+  normalizedAddress?: string;
+  addressComponents?: GoogleAddressComponents;
+  mailingAddress?: CanadaPostStyleAddress;
+  geocodeMethod?: string;
+  confidence?: number;
+};
+
+function geocodeResultToBatchResult(result: GeocodeResult): GeocodeBatchResult {
+  return {
+    lon: result.lon,
+    lat: result.lat,
+    success: true,
+    normalizedAddress: result.normalizedAddress,
+    addressComponents: result.addressComponents,
+    mailingAddress: result.mailingAddress,
+    geocodeMethod: result.geocodeMethod,
+    confidence: result.confidence,
+  };
+}
 
 /**
  * Parses Google address_components array into structured address components object.
@@ -1118,6 +1142,8 @@ export async function geocodeBatch(
         success: r.success,
         error: r.error,
         normalizedAddress: r.normalizedAddress,
+        geocodeMethod: r.geocodeMethod,
+        confidence: r.confidence,
       }));
     }
   }
@@ -1138,7 +1164,7 @@ export async function geocodeBatch(
         for (const query of batch) {
           try {
             const result = await geocodeIfNeeded(env, query, request, metrics, circuitBreaker);
-            results.push({ lon: result.lon, lat: result.lat, success: true, normalizedAddress: result.normalizedAddress });
+            results.push(geocodeResultToBatchResult(result));
           } catch (error) {
             results.push({
               lon: 0,
@@ -1155,7 +1181,7 @@ export async function geocodeBatch(
       for (const query of batch) {
         try {
           const result = await geocodeIfNeeded(env, query, request, metrics, circuitBreaker);
-          results.push({ lon: result.lon, lat: result.lat, success: true, normalizedAddress: result.normalizedAddress });
+          results.push(geocodeResultToBatchResult(result));
         } catch (individualError) {
           results.push({
             lon: 0,

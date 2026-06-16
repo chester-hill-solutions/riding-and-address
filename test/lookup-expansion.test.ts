@@ -111,25 +111,53 @@ describe('buildExpandedLookupPayload', () => {
     expect(payload.province_data).toBeUndefined();
   });
 
-  it('does not include normalizedAddress unless requested via return selector', () => {
+  it('includes normalized address fields when present on base or address context', () => {
     const payload = buildExpandedLookupPayload(
       {
         properties: { FED_NUM: '35075' },
         riding: 'Toronto Centre',
-        normalizedAddress: '123 Main St, Toronto, ON',
-        addressComponents: { locality: 'Toronto' },
+        normalizedAddress: '123 MAIN ST, TORONTO ON, CANADA',
+        addressComponents: { locality: 'TORONTO' },
       },
       [],
       '/api/federal',
       {
         addressContext: {
-          normalizedAddress: '456 Other St, Toronto, ON',
-          addressComponents: { locality: 'Toronto' },
+          normalizedAddress: '456 OTHER ST, TORONTO ON, CANADA',
+          addressComponents: { locality: 'TORONTO' },
+          mailingAddress: {
+            line1: '456 OTHER ST',
+            municipality: 'TORONTO',
+            province: 'ON',
+            country: 'CANADA',
+            formattedSingleLine: '456 OTHER ST, TORONTO ON, CANADA',
+            formattedMultiline: '456 OTHER ST\nTORONTO ON\nCANADA',
+            canadaPostCertified: false,
+          },
+          geocodeMethod: 'exact',
+          geocodeConfidence: 1,
         },
       }
     );
 
-    expect(payload.normalizedAddress).toBeUndefined();
-    expect(payload.addressComponents).toBeUndefined();
+    expect(payload.normalizedAddress).toBe('456 OTHER ST, TORONTO ON, CANADA');
+    expect(payload.addressComponents?.locality).toBe('TORONTO');
+    expect(payload.mailingAddress?.line1).toBe('456 OTHER ST');
+    expect(payload.geocode?.method).toBe('exact');
+  });
+
+  it('falls back to base normalized address when address context has none', () => {
+    const payload = buildExpandedLookupPayload(
+      {
+        properties: { FED_NUM: '35075' },
+        riding: 'Toronto Centre',
+        normalizedAddress: '123 MAIN ST, TORONTO ON, CANADA',
+      },
+      [],
+      '/api/federal',
+      { addressContext: {} }
+    );
+
+    expect(payload.normalizedAddress).toBe('123 MAIN ST, TORONTO ON, CANADA');
   });
 });

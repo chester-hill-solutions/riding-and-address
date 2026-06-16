@@ -382,8 +382,9 @@ export default {
 
         const metrics = getMetrics();
         const circuitBreakerStates = {
-          geocoding: await geocodingCircuitBreaker.getStateInfo('geocoding:nominatim'),
-          r2: await r2CircuitBreaker.getStateInfo('r2:federalridings-2024.geojson')
+          geocodingOda: await geocodingCircuitBreaker.getStateInfo('geocoding:oda'),
+          geocodingNominatim: await geocodingCircuitBreaker.getStateInfo('geocoding:nominatim'),
+          r2: await r2CircuitBreaker.getStateInfo('r2:federalridings-2024.geojson'),
         };
         const datasets = await checkRidingDatasets(env);
         const datasetsOk = allRequiredDatasetsPresent(datasets);
@@ -402,6 +403,36 @@ export default {
             "content-type": "application/json; charset=UTF-8",
             'Access-Control-Allow-Origin': '*'
           }
+        });
+      }
+
+      // Admin circuit breaker reset
+      if (pathname === '/admin/circuit-breaker/reset' && request.method === 'POST') {
+        if (!checkAdminAuth(request, env)) {
+          return unauthorizedResponse(correlationId);
+        }
+
+        const key = url.searchParams.get('key');
+        if (key) {
+          if (key.startsWith('r2:')) {
+            await r2CircuitBreaker.reset(key);
+          } else {
+            await geocodingCircuitBreaker.reset(key);
+          }
+          return new Response(JSON.stringify({ success: true, message: `Circuit breaker ${key} reset` }), {
+            headers: {
+              'content-type': 'application/json; charset=UTF-8',
+              'Access-Control-Allow-Origin': '*',
+            },
+          });
+        }
+
+        await geocodingCircuitBreaker.resetAll();
+        return new Response(JSON.stringify({ success: true, message: 'All circuit breakers reset' }), {
+          headers: {
+            'content-type': 'application/json; charset=UTF-8',
+            'Access-Control-Allow-Origin': '*',
+          },
         });
       }
 
