@@ -6,4 +6,5 @@ Civic Number,Street Name,Street Type,Street Direction,Unit,Postal Code,City,Prov
 350,SAINT-PAUL,RUE,E,,H2Y 1H2,Montréal,QC,45.5088,-73.5540,"350 Rue Saint-Paul E, Montréal QC H2Y 1H2",SAINT-PAUL,RUE,E,Montréal,24
 1000,RUE,SAINT-DENIS,,,H2X 3K8,Montréal,QC,45.5145,-73.5620,"1000 Rue Saint-Denis, Montréal QC H2X 3K8",SAINT-DENIS,RUE,,Montréal,24
 757,VICTORIA PARK,AVE,,,M4C 1N2,Toronto,ON,43.692101,-79.288688,"757 Victoria Park Ave, Toronto ON M4C 1N2",VICTORIA PARK,AVE,,Toronto,35
+560,BIRCHMOUNT,RD,,901,M1K 1E8,Toronto,ON,43.7090,-79.2640,"901-560 Birchmount Rd, Toronto ON",BIRCHMOUNT,RD,,Toronto,35
 100,GEORGIA ST,W,,,V6B 1A1,Vancouver,BC,49.2838,-123.1187,"100 Georgia St W, Vancouver BC V6B 1A1",GEORGIA,ST,W,Vancouver,59

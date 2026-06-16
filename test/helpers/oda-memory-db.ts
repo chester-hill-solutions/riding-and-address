@@ -169,8 +169,24 @@ function executeQuery(db: OdaMemoryDb, sql: string, params: unknown[]): unknown 
   switch (kind) {
     case 'exact': {
       const searchKey = String(params[0]);
-      const provinces = params.slice(1).map(String);
-      return db.addresses.find((a) => a.search_key === searchKey && provinces.includes(a.province)) ?? null;
+      const hasUnitFilter = sql.toUpperCase().includes('AND UNIT =');
+      const provinces = hasUnitFilter
+        ? params.slice(1, -1).map(String)
+        : params.slice(1).map(String);
+      const unitFilter = hasUnitFilter ? String(params[params.length - 1]) : undefined;
+      const matches = db.addresses.filter(
+        (a) => a.search_key === searchKey && provinces.includes(a.province)
+      );
+      if (unitFilter) {
+        return matches.find((a) => a.unit === unitFilter) ?? null;
+      }
+      return (
+        matches.sort((a, b) => {
+          const aEmpty = !a.unit ? 0 : 1;
+          const bEmpty = !b.unit ? 0 : 1;
+          return aEmpty - bEmpty;
+        })[0] ?? null
+      );
     }
     case 'postal': {
       const postal = String(params[0]);
@@ -182,17 +198,22 @@ function executeQuery(db: OdaMemoryDb, sql: string, params: unknown[]): unknown 
       return null;
     }
     case 'street_exact': {
-      const provinces = params.slice(0, -3).map(String);
-      const cityKey = String(params[params.length - 3]);
-      const streetKey = String(params[params.length - 2]);
-      const civic = String(params[params.length - 1]);
+      const hasUnitFilter = sql.toUpperCase().includes('AND UNIT =');
+      const provinces = hasUnitFilter
+        ? params.slice(0, -4).map(String)
+        : params.slice(0, -3).map(String);
+      const cityKey = String(params[params.length - (hasUnitFilter ? 4 : 3)]);
+      const streetKey = String(params[params.length - (hasUnitFilter ? 3 : 2)]);
+      const civic = String(params[params.length - (hasUnitFilter ? 2 : 1)]);
+      const unitFilter = hasUnitFilter ? String(params[params.length - 1]) : undefined;
       return (
         db.addresses.find(
           (a) =>
             provinces.includes(a.province) &&
             a.city_key === cityKey &&
             a.street_key === streetKey &&
-            a.civic_number === civic
+            a.civic_number === civic &&
+            (!unitFilter || a.unit === unitFilter)
         ) ?? null
       );
     }

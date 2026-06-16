@@ -28,6 +28,41 @@ describe('oda-normalize', () => {
     expect(parsed.streetType).toBe('ST');
   });
 
+  it('parses unit-civic dash format (Canadian condos)', () => {
+    const parsed = parseFreeformAddress('901-560 Birchmount Rd');
+    expect(parsed.unit).toBe('901');
+    expect(parsed.civic).toBe('560');
+    expect(parsed.streetName).toBe('Birchmount');
+    expect(parsed.streetType).toBe('RD');
+  });
+
+  it('parses Unit prefix format', () => {
+    const parsed = parseFreeformAddress('Unit 1205, 123 Main St');
+    expect(parsed.unit).toBe('1205');
+    expect(parsed.civic).toBe('123');
+    expect(parsed.streetName).toBe('Main');
+    expect(parsed.streetType).toBe('ST');
+  });
+
+  it('parses inline unit format', () => {
+    const parsed = parseFreeformAddress('105 Unit 2 Broadview Ave');
+    expect(parsed.unit).toBe('2');
+    expect(parsed.civic).toBe('105');
+    expect(parsed.streetName).toBe('Broadview');
+    expect(parsed.streetType).toBe('AVE');
+  });
+
+  it('includes unit in parseAddressQuery', () => {
+    const parsed = parseAddressQuery({
+      address: '901-560 Birchmount Rd',
+      city: 'Toronto',
+      state: 'ON',
+    });
+    expect(parsed.unit).toBe('901');
+    expect(parsed.civic).toBe('560');
+    expect(parsed.streetName).toBe('BIRCHMOUNT');
+  });
+
   it('builds deterministic search keys', () => {
     const key = buildSearchKey({
       civic: '123',

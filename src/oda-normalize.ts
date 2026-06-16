@@ -223,24 +223,15 @@ export function buildSearchKey(parts: {
   ].join('|');
 }
 
-/** Parse a free-form address string into civic + street components */
-export function parseFreeformAddress(address: string): {
-  civic?: string;
+/** Parse street tokens after civic number is extracted */
+function parseStreetTail(rest: string): {
   streetName?: string;
   streetType?: string;
   streetDirection?: string;
 } {
-  const normalized = address.trim();
-  const civicMatch = normalized.match(/^(\d+[A-Za-z]?(?:\s+\d+\/\d+)?)\s+(.+)$/);
-  if (!civicMatch) {
-    return { streetName: normalized };
-  }
-
-  const civic = civicMatch[1];
-  const rest = civicMatch[2].trim();
-  const tokens = rest.split(/\s+/);
+  const tokens = rest.trim().split(/\s+/);
   if (tokens.length === 0) {
-    return { civic };
+    return {};
   }
 
   const last = tokens[tokens.length - 1].toUpperCase();
@@ -250,7 +241,6 @@ export function parseFreeformAddress(address: string): {
     const streetType = tokens.length > 2 ? normalizeStreetType(tokens[tokens.length - 2]) : '';
     const streetName = tokens.slice(0, -2).join(' ') || tokens[0];
     return {
-      civic,
       streetName,
       streetType: streetType || undefined,
       streetDirection: normalizeStreetDirection(last),
@@ -260,10 +250,61 @@ export function parseFreeformAddress(address: string): {
   if (STREET_TYPE_SEARCH[last] || STREET_TYPE_SEARCH[secondLast]) {
     const streetType = normalizeStreetType(last);
     const streetName = tokens.slice(0, -1).join(' ');
-    return { civic, streetName, streetType };
+    return { streetName, streetType };
   }
 
-  return { civic, streetName: rest };
+  return { streetName: rest.trim() };
+}
+
+/** Normalize unit identifiers for DB comparison */
+export function normalizeUnit(unit: string | undefined): string {
+  if (!unit) return '';
+  return normalizeSearchToken(unit.replace(/^#/, ''));
+}
+
+/** Parse a free-form address string into civic, unit, and street components */
+export function parseFreeformAddress(address: string): {
+  civic?: string;
+  streetName?: string;
+  streetType?: string;
+  streetDirection?: string;
+  unit?: string;
+} {
+  let normalized = address.trim();
+  let unit: string | undefined;
+
+  const unitSuffixMatch = normalized.match(/^(.+?)\s+UNIT\s+(\S+)\s*$/i);
+  if (unitSuffixMatch) {
+    normalized = unitSuffixMatch[1].trim();
+    unit = unitSuffixMatch[2];
+  }
+
+  const unitPrefixMatch = normalized.match(/^Unit\s+(\S+)\s*,?\s+(.+)$/i);
+  if (unitPrefixMatch) {
+    unit = unitPrefixMatch[1].replace(/[,;]+$/, '');
+    normalized = unitPrefixMatch[2].trim();
+  }
+
+  const inlineUnitMatch = normalized.match(/^(\d+)\s+Unit\s+(\S+)\s+(.+)$/i);
+  if (inlineUnitMatch) {
+    unit = inlineUnitMatch[2];
+    normalized = `${inlineUnitMatch[1]} ${inlineUnitMatch[3]}`;
+  }
+
+  // Canadian condo format: unit-civic dash (e.g. 901-560 Birchmount Rd)
+  const unitCivicMatch = normalized.match(/^(\d+)-(\d+)\s+(.+)$/);
+  if (unitCivicMatch) {
+    unit = unitCivicMatch[1];
+    normalized = `${unitCivicMatch[2]} ${unitCivicMatch[3]}`;
+  }
+
+  const civicMatch = normalized.match(/^(\d+[A-Za-z]?(?:\s+\d+\/\d+)?)\s+(.+)$/);
+  if (!civicMatch) {
+    return { streetName: normalized, unit };
+  }
+
+  const street = parseStreetTail(civicMatch[2]);
+  return { civic: civicMatch[1], unit, ...street };
 }
 
 export function parseAddressQuery(input: {
@@ -287,6 +328,7 @@ export function parseAddressQuery(input: {
     streetName: parsed.streetName ? normalizeSearchToken(parsed.streetName) : undefined,
     streetType: parsed.streetType,
     streetDirection: parsed.streetDirection,
+    unit: parsed.unit ? normalizeUnit(parsed.unit) : undefined,
     postal,
     city,
     province,

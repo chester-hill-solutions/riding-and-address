@@ -106,10 +106,21 @@ const FIXTURE_CASES: GeocodeCase[] = [
     expect: { errorCode: 'PROVINCE_NOT_LOADED', errorStatus: 404 },
   },
   {
+    id: 'case-3 unit address exact match',
+    query: { address: 'Unit 1205, 123 Main St', city: 'Toronto', state: 'ON' },
+    expect: {
+      geocodeMethod: 'exact',
+      mailingLine1: 'UNIT 1205',
+      mailingLine2: '123 MAIN ST',
+      latClose: 43.6533,
+      lonClose: -79.3833,
+    },
+  },
+  {
     id: 'case-12 Victoria Park street match',
     query: { address: '757 Victoria Park', city: 'Toronto', state: 'ON' },
     expect: {
-      geocodeMethod: 'street_interpolated',
+      geocodeMethod: 'exact',
       minConfidence: 0.6,
       latClose: 43.692101,
       lonClose: -79.288688,
@@ -118,6 +129,25 @@ const FIXTURE_CASES: GeocodeCase[] = [
   {
     id: 'case-12 Victoria Park Ave exact',
     query: { address: '757 Victoria Park Ave', city: 'Toronto', state: 'ON' },
+    expect: {
+      geocodeMethod: 'exact',
+      latClose: 43.692101,
+      lonClose: -79.288688,
+    },
+  },
+  {
+    id: 'case-13 Birchmount unit-civic dash',
+    query: { address: '901-560 Birchmount Rd', city: 'Toronto', state: 'ON' },
+    expect: {
+      geocodeMethod: 'exact',
+      mailingLine1: 'UNIT 901',
+      latClose: 43.709,
+      lonClose: -79.264,
+    },
+  },
+  {
+    id: 'case-14 street preferred over postal when address present',
+    query: { address: '757 Victoria Park Ave', postal: 'M5V2T6', city: 'Toronto', state: 'ON' },
     expect: {
       geocodeMethod: 'exact',
       latClose: 43.692101,
@@ -185,7 +215,7 @@ describe('ODA reverse geocode (fixture DB)', () => {
 describe('ODA fixture DB coverage summary', () => {
   it('loads all fixture CSV rows into memory', () => {
     const { db } = createOdaFixtureEnv();
-    expect(db.addresses.length).toBe(8);
+    expect(db.addresses.length).toBe(9);
     expect(db.postalCentroids.size).toBeGreaterThan(0);
     expect(db.cityCentroids.size).toBeGreaterThanOrEqual(3);
     expect(db.streetRanges.size).toBeGreaterThan(0);

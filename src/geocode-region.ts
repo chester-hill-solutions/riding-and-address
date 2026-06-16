@@ -82,10 +82,15 @@ export function googleResultMatchesRegion(
   return geocodeLabelMatchesRegion(qp, label);
 }
 
+const STREET_TYPE_ANY =
+  /\b(ST|STREET|AVE|AV|AVENUE|RD|ROAD|BLVD|BOULEVARD|DR|DRIVE|CRES|CRESCENT|CRT|COURT|PL|PLACE|PKY|PARKWAY|HWY|HIGHWAY|RUE|CH|CHEMIN|WAY|LANE|LN|TRAIL|TL|CIR|CIRCLE)\b/i;
+
 /** Append a street type when users omit one (e.g. "757 Victoria Park"). */
 export function expandStreetAddress(address: string): string {
   const trimmed = address.trim();
-  if (!trimmed || STREET_TYPE_SUFFIX.test(trimmed)) return trimmed;
+  if (!trimmed || STREET_TYPE_SUFFIX.test(trimmed) || STREET_TYPE_ANY.test(trimmed)) {
+    return trimmed;
+  }
   if (!/^\d+\s+\S/.test(trimmed)) return trimmed;
   return `${trimmed} Ave`;
 }
