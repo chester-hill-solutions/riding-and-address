@@ -1,4 +1,4 @@
-import { Env } from './types';
+import { Env, CircuitBreakerExecuteOptions } from './types';
 import { geocodeIfNeeded } from './geocoding';
 import { geocodingCircuitBreaker } from './circuit-breaker';
 import { incrementMetric, recordTiming } from './metrics';
@@ -36,8 +36,8 @@ export async function handleLookupRequest(
   const timeoutConfig = getTimeoutConfig(env);
   const circuitBreaker = geocodingCircuitBreaker
     ? {
-        execute: (key: string, fn: () => Promise<unknown>) =>
-          geocodingCircuitBreaker!.execute(key, fn),
+        execute: (key: string, fn: () => Promise<unknown>, options?: CircuitBreakerExecuteOptions) =>
+          geocodingCircuitBreaker!.execute(key, fn, options),
       }
     : undefined;
 

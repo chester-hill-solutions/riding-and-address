@@ -30,7 +30,13 @@ export class CircuitBreaker {
     return this.env.CIRCUIT_BREAKER_DO.get(id);
   }
 
-  async execute<T>(key: string, operation: () => Promise<T>): Promise<T> {
+  async execute<T>(
+    key: string,
+    operation: () => Promise<T>,
+    options?: { shouldCountFailure?: (error: unknown) => boolean }
+  ): Promise<T> {
+    const shouldCountFailure = options?.shouldCountFailure ?? (() => true);
+
     // Use Durable Object if available, otherwise use local state
     if (this.useDurableObject) {
       const stub = this.getDOStub();
@@ -55,7 +61,9 @@ export class CircuitBreaker {
               await this.reportSuccess(key);
               return result;
             } catch (error) {
-              await this.reportFailure(key);
+              if (shouldCountFailure(error)) {
+                await this.reportFailure(key);
+              }
               throw error;
             }
           }
@@ -86,7 +94,9 @@ export class CircuitBreaker {
       this.onSuccess(key);
       return result;
     } catch (error) {
-      this.onFailure(key);
+      if (shouldCountFailure(error)) {
+        this.onFailure(key);
+      }
       throw error;
     }
   }

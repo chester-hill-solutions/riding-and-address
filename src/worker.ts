@@ -1,6 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 
-import { Env, LookupResult, GeoJSONFeatureCollection, SpatialIndex, GeoJSONFeature } from './types';
+import { Env, LookupResult, GeoJSONFeatureCollection, SpatialIndex, GeoJSONFeature, CircuitBreakerExecuteOptions } from './types';
 import { geocodeIfNeeded, geocodeBatch } from './geocoding';
 import {
   handleGeocodeRoute,
@@ -860,7 +860,10 @@ export default {
               );
             }
 
-            const cb = geocodingCircuitBreaker ? { execute: (k: string, fn: () => Promise<unknown>) => geocodingCircuitBreaker!.execute(k, fn) } : undefined;
+            const cb = geocodingCircuitBreaker ? {
+              execute: (k: string, fn: () => Promise<unknown>, options?: CircuitBreakerExecuteOptions) =>
+                geocodingCircuitBreaker!.execute(k, fn, options),
+            } : undefined;
             const results = await processBatchLookupWithBatchGeocoding(
               env,
               parsedRequests.data,

@@ -191,6 +191,22 @@ describe('CircuitBreaker (local state)', () => {
     expect(cb).toBeInstanceOf(CircuitBreaker);
   });
 
+  it('does not count failures when shouldCountFailure returns false', async () => {
+    const cb = new CircuitBreaker(3, 30000, 2);
+    const expectedMiss = new Error('expected miss');
+    const operation = vi.fn().mockRejectedValue(expectedMiss);
+
+    for (let i = 0; i < 5; i++) {
+      await expect(
+        cb.execute('test', operation, { shouldCountFailure: () => false })
+      ).rejects.toThrow('expected miss');
+    }
+
+    expect(operation).toHaveBeenCalledTimes(5);
+    const state = await cb.getStateInfo('test');
+    expect(state?.state).toBe('CLOSED');
+  });
+
   it('uses custom thresholds provided in constructor', async () => {
     const cb = new CircuitBreaker(1, 5000, 1);
     const failOp = vi.fn().mockRejectedValue(new Error('boom'));

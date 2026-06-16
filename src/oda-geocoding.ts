@@ -34,6 +34,14 @@ export class OdaGeocodeError extends Error {
   }
 }
 
+/** True when an ODA error reflects a service/config problem, not a normal address miss. */
+export function isOdaServiceFailure(error: unknown): boolean {
+  if (!(error instanceof OdaGeocodeError)) {
+    return true;
+  }
+  return error.code === 'ODA_NOT_CONFIGURED';
+}
+
 export type OdaGeocodeResult = {
   lon: number;
   lat: number;

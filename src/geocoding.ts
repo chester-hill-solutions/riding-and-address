@@ -8,6 +8,7 @@ import {
   OdaGeocodeMetadata,
   Metrics,
   DeferTaskFn,
+  CircuitBreakerExecutor,
 } from './types';
 import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS, TIME_CONSTANTS_SECONDS, QUALITY_THRESHOLDS, GEOCODING_STAGE_TIMEOUTS } from './config';
 import { withRetry, withTimeout, NonRetriableError } from './utils';
@@ -20,7 +21,13 @@ import {
   safeValidateNominatim
 } from './validation';
 import { isOdaEnabled } from './oda-config';
-import { geocodeWithOda, geocodePostalCentroidWithOda, geocodeBatchWithOda, OdaGeocodeError } from './oda-geocoding';
+import {
+  geocodeWithOda,
+  geocodePostalCentroidWithOda,
+  geocodeBatchWithOda,
+  OdaGeocodeError,
+  isOdaServiceFailure,
+} from './oda-geocoding';
 import {
   buildGeocodeQueryString,
   expandStreetAddress,
@@ -361,7 +368,7 @@ export async function normalizeAddressWithGoogle(
   lat: number,
   lon: number,
   request?: Request,
-  circuitBreaker?: { execute: (key: string, fn: () => Promise<unknown>) => Promise<unknown> }
+  circuitBreaker?: CircuitBreakerExecutor
 ): Promise<{ formattedAddress: string; components: GoogleAddressComponents } | null> {
   const headerKey = request?.headers.get('X-Google-API-Key');
   const key = headerKey || env.GOOGLE_MAPS_KEY;
@@ -651,7 +658,7 @@ function stageLimit(budgetMs: number, startTime: number, stageDefault: number): 
 async function runOdaGeocodeStage(
   env: Env,
   qp: QueryParams,
-  circuitBreaker: { execute: (key: string, fn: () => Promise<unknown>) => Promise<unknown> } | undefined,
+  circuitBreaker: CircuitBreakerExecutor | undefined,
   deferTask: DeferTaskFn | undefined,
   budgetMs: number,
   startTime: number,
@@ -681,7 +688,9 @@ async function runOdaGeocodeStage(
 
   try {
     const odaPromise = circuitBreaker
-      ? circuitBreaker.execute('geocoding:oda', odaFn)
+      ? circuitBreaker.execute('geocoding:oda', odaFn, {
+          shouldCountFailure: isOdaServiceFailure,
+        })
       : odaFn();
     const odaResult = (await withTimeout(odaPromise, odaStageMs, 'ODA geocoding')) as GeocodeResult;
     recordTiming('geocodingOdaTime', Date.now() - odaStarted);
@@ -692,6 +701,13 @@ async function runOdaGeocodeStage(
     recordTiming('geocodingOdaTime', Date.now() - odaStarted);
     if (wantsPostalCentroidOnly(qp)) {
       throw error;
+    }
+    if (error instanceof Error && error.message.includes('Circuit breaker is OPEN')) {
+      console.warn(
+        `[GEOCODING] ODA circuit breaker open, falling back to GeoGratis/${env.GEOCODER || 'nominatim'}`
+      );
+      metrics?.incrementMetric('geocodingCircuitBreakerTrips');
+      return null;
     }
     if (error instanceof OdaGeocodeError) {
       console.warn(
@@ -724,9 +740,7 @@ export async function geocodeIfNeeded(
     incrementMetric: (key: keyof Metrics, value?: number) => void;
     recordTiming: (key: keyof Metrics, duration: number) => void;
   },
-  circuitBreaker?: {
-    execute: (key: string, fn: () => Promise<unknown>) => Promise<unknown>;
-  },
+  circuitBreaker?: CircuitBreakerExecutor,
   deferTask?: DeferTaskFn
 ): Promise<GeocodeResult> {
   if (typeof qp.lat === "number" && typeof qp.lon === "number") {
@@ -1083,9 +1097,7 @@ export async function geocodeBatch(
     incrementMetric: (key: keyof Metrics, value?: number) => void;
     recordTiming: (key: keyof Metrics, duration: number) => void;
   },
-  circuitBreaker?: {
-    execute: (key: string, fn: () => Promise<unknown>) => Promise<unknown>;
-  }
+  circuitBreaker?: CircuitBreakerExecutor
 ): Promise<GeocodeBatchResult[]> {
   if (!BATCH_GEOCODING_CONFIG.ENABLED || queries.length === 0) {
     return [];

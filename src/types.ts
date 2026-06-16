@@ -228,8 +228,16 @@ export interface GeoJSONFeatureCollection {
 import type { ReturnField } from './return-selector';
 export type { ReturnField };
 
+export type CircuitBreakerExecuteOptions = {
+  shouldCountFailure?: (error: unknown) => boolean;
+};
+
 export type CircuitBreakerExecutor = {
-  execute: (key: string, fn: () => Promise<unknown>) => Promise<unknown>;
+  execute: (
+    key: string,
+    fn: () => Promise<unknown>,
+    options?: CircuitBreakerExecuteOptions
+  ) => Promise<unknown>;
 };
 
 /** Schedule background work (e.g. KV cache writes) without blocking the response. */
