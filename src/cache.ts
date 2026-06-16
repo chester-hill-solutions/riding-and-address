@@ -65,10 +65,9 @@ export class LRUCache<K, V> {
       return undefined;
     }
 
-    // Check expiration - but don't remove it, just return undefined
-    // Expired entries will be removed when cache is full and needs space
     const age = Date.now() - entry.timestamp;
     if (age > this.maxAge) {
+      this.delete(key);
       return undefined;
     }
 
@@ -124,10 +123,9 @@ export class LRUCache<K, V> {
       return false;
     }
 
-    // Check expiration - but don't remove it, just return false
-    // Expired entries will be removed when cache is full and needs space
     const age = Date.now() - entry.timestamp;
     if (age > this.maxAge) {
+      this.delete(key);
       return false;
     }
 
@@ -152,6 +150,20 @@ export class LRUCache<K, V> {
 
   size(): number {
     return this.cache.size;
+  }
+
+  /** Remove all expired entries and return count of removed items. */
+  cleanupExpired(): number {
+    const now = Date.now();
+    let removed = 0;
+    for (const key of [...this.accessOrder]) {
+      const entry = this.cache.get(key);
+      if (entry && now - entry.timestamp > this.maxAge) {
+        this.delete(key);
+        removed++;
+      }
+    }
+    return removed;
   }
 
   private moveToEnd(key: K): void {
