@@ -357,7 +357,7 @@ describe('geocodeIfNeeded with ODA enabled', () => {
         delete: async () => {},
         list: async () => ({ keys: [], list_complete: true, cacheStatus: null }),
         getWithMetadata: async () => ({ value: null, metadata: null, cacheStatus: null }),
-      } as KVNamespace,
+      } as unknown as KVNamespace,
     };
 
     const result = await geocodeIfNeeded(env, {
@@ -402,7 +402,7 @@ describe('geocodeIfNeeded with ODA enabled', () => {
         delete: async () => {},
         list: async () => ({ keys: [], list_complete: true, cacheStatus: null }),
         getWithMetadata: async () => ({ value: null, metadata: null, cacheStatus: null }),
-      } as KVNamespace,
+      } as unknown as KVNamespace,
     };
 
     const result = await geocodeIfNeeded(env, {
@@ -453,13 +453,12 @@ describe('geocodeIfNeeded with ODA enabled', () => {
         delete: async () => {},
         list: async () => ({ keys: [], list_complete: true, cacheStatus: null }),
         getWithMetadata: async () => ({ value: null, metadata: null, cacheStatus: null }),
-      } as KVNamespace,
+      } as unknown as KVNamespace,
     };
 
     const circuitBreaker = {
-      execute: vi.fn(async (_key: string, fn: () => Promise<unknown>) => {
+      execute: vi.fn(async (_key: string, _fn: () => Promise<unknown>) => {
         throw new Error('Circuit breaker is OPEN for geocoding:oda');
-        return fn();
       }),
     };
 

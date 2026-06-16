@@ -1,5 +1,7 @@
 ## Riding Lookup Cloudflare Worker
 
+[![CI](https://github.com/chester-hill-solutions/riding-and-address/actions/workflows/ci.yml/badge.svg)](https://github.com/chester-hill-solutions/riding-and-address/actions/workflows/ci.yml)
+
 A comprehensive API service for finding Canadian electoral district (riding) information using geographic coordinates or addresses. Built on Cloudflare Workers with advanced features including spatial indexing, batch processing, caching, and webhook notifications.
 
 ### Core Lookup Routes

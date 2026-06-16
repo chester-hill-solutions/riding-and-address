@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { geocodeIfNeeded } from '../src/geocoding';
@@ -33,7 +33,7 @@ function odaEnv(): Env {
       delete: async () => {},
       list: async () => ({ keys: [], list_complete: true, cacheStatus: null }),
       getWithMetadata: async () => ({ value: null, metadata: null, cacheStatus: null }),
-    } as KVNamespace,
+    } as unknown as KVNamespace,
   };
 }
 

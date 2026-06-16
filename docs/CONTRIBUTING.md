@@ -33,7 +33,7 @@ The Riding Lookup API is a Cloudflare Worker that provides geospatial lookup ser
 
 ### Prerequisites
 
-- Node.js 18+ and npm
+- Node.js 22 and npm (see `.nvmrc`)
 - Cloudflare Wrangler CLI
 - Git
 
@@ -185,8 +185,7 @@ async function geocodeWithFallback(
 
 ### Branch Strategy
 
-- **main**: Production-ready code
-- **develop**: Integration branch for features
+- **main**: Production-ready code; target branch for pull requests
 - **feature/***: Feature development branches
 - **bugfix/***: Bug fix branches
 - **hotfix/***: Critical production fixes
@@ -205,12 +204,15 @@ async function geocodeWithFallback(
 
 3. **Test your changes**
    ```bash
-   # Run local development server
+   # Run the full validation suite (lint, typecheck, tests)
+   npm run validate
+
+   # Optional: run local development server for manual checks
    wrangler dev
-   
-   # Test API endpoints
    curl "http://localhost:8787/?lat=45.5017&lon=-73.5673"
    ```
+
+   Pre-commit hooks run `lint-staged` (ESLint on staged `.ts` files) and `typecheck` automatically on each commit.
 
 4. **Commit your changes**
    ```bash
@@ -244,12 +246,31 @@ Examples:
 
 ### Testing Strategy
 
-The project currently lacks comprehensive testing infrastructure. When adding tests:
+The project uses **Vitest** with 27 test files covering unit tests, integration tests, and regression checks. CI runs on every push to `main`/`master` and on all pull requests:
+
+1. `npm run lint` — ESLint on `src/`, `test/`, and `scripts/` (warnings fail the build)
+2. `npm run typecheck` — TypeScript strict check for source, tests, and scripts
+3. `wrangler deploy --dry-run` — validates Worker bundle and `wrangler.jsonc`
+4. `npm audit --audit-level=high --omit=dev` — production dependency audit
+5. `npm test` — full Vitest suite (378+ tests)
+
+Run the same checks locally with:
+
+```bash
+npm run validate
+```
+
+**Live/network tests** are opt-in and skipped in CI:
+
+- `GEOCODE_LIVE=1 npm test -- test/geocoding-live.test.ts`
+- `ODA_LIVE=1 npm run test:oda:live` (requires auth env vars)
+
+When adding tests:
 
 1. **Unit Tests**: Test individual functions in isolation
-2. **Integration Tests**: Test module interactions
-3. **API Tests**: Test HTTP endpoints
-4. **Performance Tests**: Test under load
+2. **Integration Tests**: Test module interactions (see `test/lookup-api.integration.test.ts`)
+3. **API Tests**: Test HTTP endpoints via in-process Worker mocks
+4. **Performance Tests**: Use `npm run benchmark:lookup` locally or in scheduled jobs
 
 ### Test Structure
 
@@ -306,7 +327,7 @@ When adding new features:
 ### Pull Request Process
 
 1. **Fork the repository** (if contributing externally)
-2. **Create a feature branch** from `develop`
+2. **Create a feature branch** from `main`
 3. **Make your changes** following the guidelines
 4. **Test thoroughly** before submitting
 5. **Create a pull request** with a clear description

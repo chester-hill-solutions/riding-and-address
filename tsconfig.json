@@ -11,8 +11,8 @@
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "types": ["@cloudflare/workers-types"]
+    "types": ["@cloudflare/workers-types", "vitest/globals", "node"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "test/**/*", "scripts/**/*"],
   "exclude": ["node_modules", "dist"]
 }

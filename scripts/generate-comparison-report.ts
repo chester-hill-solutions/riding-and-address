@@ -168,7 +168,6 @@ function main(): void {
     )
     .join('\n');
 
-  const categoryOrder = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'I'];
   const tableRows = data.robustness
     .map((r) => {
       const rl = r.ridingLookup.status === 200

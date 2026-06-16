@@ -6,7 +6,7 @@
  *   BENCHMARK_BASIC_AUTH='user:pass' tsx scripts/compare-opennorth.ts --speed-only
  *   BENCHMARK_BASIC_AUTH='user:pass' tsx scripts/compare-opennorth.ts --robustness-only
  */
-import { createReadStream, mkdirSync, writeFileSync } from 'fs';
+import { createReadStream, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { createInterface } from 'readline';
 
 const RL_BASE = (process.env.BENCHMARK_BASE_URL ?? 'https://riding-lookup.chester-hill-solutions.workers.dev').replace(/\/$/, '');
