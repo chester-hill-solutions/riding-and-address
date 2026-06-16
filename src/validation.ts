@@ -21,7 +21,7 @@ export const GeoGratisResultSchema = z.object({
   geometry: GeoGratisGeometrySchema,
   bbox: z.array(z.number()).optional(),
   score: z.number().min(0).max(1).optional(),
-  component: z.record(z.any()).optional()
+  component: z.record(z.string(), z.any()).optional()
 });
 
 export const GeoGratisResponseSchema = z.array(GeoGratisResultSchema);
@@ -104,7 +104,7 @@ export const MapboxFeatureSchema = z.object({
   type: z.string(),
   place_type: z.array(z.string()).optional(),
   relevance: z.number().optional(),
-  properties: z.record(z.any()).optional(),
+  properties: z.record(z.string(), z.any()).optional(),
   text: z.string().optional(),
   place_name: z.string().optional(),
   center: z.tuple([z.number(), z.number()]),
