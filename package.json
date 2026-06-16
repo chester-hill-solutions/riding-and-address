@@ -7,11 +7,11 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260613.1",
+    "@cloudflare/workers-types": "^4.20260616.1",
     "@eslint/js": "^10.0.1",
     "@scalar/api-reference": "^1.59.3",
     "@types/node": "^25.9.3",
-    "@typescript-eslint/eslint-plugin": "^8.61.0",
+    "@typescript-eslint/eslint-plugin": "^8.61.1",
     "@typescript-eslint/parser": "^8.61.0",
     "eslint": "^10.5.0",
     "globals": "^17.6.0",
@@ -19,7 +19,7 @@
     "lint-staged": "^17.0.7",
     "tsx": "^4.19.4",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.8",
+    "vitest": "^4.1.9",
     "wrangler": "^4.100.0"
   },
   "scripts": {
