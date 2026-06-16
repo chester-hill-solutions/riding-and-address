@@ -37,6 +37,7 @@ interface ImportOptions {
   skipSchema: boolean;
   maxRows?: number;
   resume: boolean;
+  centroidsOnly: boolean;
 }
 
 function parseArgs(argv: string[]): ImportOptions {
@@ -49,6 +50,7 @@ function parseArgs(argv: string[]): ImportOptions {
     outputDir: '.oda-import',
     skipSchema: false,
     resume: false,
+    centroidsOnly: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -75,6 +77,8 @@ function parseArgs(argv: string[]): ImportOptions {
       options.maxRows = parseInt(argv[++i], 10);
     } else if (arg === '--resume') {
       options.resume = true;
+    } else if (arg === '--centroids-only') {
+      options.centroidsOnly = true;
     }
   }
 
@@ -164,8 +168,15 @@ async function writeAndExecuteBatch(
 ): Promise<void> {
   if (statements.length === 0) return;
   writeFileSync(filePath, statements.join('\n'));
-  await executeSqlFile(database, remote, filePath);
-  unlinkSync(filePath);
+  try {
+    await executeSqlFile(database, remote, filePath);
+  } finally {
+    try {
+      unlinkSync(filePath);
+    } catch {
+      // ignore missing temp batch file
+    }
+  }
 }
 
 function queryD1Json<T>(
@@ -210,6 +221,14 @@ async function initializeSchema(options: ImportOptions): Promise<void> {
   writeFileSync(schemaPath, getOdaBaseSchemaSql().join(';\n') + ';\n');
   console.log(`Initializing ODA tables (${options.remote ? 'remote' : 'local'})...`);
   await executeSqlFile(options.database, options.remote, schemaPath);
+}
+
+function buildProvinceCentroidDeleteSql(province: string): string[] {
+  return [
+    `DELETE FROM oda_postal_centroids WHERE province = '${province}';`,
+    `DELETE FROM oda_city_centroids WHERE province = '${province}';`,
+    `DELETE FROM oda_street_ranges WHERE province = '${province}';`,
+  ];
 }
 
 function buildProvinceDeleteSql(province: string): string[] {
@@ -314,10 +333,13 @@ async function importProvinceFromFile(
   const streetRanges = new Map<string, CentroidAccumulator & { streetKey: string; cityKey: string }>();
 
   const skipRows =
-    options.resume ? queryProvinceRowCount(options.database, options.remote, province) : 0;
+    options.centroidsOnly || !options.resume
+      ? 0
+      : queryProvinceRowCount(options.database, options.remote, province);
   let rowsToSkip = skipRows;
 
-  let batch: string[] = options.resume ? [] : buildProvinceDeleteSql(province);
+  let batch: string[] =
+    options.centroidsOnly || options.resume ? [] : buildProvinceDeleteSql(province);
   let rowId = startId;
   let imported = 0;
   let skipped = 0;
@@ -325,7 +347,9 @@ async function importProvinceFromFile(
   const progressEvery = 100_000;
 
   console.log(`Importing ${province} from ${csvPath}...`);
-  if (options.resume && skipRows > 0) {
+  if (options.centroidsOnly) {
+    console.log(`  Centroids-only: scanning CSV to rebuild postal/city/street aggregates`);
+  } else if (options.resume && skipRows > 0) {
     console.log(`  Resuming: skipping first ${skipRows.toLocaleString()} ${province} rows already in D1`);
   }
 
@@ -336,12 +360,17 @@ async function importProvinceFromFile(
       continue;
     }
 
+    trackCentroidsFromRow(normalized, postalCentroids, cityCentroids, streetRanges);
+
+    if (options.centroidsOnly) {
+      continue;
+    }
+
     if (rowsToSkip > 0) {
       rowsToSkip--;
       continue;
     }
 
-    trackCentroidsFromRow(normalized, postalCentroids, cityCentroids, streetRanges);
     const insertRow = prepareOdaInsertRow(normalized);
     batch.push(buildAddressInsertSql(insertRow, rowId));
     rowId++;
@@ -359,7 +388,10 @@ async function importProvinceFromFile(
     }
   }
 
-  if (imported === 0) {
+  const hasCentroids =
+    postalCentroids.size > 0 || cityCentroids.size > 0 || streetRanges.size > 0;
+
+  if (imported === 0 && !hasCentroids) {
     console.warn(`No rows imported for province ${province} (skipped ${skipped.toLocaleString()} rows)`);
     return { imported: 0, nextId: startId };
   }
@@ -370,24 +402,45 @@ async function importProvinceFromFile(
     batchIndex++;
   }
 
-  batchIndex = await flushCentroids(
-    province,
-    options,
-    postalCentroids,
-    cityCentroids,
-    streetRanges,
-    batchIndex
-  );
+  if (hasCentroids) {
+    if (options.centroidsOnly || options.resume) {
+      const deletePath = join(options.outputDir, `${province}-centroids-delete.sql`);
+      await writeAndExecuteBatch(
+        options.database,
+        options.remote,
+        buildProvinceCentroidDeleteSql(province),
+        deletePath
+      );
+    }
 
-  const metadataPath = join(options.outputDir, `${province}-metadata.sql`);
-  await writeAndExecuteBatch(
-    options.database,
-    options.remote,
-    [
-      `INSERT INTO oda_imports (province, source_url, source_version, row_count, finished_at) VALUES ('${province}', '${PROVINCE_DOWNLOAD_URLS[province] || ''}', '${ODA_DEFAULTS.DATA_VERSION}', ${imported + skipRows}, datetime('now'));`,
-    ],
-    metadataPath
-  );
+    batchIndex = await flushCentroids(
+      province,
+      options,
+      postalCentroids,
+      cityCentroids,
+      streetRanges,
+      batchIndex
+    );
+  }
+
+  if (imported > 0 || options.centroidsOnly) {
+    const metadataPath = join(options.outputDir, `${province}-metadata.sql`);
+    await writeAndExecuteBatch(
+      options.database,
+      options.remote,
+      [
+        `INSERT INTO oda_imports (province, source_url, source_version, row_count, finished_at) VALUES ('${province}', '${PROVINCE_DOWNLOAD_URLS[province] || ''}', '${ODA_DEFAULTS.DATA_VERSION}', ${imported + skipRows}, datetime('now'));`,
+      ],
+      metadataPath
+    );
+  }
+
+  if (options.centroidsOnly) {
+    console.log(
+      `Rebuilt centroids for ${province} (${postalCentroids.size.toLocaleString()} postal, ${cityCentroids.size.toLocaleString()} city, ${streetRanges.size.toLocaleString()} street ranges; skipped ${skipped.toLocaleString()} rows)`
+    );
+    return { imported: 0, nextId: startId };
+  }
 
   console.log(
     `Imported ${imported.toLocaleString()} addresses for ${province} (skipped ${skipped.toLocaleString()} rows)`
@@ -407,7 +460,10 @@ async function main(): Promise<void> {
     await initializeSchema(options);
   }
 
-  let nextId = queryNextAddressId(options.database, options.remote);
+  let nextId = 1;
+  if (!options.centroidsOnly) {
+    nextId = queryNextAddressId(options.database, options.remote);
+  }
 
   for (const province of options.provinces) {
     const csvPath = resolveCsvPath(province, options);

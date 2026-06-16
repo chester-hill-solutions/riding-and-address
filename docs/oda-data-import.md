@@ -91,7 +91,8 @@ wrangler d1 execute oda-addresses --remote --command \
 | `--skip-schema` | Skip table creation (use after `/api/oda/init` or first run) |
 | `--batch-size N` | Rows per D1 upload batch (default: 500) |
 | `--max-rows N` | Stop after N address rows (pilot imports) |
-| `--resume` | Skip rows already present in D1; does not delete existing province data |
+| `--resume` | Skip address rows already present in D1; rebuilds centroids from the full CSV at end |
+| `--centroids-only` | Rebuild postal/city/street centroids from CSV without re-importing addresses |
 | `--output-dir dir` | Download/extract/SQL staging dir (default: `.oda-import`) |
 
 The import script:
@@ -125,6 +126,14 @@ If D1 cannot hold the full address table:
 
 Without `--resume`, re-running import for a province deletes existing rows for that province and re-imports. Import metadata is preserved in `oda_imports`.
 
-With `--resume`, existing rows are kept and the CSV stream skips the number of rows already stored for that province.
+With `--resume`, existing address rows are kept, the CSV stream skips rows already stored, and centroids are rebuilt from the entire CSV when the run finishes.
+
+If postal geocoding fails after an interrupted import, rebuild centroids without touching addresses:
+
+```bash
+npm run import:oda:centroids
+# Or one province:
+npm run import:oda -- --download --provinces AB --remote --skip-schema --centroids-only
+```
 
 Re-import QC or ON if `/api/oda/stats` shows unexpectedly low row counts (e.g. QC with only a handful of rows).
