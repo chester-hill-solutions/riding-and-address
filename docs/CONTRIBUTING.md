@@ -33,7 +33,7 @@ The Riding Lookup API is a Cloudflare Worker that provides geospatial lookup ser
 
 ### Prerequisites
 
-- Node.js 20 and npm (see `.nvmrc`)
+- Node.js 22 and npm (see `.nvmrc`)
 - Cloudflare Wrangler CLI
 - Git
 
