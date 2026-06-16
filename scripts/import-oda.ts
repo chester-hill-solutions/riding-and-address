@@ -460,7 +460,10 @@ async function main(): Promise<void> {
     await initializeSchema(options);
   }
 
-  let nextId = queryNextAddressId(options.database, options.remote);
+  let nextId = 1;
+  if (!options.centroidsOnly) {
+    nextId = queryNextAddressId(options.database, options.remote);
+  }
 
   for (const province of options.provinces) {
     const csvPath = resolveCsvPath(province, options);
