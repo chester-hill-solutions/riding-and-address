@@ -549,6 +549,8 @@ export async function setCachedLookupResult(env: Env, cacheKey: string, result: 
       riding: result.riding,
       point,
       normalizedAddress: result.normalizedAddress,
+      addressComponents: result.addressComponents,
+      mailingAddress: result.mailingAddress,
       timestamp: Date.now(),
       dataset
     };

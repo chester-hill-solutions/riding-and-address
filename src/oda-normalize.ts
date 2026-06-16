@@ -273,6 +273,12 @@ export function parseFreeformAddress(address: string): {
   let normalized = address.trim();
   let unit: string | undefined;
 
+  const unitCommaSuffixMatch = normalized.match(/^(.+?),\s*Unit\s+#?\s*(\S+)\s*$/i);
+  if (unitCommaSuffixMatch) {
+    normalized = unitCommaSuffixMatch[1].trim();
+    unit = unitCommaSuffixMatch[2].replace(/[,;]+$/, '');
+  }
+
   const unitSuffixMatch = normalized.match(/^(.+?)\s+UNIT\s+(\S+)\s*$/i);
   if (unitSuffixMatch) {
     normalized = unitSuffixMatch[1].trim();

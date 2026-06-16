@@ -37,6 +37,7 @@ export interface ExpandedLookupPayload {
   municipality?: string;
   normalizedAddress?: string;
   addressComponents?: GoogleAddressComponents;
+  mailingAddress?: CanadaPostStyleAddress;
   geocode?: { method: string; confidence?: number };
   cacheStatus: 'HIT' | 'MISS' | 'PARTIAL';
 }
@@ -219,6 +220,17 @@ function computeCombinedCacheStatus(
   return 'MISS';
 }
 
+function mergeAddressFields(
+  base: LookupResult,
+  addressContext: NormalizedAddressContext
+): Pick<ExpandedLookupPayload, 'normalizedAddress' | 'addressComponents' | 'mailingAddress'> {
+  return {
+    normalizedAddress: addressContext.normalizedAddress ?? base.normalizedAddress,
+    addressComponents: addressContext.addressComponents ?? base.addressComponents,
+    mailingAddress: addressContext.mailingAddress ?? base.mailingAddress,
+  };
+}
+
 export function buildExpandedLookupPayload(
   base: LookupResult,
   returnFields: readonly string[],
@@ -268,6 +280,17 @@ export function buildExpandedLookupPayload(
     payload.municipality = municipality;
   }
 
+  const addressFields = mergeAddressFields(base, addressContext);
+  if (addressFields.normalizedAddress) {
+    payload.normalizedAddress = addressFields.normalizedAddress;
+  }
+  if (addressFields.addressComponents) {
+    payload.addressComponents = addressFields.addressComponents;
+  }
+  if (addressFields.mailingAddress) {
+    payload.mailingAddress = addressFields.mailingAddress;
+  }
+
   return payload;
 }
 
@@ -279,6 +302,7 @@ export function expandedLookupResponseFields(expanded: ExpandedLookupPayload): {
   municipality?: string;
   normalizedAddress?: string;
   addressComponents?: GoogleAddressComponents;
+  mailingAddress?: CanadaPostStyleAddress;
   geocode?: { method: string; confidence?: number };
 } {
   return {
@@ -288,6 +312,7 @@ export function expandedLookupResponseFields(expanded: ExpandedLookupPayload): {
     ...(expanded.municipality && { municipality: expanded.municipality }),
     ...(expanded.normalizedAddress && { normalizedAddress: expanded.normalizedAddress }),
     ...(expanded.addressComponents && { addressComponents: expanded.addressComponents }),
+    ...(expanded.mailingAddress && { mailingAddress: expanded.mailingAddress }),
     ...(expanded.geocode && { geocode: expanded.geocode }),
   };
 }
@@ -381,6 +406,7 @@ export async function performExpandedLookup(
       riding: cached.riding,
       normalizedAddress: cached.normalizedAddress,
       addressComponents: cached.addressComponents,
+      mailingAddress: cached.mailingAddress,
     };
   } else {
     incrementMetric('lookupCacheMisses');
@@ -396,8 +422,9 @@ export async function performExpandedLookup(
         {
           properties: lookup.properties,
           riding: lookup.riding,
-          normalizedAddress: lookup.normalizedAddress,
-          addressComponents: lookup.addressComponents,
+          normalizedAddress: resolvedAddressContext?.normalizedAddress,
+          addressComponents: resolvedAddressContext?.addressComponents,
+          mailingAddress: resolvedAddressContext?.mailingAddress,
         },
         dataset,
         { lon, lat }

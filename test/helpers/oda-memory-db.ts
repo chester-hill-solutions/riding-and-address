@@ -154,6 +154,9 @@ function sqlKind(sql: string): string {
   const s = sql.replace(/\s+/g, ' ').toUpperCase();
   if (s.includes('SEARCH_KEY =') && s.includes('ODA_ADDRESSES')) return 'exact';
   if (s.includes('ODA_POSTAL_CENTROIDS')) return 'postal';
+  if (s.includes('STREET_KEY IN') && s.includes('CIVIC_NUMBER =')) return 'street_in_exact';
+  if (s.includes('STREET_KEY IN') && s.includes('ORDER BY ABS(CAST(CIVIC_NUMBER')) return 'street_in_nearest';
+  if (s.includes('STREET_KEY IN') && s.includes('ODA_STREET_RANGES')) return 'street_in_range';
   if (s.includes('CIVIC_NUMBER =')) return 'street_exact';
   if (s.includes('ORDER BY ABS(CAST(CIVIC_NUMBER')) return 'street_nearest';
   if (s.includes('ODA_STREET_RANGES')) return 'street_range';
@@ -161,6 +164,43 @@ function sqlKind(sql: string): string {
   if (s.includes('ODA_CITY_CENTROIDS')) return 'city';
   if (s.includes('BETWEEN') && s.includes('ODA_ADDRESSES')) return 'bbox';
   return 'unknown';
+}
+
+function countPlaceholders(fragment: string | undefined): number {
+  if (!fragment) return 0;
+  return (fragment.match(/\?/g) || []).length;
+}
+
+function parseStreetInParams(sql: string, params: unknown[]): {
+  provinces: string[];
+  cityKey: string;
+  streetKeys: string[];
+  rest: unknown[];
+} {
+  const s = sql.replace(/\s+/g, ' ').toUpperCase();
+  const provinceIn = s.match(/PROVINCE IN \(([^)]+)\)/)?.[1];
+  const streetIn = s.match(/STREET_KEY IN \(([^)]+)\)/)?.[1];
+  const provinceCount = countPlaceholders(provinceIn);
+  const streetKeyCount = countPlaceholders(streetIn);
+  const provinces = params.slice(0, provinceCount).map(String);
+  const cityKey = String(params[provinceCount]);
+  const streetKeys = params.slice(provinceCount + 1, provinceCount + 1 + streetKeyCount).map(String);
+  const rest = params.slice(provinceCount + 1 + streetKeyCount);
+  return { provinces, cityKey, streetKeys, rest };
+}
+
+function pickStreetMatch<T extends { street_key: string }>(
+  rows: T[],
+  streetKeys: string[],
+  orderParams: string[]
+): T | null {
+  if (rows.length === 0) return null;
+  const rank = new Map(orderParams.map((key, index) => [key, index]));
+  return [...rows].sort((a, b) => {
+    const aRank = rank.get(a.street_key) ?? streetKeys.length;
+    const bRank = rank.get(b.street_key) ?? streetKeys.length;
+    return aRank - bRank;
+  })[0];
 }
 
 function executeQuery(db: OdaMemoryDb, sql: string, params: unknown[]): unknown {
@@ -196,6 +236,57 @@ function executeQuery(db: OdaMemoryDb, sql: string, params: unknown[]): unknown 
         if (hit) return hit;
       }
       return null;
+    }
+    case 'street_in_exact': {
+      const { provinces, cityKey, streetKeys, rest } = parseStreetInParams(sql, params);
+      const hasUnit = sql.toUpperCase().includes('AND UNIT =');
+      const civic = String(rest[0]);
+      const unitFilter = hasUnit ? String(rest[1]) : undefined;
+      const orderParams = hasUnit ? rest.slice(2).map(String) : rest.slice(1).map(String);
+      const candidates = db.addresses.filter(
+        (a) =>
+          provinces.includes(a.province) &&
+          a.city_key === cityKey &&
+          streetKeys.includes(a.street_key) &&
+          a.civic_number === civic &&
+          (!unitFilter || a.unit === unitFilter)
+      );
+      return pickStreetMatch(candidates, streetKeys, orderParams) ?? null;
+    }
+    case 'street_in_nearest': {
+      const { provinces, cityKey, streetKeys, rest } = parseStreetInParams(sql, params);
+      const orderParams = rest.slice(0, -1).map(String);
+      const civicNumeric = Number(rest[rest.length - 1]);
+      const candidates = db.addresses.filter(
+        (a) =>
+          provinces.includes(a.province) &&
+          a.city_key === cityKey &&
+          streetKeys.includes(a.street_key)
+      );
+      if (candidates.length === 0) return null;
+      const bestStreet = pickStreetMatch(candidates, streetKeys, orderParams);
+      const sameStreet = candidates.filter((a) => a.street_key === bestStreet?.street_key);
+      return sameStreet.reduce((best, row) => {
+        const bestNum = parseInt(best.civic_number, 10);
+        const rowNum = parseInt(row.civic_number, 10);
+        const bestDist = Math.abs(bestNum - civicNumeric);
+        const rowDist = Math.abs(rowNum - civicNumeric);
+        return rowDist < bestDist ? row : best;
+      });
+    }
+    case 'street_in_range': {
+      const { provinces, cityKey, streetKeys, rest } = parseStreetInParams(sql, params);
+      const orderParams = rest.map(String);
+      const hits = streetKeys
+        .map((streetKey) => {
+          for (const prov of provinces) {
+            const hit = db.streetRanges.get(`${prov}|${cityKey}|${streetKey}`);
+            if (hit) return { ...hit, street_key: streetKey };
+          }
+          return null;
+        })
+        .filter(Boolean) as Array<{ province: string; lat: number; lon: number; street_key: string }>;
+      return pickStreetMatch(hits, streetKeys, orderParams);
     }
     case 'street_exact': {
       const hasUnitFilter = sql.toUpperCase().includes('AND UNIT =');

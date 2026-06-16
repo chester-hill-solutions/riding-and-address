@@ -78,6 +78,31 @@ const LIVE_CASES: LiveCase[] = [
     expectStatus: 422,
     expectCode: 'AMBIGUOUS_LOCATION',
   },
+  {
+    name: '901-560 Birchmount Rd Toronto',
+    path: `/api/geocode?${queryString({ address: '901-560 Birchmount Rd', city: 'Toronto', state: 'ON' })}`,
+    expectStatus: 200,
+  },
+  {
+    name: 'Unit 1205, 123 Main St Toronto',
+    path: `/api/geocode?${queryString({ address: 'Unit 1205, 123 Main St', city: 'Toronto', state: 'ON' })}`,
+    expectStatus: 200,
+    expectMethod: 'exact',
+    latClose: 43.6533,
+    lonClose: -79.3833,
+  },
+  {
+    name: '757 Victoria Park Ave street beats postal',
+    path: `/api/geocode?${queryString({
+      address: '757 Victoria Park Ave',
+      postal: 'M5V2T6',
+      city: 'Toronto',
+      state: 'ON',
+    })}`,
+    expectStatus: 200,
+    latClose: 43.692101,
+    lonClose: -79.288688,
+  },
 ];
 
 describe.skipIf(!runLive)('ODA live geocoding (ODA_LIVE=1)', () => {

@@ -28,6 +28,7 @@ export interface OdaConfig {
   nnMaxCandidates: number;
   maxReverseDistanceMeters: number;
   maxAmbiguousMatches: number;
+  maxPostalCentroidDistanceMeters: number;
   dataVersion: string;
 }
 
@@ -49,6 +50,9 @@ export function getOdaConfig(env: Env): OdaConfig {
       ODA_DEFAULTS.MAX_REVERSE_DISTANCE_METERS,
     maxAmbiguousMatches:
       parseInt(env.ODA_MAX_AMBIGUOUS_MATCHES || '', 10) || ODA_DEFAULTS.MAX_AMBIGUOUS_MATCHES,
+    maxPostalCentroidDistanceMeters:
+      parseInt(env.ODA_MAX_POSTAL_CENTROID_DISTANCE_METERS || '', 10) ||
+      ODA_DEFAULTS.MAX_POSTAL_CENTROID_DISTANCE_METERS,
     dataVersion: ODA_DEFAULTS.DATA_VERSION,
   };
 }

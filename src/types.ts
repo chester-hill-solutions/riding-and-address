@@ -27,6 +27,7 @@ export interface Env {
   ODA_NN_MAX_CANDIDATES?: string;
   ODA_MAX_REVERSE_DISTANCE_METERS?: string;
   ODA_MAX_AMBIGUOUS_MATCHES?: string;
+  ODA_MAX_POSTAL_CENTROID_DISTANCE_METERS?: string;
 }
 
 // ODA geocoding types
@@ -270,6 +271,7 @@ export interface LookupResult {
   riding?: string;
   normalizedAddress?: string;
   addressComponents?: GoogleAddressComponents;
+  mailingAddress?: CanadaPostStyleAddress;
 }
 
 // Lookup cache entry structure
@@ -279,6 +281,7 @@ export interface LookupCacheEntry {
   point?: { lon: number; lat: number };
   normalizedAddress?: string;
   addressComponents?: GoogleAddressComponents;
+  mailingAddress?: CanadaPostStyleAddress;
   timestamp: number;
   dataset: string;
 }
@@ -308,6 +311,8 @@ export interface BatchLookupResponse {
   municipality?: string;
   normalizedAddress?: string;
   addressComponents?: GoogleAddressComponents;
+  mailingAddress?: CanadaPostStyleAddress;
+  geocode?: { method: string; confidence?: number };
   error?: string;
   processingTime: number;
 }
@@ -429,6 +434,9 @@ export interface Metrics {
   geocodingOdaTime: number;
   geocodingGeoGratisTime: number;
   geocodingFallbackTime: number;
+  odaD1Reads: number;
+  odaD1QueriesMaxPerRequest: number;
+  odaStageTimeouts: number;
   totalR2Time: number;
   totalBatchTime: number;
   totalWebhookTime: number;

@@ -52,6 +52,21 @@ describe('oda-normalize', () => {
     expect(parsed.streetType).toBe('AVE');
   });
 
+  it('parses comma unit suffix with hash', () => {
+    const parsed = parseFreeformAddress('90 Edgewood Ave, Unit # 132');
+    expect(parsed.unit).toBe('132');
+    expect(parsed.civic).toBe('90');
+    expect(parsed.streetName).toBe('Edgewood');
+    expect(parsed.streetType).toBe('AVE');
+  });
+
+  it('parses 312 Unit 4 Dundas St E', () => {
+    const parsed = parseFreeformAddress('312 Unit 4 Dundas St E');
+    expect(parsed.unit).toBe('4');
+    expect(parsed.civic).toBe('312');
+    expect(parsed.streetDirection).toBe('E');
+  });
+
   it('includes unit in parseAddressQuery', () => {
     const parsed = parseAddressQuery({
       address: '901-560 Birchmount Rd',
