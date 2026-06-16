@@ -27,6 +27,7 @@ export interface Env {
   ODA_NN_MAX_CANDIDATES?: string;
   ODA_MAX_REVERSE_DISTANCE_METERS?: string;
   ODA_MAX_AMBIGUOUS_MATCHES?: string;
+  ODA_MAX_POSTAL_CENTROID_DISTANCE_METERS?: string;
 }
 
 // ODA geocoding types

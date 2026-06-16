@@ -338,7 +338,7 @@ async function findStreetInterpolated(
     if (nearest) return nearest as OdaAddressRow;
   }
 
-  const range = await odaQueryFirst(
+  const range = (await odaQueryFirst(
     env,
     `
     SELECT lat, lon, province, street_key FROM oda_street_ranges
@@ -348,14 +348,14 @@ async function findStreetInterpolated(
     LIMIT 1
   `,
     [...provinces, cityKey, ...streetKeys, ...orderParams]
-  );
+  )) as { lat: number; lon: number; province: string; street_key?: string } | null;
 
   if (range) {
-    const matchedStreetKey = (range as { street_key?: string }).street_key || streetKeys[0];
+    const matchedStreetKey = range.street_key || streetKeys[0];
     const matchedType = matchedStreetKey.split('|')[1] || parsed.streetType || '';
     return {
       id: 0,
-      province: range.province as string,
+      province: range.province,
       civic_number: parsed.civic || '',
       street_name: parsed.streetName,
       street_type: matchedType,
@@ -363,8 +363,8 @@ async function findStreetInterpolated(
       unit: '',
       postal_code: parsed.postal || '',
       city: parsed.city,
-      lat: range.lat as number,
-      lon: range.lon as number,
+      lat: range.lat,
+      lon: range.lon,
       full_address: '',
     };
   }
