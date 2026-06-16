@@ -128,7 +128,7 @@ Without `--resume`, re-running import for a province deletes existing rows for t
 
 With `--resume`, existing address rows are kept, the CSV stream skips rows already stored, and centroids are rebuilt from the entire CSV when the run finishes.
 
-If postal geocoding fails after a interrupted import, rebuild centroids without touching addresses:
+If postal geocoding fails after an interrupted import, rebuild centroids without touching addresses:
 
 ```bash
 npm run import:oda:centroids
