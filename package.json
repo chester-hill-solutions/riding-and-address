@@ -38,6 +38,7 @@
     "upload:r2-datasets": "tsx scripts/upload-r2-datasets.ts",
     "acquire:provincial-ridings": "python3 scripts/acquire-provincial-ridings.py",
     "import:oda:all": "tsx scripts/import-oda.ts --download --provinces ALL --remote --skip-schema --resume",
+    "import:oda:centroids": "bash scripts/rebuild-oda-centroids.sh",
     "import:oda": "tsx scripts/import-oda.ts"
   },
   "keywords": [],
