@@ -7,6 +7,13 @@ on:
       - master
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -29,6 +36,12 @@ jobs:
 
       - name: Run typecheck
         run: npm run typecheck
+
+      - name: Validate Worker bundle
+        run: npx wrangler deploy --dry-run
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high --omit=dev
 
       - name: Run tests
         run: npm test

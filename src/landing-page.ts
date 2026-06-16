@@ -402,7 +402,7 @@ export function createLandingPage(baseUrl: string): string {
     <a class="brand" href="${baseUrl}/">Riding Lookup</a>
     <div class="nav-links">
       <a href="${baseUrl}/health">Health</a>
-      <a href="https://github.com/wra-sol/ridingLookup/tree/main/docs">Guides</a>
+      <a href="https://github.com/chester-hill-solutions/riding-and-address/tree/main/docs">Guides</a>
       <a href="${baseUrl}/api/docs">OpenAPI</a>
       <a class="btn btn-primary" href="${baseUrl}/docs">API Reference</a>
     </div>
@@ -419,7 +419,7 @@ export function createLandingPage(baseUrl: string): string {
         </p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="${baseUrl}/docs">Browse API reference</a>
-          <a class="btn btn-secondary" href="https://github.com/wra-sol/ridingLookup">View on GitHub</a>
+          <a class="btn btn-secondary" href="https://github.com/chester-hill-solutions/riding-and-address">View on GitHub</a>
         </div>
         <div class="hero-meta">
           <span class="pill"><strong>Federal</strong> 2024 boundaries</span>
@@ -521,8 +521,8 @@ export function createLandingPage(baseUrl: string): string {
     <a href="${baseUrl}/docs">API reference</a>
     <a href="${baseUrl}/api/docs">OpenAPI JSON</a>
     <a href="${baseUrl}/health">Health check</a>
-    <a href="https://github.com/wra-sol/ridingLookup/tree/main/docs">Markdown guides</a>
-    <a href="https://github.com/wra-sol/ridingLookup">GitHub repository</a>
+    <a href="https://github.com/chester-hill-solutions/riding-and-address/tree/main/docs">Markdown guides</a>
+    <a href="https://github.com/chester-hill-solutions/riding-and-address">GitHub repository</a>
   </footer>
 
   <script>

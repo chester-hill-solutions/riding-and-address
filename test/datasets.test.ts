@@ -16,7 +16,7 @@ function mockR2(present: Set<string>): Env['RIDINGS'] {
     put: async () => ({} as R2Object),
     delete: async () => {},
     list: async () => ({ objects: [], truncated: false, delimitedPrefixes: [] }),
-  } as R2Bucket;
+  } as unknown as R2Bucket;
 }
 
 describe('checkRidingDatasets', () => {

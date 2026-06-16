@@ -129,7 +129,7 @@ function createMemoryKv(): KVNamespace {
     },
     list: async () => ({ keys: [], list_complete: true, cacheStatus: null }),
     getWithMetadata: async () => ({ value: null, metadata: null, cacheStatus: null }),
-  } as KVNamespace;
+  } as unknown as KVNamespace;
 }
 
 export function createLookupTestEnv(
@@ -153,7 +153,7 @@ export function createLookupTestEnv(
       put: async () => ({} as R2Object),
       delete: async () => {},
       list: async () => ({ objects: [], truncated: false, delimitedPrefixes: [] }),
-    } as R2Bucket,
+    } as unknown as R2Bucket,
     GEOCODING_CACHE: createMemoryKv(),
     LOOKUP_CACHE: createMemoryKv(),
     SPATIAL_DB_ENABLED: 'false',
@@ -169,5 +169,10 @@ export async function fetchLookup(
 ): Promise<Response> {
   const worker = (await import('../../src/worker')).default;
   const url = path.startsWith('http') ? path : `https://lookup.test${path}`;
-  return worker.fetch(new Request(url, init), env);
+  const mockCtx = {
+    waitUntil: () => {},
+    passThroughOnException: () => {},
+    props: {},
+  } as unknown as ExecutionContext;
+  return worker.fetch(new Request(url, init), env, mockCtx);
 }

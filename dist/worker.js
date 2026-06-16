@@ -8531,8 +8531,8 @@ print(data)</code></pre>
                 <li><strong>/api/qc</strong> \u2014 Quebec provincial ridings (125 ridings)</li>
                 <li><strong>/api/on</strong> \u2014 Ontario provincial ridings (124 ridings)</li>
             </ul>
-            <p>Have a dataset you'd like to see supported? <a href="https://github.com/wra-sol/ridingLookup/issues/new">Open an issue</a> and we'll add it to the list.</p>
-            <p>Want to contribute a dataset? <a href="https://github.com/wra-sol/ridingLookup/blob/main/docs/CONTRIBUTING.md">Read the contribution guidelines</a> and submit a pull request.</p>
+            <p>Have a dataset you'd like to see supported? <a href="https://github.com/chester-hill-solutions/riding-and-address/issues/new">Open an issue</a> and we'll add it to the list.</p>
+            <p>Want to contribute a dataset? <a href="https://github.com/chester-hill-solutions/riding-and-address/blob/main/docs/CONTRIBUTING.md">Read the contribution guidelines</a> and submit a pull request.</p>
         </div>
 
         <div class="section">
@@ -8620,7 +8620,7 @@ print(data)</code></pre>
         <div class="links">
             <a href="${baseUrl}/swagger" target="_blank">API Documentation</a>
             <a href="${baseUrl}/api/docs" target="_blank">OpenAPI Spec</a>
-            <a href="https://github.com/wra-sol/ridingLookup" target="_blank">GitHub</a>
+            <a href="https://github.com/chester-hill-solutions/riding-and-address" target="_blank">GitHub</a>
         </div>
     </div>
 
