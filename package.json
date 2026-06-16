@@ -4,7 +4,7 @@
   "description": "Provides three GET routes that return riding properties for a given location in Canada by testing the point against large GeoJSON datasets stored in R2.",
   "main": "index.js",
   "dependencies": {
-    "zod": "^3.23.8"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260616.1",

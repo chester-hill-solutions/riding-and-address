@@ -495,7 +495,7 @@ async function geocodeWithGeoGratis(qp: QueryParams): Promise<{ lon: number; lat
       // Validate response structure with zod
       const validation = safeValidateGeoGratis(rawData);
       if (!validation.success) {
-        console.warn(`[GEOCODING] GeoGratis response validation failed:`, validation.error.errors);
+        console.warn(`[GEOCODING] GeoGratis response validation failed:`, validation.error.issues);
         throw new NonRetriableError('GeoGratis response validation failed');
       }
       
@@ -559,7 +559,7 @@ async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, reque
   const rawData = await resp.json();
   const validation = safeValidateGoogleGeocode(rawData);
   if (!validation.success) {
-    console.warn(`[GEOCODING] Google response validation failed:`, validation.error.errors);
+    console.warn(`[GEOCODING] Google response validation failed:`, validation.error.issues);
     throw new NonRetriableError(`Google API response validation failed`);
   }
   const data = validation.data;
@@ -609,7 +609,7 @@ async function geocodeWithNominatimFallback(qp: QueryParams, query: string): Pro
     const rawResults = await nomResp.json();
     const nomValidation = safeValidateNominatim(rawResults);
     if (!nomValidation.success) {
-      console.warn(`[GEOCODING] Nominatim response validation failed:`, nomValidation.error.errors);
+      console.warn(`[GEOCODING] Nominatim response validation failed:`, nomValidation.error.issues);
       throw new NonRetriableError(`Nominatim API response validation failed`);
     }
     const results = nomValidation.data;
@@ -662,7 +662,7 @@ async function geocodeWithNominatim(qp: QueryParams, query: string): Promise<Geo
   const rawResults = await resp.json();
   const nomValidation = safeValidateNominatim(rawResults);
   if (!nomValidation.success) {
-    console.warn(`[GEOCODING] Nominatim response validation failed:`, nomValidation.error.errors);
+    console.warn(`[GEOCODING] Nominatim response validation failed:`, nomValidation.error.issues);
     throw new NonRetriableError(`Nominatim API response validation failed`);
   }
   const results = nomValidation.data;
@@ -989,7 +989,7 @@ export async function geocodeBatchWithGoogle(
     // Validate batch response structure
     const validation = safeValidateGoogleBatchGeocode(rawData);
     if (!validation.success) {
-      const errorMsg = `Google batch geocoding validation failed: ${validation.error.errors.map(e => e.message).join(', ')}`;
+      const errorMsg = `Google batch geocoding validation failed: ${validation.error.issues.map(e => e.message).join(', ')}`;
       console.warn(`[GEOCODING] ${errorMsg}`);
       errors.push(errorMsg);
       // Return failures for all queries

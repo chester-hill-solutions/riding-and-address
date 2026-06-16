@@ -885,7 +885,7 @@ export default {
             const parsedRequests = safeParseBatchLookupRequests(body.requests);
             if (!parsedRequests.success) {
               return badRequest(
-                parsedRequests.error.errors.map((e) => e.message).join('; '),
+                parsedRequests.error.issues.map((e) => e.message).join('; '),
                 400,
                 'INVALID_BATCH_REQUEST'
               );
@@ -965,7 +965,7 @@ export default {
           const parsedRequests = safeParseBatchLookupRequests(body.requests);
           if (!parsedRequests.success) {
             return badRequest(
-              parsedRequests.error.errors.map((e) => e.message).join('; '),
+              parsedRequests.error.issues.map((e) => e.message).join('; '),
               400,
               'INVALID_BATCH_REQUEST'
             );
