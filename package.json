@@ -7,20 +7,20 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260616.1",
+    "@cloudflare/workers-types": "^4.20260623.1",
     "@eslint/js": "^10.0.1",
-    "@scalar/api-reference": "^1.59.3",
-    "@types/node": "^25.9.3",
-    "@typescript-eslint/eslint-plugin": "^8.61.1",
+    "@scalar/api-reference": "^1.61.0",
+    "@types/node": "^26.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.62.0",
     "@typescript-eslint/parser": "^8.61.0",
     "eslint": "^10.5.0",
-    "globals": "^17.6.0",
+    "globals": "^17.7.0",
     "husky": "^9.1.7",
-    "lint-staged": "^17.0.7",
+    "lint-staged": "^17.0.8",
     "tsx": "^4.19.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9",
-    "wrangler": "^4.100.0"
+    "wrangler": "^4.103.0"
   },
   "scripts": {
     "dev": "wrangler dev",
