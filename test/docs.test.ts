@@ -95,6 +95,30 @@ describe('OpenAPI document', () => {
       expect(paths, `${dataset.path} is undocumented`).toContain(dataset.path);
     }
   });
+
+  it('keeps operator-only endpoints out of the public spec', () => {
+    // These routes exist but are gated behind the operator BASIC_AUTH secret (or are internal
+    // machinery like the spatial DB and queue workers). Publishing them in customer-facing docs
+    // just invites 401s and support noise.
+    const paths = Object.keys(spec().paths);
+    const internalPrefixes = [
+      '/admin',
+      '/api/oda/',
+      '/api/queue/',
+      '/api/database',
+      '/api/boundaries',
+      '/api/cache/',
+      '/api/geocoding/',
+      '/api/webhooks',
+      '/webhooks',
+      '/metrics',
+      '/cache-warming',
+    ];
+    for (const path of paths) {
+      const match = internalPrefixes.find((prefix) => path === prefix || path.startsWith(prefix));
+      expect(match, `${path} is operator-only and must not be documented publicly`).toBeUndefined();
+    }
+  });
 });
 
 describe('GET /api/search is documented', () => {

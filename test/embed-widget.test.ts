@@ -698,6 +698,131 @@ describe('selection', () => {
   });
 });
 
+describe('container paging', () => {
+  /** First page carries a nextCursor; the cursor request returns the final page. */
+  function pagedFetch(options: { failCursorPage?: boolean } = {}) {
+    const calls: string[] = [];
+    const fetchMock = vi.fn(async (url: string) => {
+      calls.push(String(url));
+      if (String(url).includes('cursor=')) {
+        if (options.failCursorPage) {
+          return { ok: false, status: 503, json: async () => ({}) };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            suggestions: [
+              leafSuggestion({
+                id: 'addr-2',
+                structuredFormat: {
+                  mainText: { text: '252 Main St' },
+                  secondaryText: { text: 'Toronto, ON, M4L 1E7' },
+                },
+              }),
+            ],
+            provinces: ['ON'],
+          }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          suggestions: [leafSuggestion()],
+          nextCursor: 'cursor-page-2',
+          provinces: ['ON'],
+        }),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return { calls, fetchMock };
+  }
+
+  it('renders a "More addresses…" row when the response has a nextCursor', async () => {
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    pagedFetch();
+    const instance = loadWidget().attach({ input: '#a' })!;
+
+    await instance.search('250 main st');
+
+    const root = document.querySelector('[data-riding-lookup]')!.shadowRoot!;
+    const more = root.querySelector('.item.more')!;
+    expect(more.textContent).toContain('More addresses…');
+    expect(more.getAttribute('role')).toBe('option');
+    expect(root.querySelector('.status')!.textContent).toBe('1 suggestion, more available');
+  });
+
+  it('shows no more row when the response has no nextCursor', async () => {
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    mockFetch({ suggestions: [leafSuggestion()] });
+    const instance = loadWidget().attach({ input: '#a' })!;
+
+    await instance.search('250 main st');
+
+    const root = document.querySelector('[data-riding-lookup]')!.shadowRoot!;
+    expect(root.querySelector('.item.more')).toBeNull();
+  });
+
+  it('selecting the more row fetches the next page with the cursor and appends it', async () => {
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    const { calls } = pagedFetch();
+    const instance = loadWidget().attach({ input: '#a' })!;
+
+    await instance.search('250 main st');
+    await instance.select(1); // index 1 is the more row (one suggestion at index 0)
+    await flush();
+
+    expect(calls[1]).toContain('cursor=cursor-page-2');
+    // Paged the list rather than resolving a riding or filling the form.
+    expect(calls.some((c) => c.includes('/api/federal'))).toBe(false);
+
+    const root = document.querySelector('[data-riding-lookup]')!.shadowRoot!;
+    const panel = root.querySelector('.panel')!;
+    expect(panel.getAttribute('data-open')).toBe('true');
+    expect(panel.textContent).toContain('250 Main St');
+    expect(panel.textContent).toContain('252 Main St');
+    // Last page: the more row is gone.
+    expect(panel.querySelector('.item.more')).toBeNull();
+  });
+
+  it('reaches the more row with the arrow keys and pages it with Enter', async () => {
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    const { calls } = pagedFetch();
+    const instance = loadWidget().attach({ input: '#a' })!;
+    await instance.search('250 main st');
+
+    instance.input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    instance.input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(instance.input.getAttribute('aria-activedescendant')).toMatch(/-1$/);
+
+    instance.input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+
+    expect(calls.some((c) => c.includes('cursor=cursor-page-2'))).toBe(true);
+    const panel = document.querySelector('[data-riding-lookup]')!.shadowRoot!.querySelector('.panel')!;
+    expect(panel.getAttribute('data-open')).toBe('true');
+    expect(panel.textContent).toContain('252 Main St');
+  });
+
+  it('keeps the loaded rows and the more row when the next page fails', async () => {
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    pagedFetch({ failCursorPage: true });
+    const instance = loadWidget().attach({ input: '#a' })!;
+    const errors: unknown[] = [];
+    instance.input.addEventListener('ridinglookup:error', (e) => errors.push((e as CustomEvent).detail));
+
+    await instance.search('250 main st');
+    await instance.select(1);
+    await flush();
+
+    const panel = document.querySelector('[data-riding-lookup]')!.shadowRoot!.querySelector('.panel')!;
+    expect(panel.textContent).toContain('250 Main St');
+    expect(panel.querySelector('.item.more')).toBeTruthy();
+    expect(errors).toHaveLength(1);
+  });
+});
+
 describe('failure handling', () => {
   it('emits an error event and renders an inline failure row when search fails', async () => {
     document.body.innerHTML = `<form><input id="a" name="address"></form>`;
