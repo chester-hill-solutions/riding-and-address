@@ -58,7 +58,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: portal/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            portal/package-lock.json
+
+      # Root deps are needed too: the combined Worker entry (portal/workers/app.ts)
+      # imports ../../src/worker, whose sources resolve zod and
+      # @cloudflare/workers-types from the repo root node_modules.
+      - name: Install root dependencies
+        run: npm ci
 
       - name: Install portal dependencies
         working-directory: portal
