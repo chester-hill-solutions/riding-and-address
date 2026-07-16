@@ -1,6 +1,6 @@
-# Riding Lookup Documentation
+# Riding & Address Documentation
 
-Guides for operating, extending, and integrating with the Riding Lookup API.
+Guides for operating, extending, and integrating with the Riding & Address API.
 
 ## Product & architecture
 

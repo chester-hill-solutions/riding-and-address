@@ -10,7 +10,7 @@ import type { Route } from './+types/root';
 import appStylesheet from './app.css?url';
 
 const FAVICON =
-  "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='5' fill='%231457a6'/><text x='16' y='22' font-family='Arial,sans-serif' font-size='17' font-weight='700' text-anchor='middle' fill='white'>RL</text></svg>";
+  "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='5' fill='%231457a6'/><text x='16' y='22' font-family='Arial,sans-serif' font-size='17' font-weight='700' text-anchor='middle' fill='white'>RA</text></svg>";
 
 export const links: Route.LinksFunction = () => [
   { rel: 'stylesheet', href: appStylesheet },
@@ -19,11 +19,11 @@ export const links: Route.LinksFunction = () => [
 
 export function meta(): Route.MetaDescriptors {
   return [
-    { title: 'Riding Lookup portal' },
+    { title: 'Riding & Address portal' },
     {
       name: 'description',
       content:
-        'Customer portal for the Riding Lookup API: mint Server and Browser keys, watch usage, and manage fuse settings.',
+        'Customer portal for the Riding & Address API: mint Server and Browser keys, watch usage, and manage fuse settings.',
     },
   ];
 }

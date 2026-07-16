@@ -6,7 +6,7 @@ import { DEFAULT_FREE_MONTHLY_ALLOWANCE, formatMeteredUnitPrice } from '~/lib/pr
 
 export function meta(): Route.MetaDescriptors {
   return [
-    { title: 'Usage · Riding Lookup portal' },
+    { title: 'Usage · Riding & Address portal' },
     { name: 'description', content: 'Billable units used this UTC month against your allowance.' },
   ];
 }

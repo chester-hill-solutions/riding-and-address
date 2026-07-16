@@ -1,6 +1,6 @@
-# Contributing to Riding Lookup API
+# Contributing to Riding & Address API
 
-Thank you for your interest in contributing to the Riding Lookup API! This guide will help you understand the project structure, development workflow, and how to contribute effectively.
+Thank you for your interest in contributing to the Riding & Address API! This guide will help you understand the project structure, development workflow, and how to contribute effectively.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ Thank you for your interest in contributing to the Riding Lookup API! This guide
 
 ## Project Overview
 
-The Riding Lookup API is a Cloudflare Worker that provides geospatial lookup services for Canadian federal and provincial ridings. It processes location queries (coordinates or addresses) and returns the corresponding riding information using GeoJSON datasets stored in Cloudflare R2.
+The Riding & Address API is a Cloudflare Worker that provides geospatial lookup services for Canadian federal and provincial ridings. It processes location queries (coordinates or addresses) and returns the corresponding riding information using GeoJSON datasets stored in Cloudflare R2.
 
 ### Key Features
 
@@ -499,6 +499,6 @@ Contributors will be recognized in:
 
 ---
 
-Thank you for contributing to the Riding Lookup API! Your contributions help make geospatial data more accessible to developers and users across Canada.
+Thank you for contributing to the Riding & Address API! Your contributions help make geospatial data more accessible to developers and users across Canada.
 
 If you have any questions about contributing, please don't hesitate to reach out through GitHub Issues or Discussions.

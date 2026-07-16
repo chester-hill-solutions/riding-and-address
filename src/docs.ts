@@ -21,7 +21,7 @@ export function createApiReference(baseUrl: string): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Riding Lookup API Reference</title>
+  <title>Riding &amp; Address API Reference</title>
   <style>
     html, body {
       margin: 0;
@@ -330,9 +330,9 @@ export function createOpenAPISpec(baseUrl: string) {
   return {
     openapi: "3.0.0",
     info: {
-      title: "Riding Lookup API",
+      title: "Riding & Address API",
       description:
-        "Find Canadian federal, provincial, and territorial ridings by location. When ODA_GEOCODING_ENABLED is true, address geocoding uses Statistics Canada's Open Database of Addresses in D1; otherwise GeoGratis is tried first with fallback to Google Maps (BYOK), Mapbox, or Nominatim. Supports batch geocoding, lookup caching, and optional provincial riding enrichment. Built on Cloudflare Workers for global edge performance.",
+        "Canadian address geocoding, autocomplete, and electoral district API. Find federal, provincial, and territorial ridings by location. When ODA_GEOCODING_ENABLED is true, address geocoding uses Statistics Canada's Open Database of Addresses in D1; otherwise GeoGratis is tried first with fallback to Google Maps (BYOK), Mapbox, or Nominatim. Supports batch geocoding, lookup caching, and optional provincial riding enrichment. Built on Cloudflare Workers for global edge performance.",
       version: "1.0.0",
       contact: {
         name: "API Support",

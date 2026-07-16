@@ -160,7 +160,7 @@ async function runHttpBenchmark(): Promise<void> {
   console.log(`OpenNorth: ${OPENNORTH_BASE}`);
   console.log(`Iterations: ${iterations} (warmup ${warmup})\n`);
 
-  console.log('| Scenario | Riding Lookup p50 | OpenNorth p50 |');
+  console.log('| Scenario | Riding & Address p50 | OpenNorth p50 |');
   console.log('|----------|-------------------|---------------|');
 
   for (const scenario of HTTP_SCENARIOS) {

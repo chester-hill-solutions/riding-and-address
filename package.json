@@ -1,7 +1,7 @@
 {
   "name": "ridinglookup",
   "version": "1.0.0",
-  "description": "Provides three GET routes that return riding properties for a given location in Canada by testing the point against large GeoJSON datasets stored in R2.",
+  "description": "Riding & Address: Canadian address geocoding, autocomplete, and electoral district API on Cloudflare Workers.",
   "main": "index.js",
   "dependencies": {
     "zod": "^4.4.3"

@@ -1,4 +1,4 @@
-# Riding Lookup
+# Riding & Address
 
 Canadian electoral riding and address lookup sold as a hybrid API product: self-serve metered access plus sales-assisted Enterprise batch.
 

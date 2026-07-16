@@ -621,7 +621,7 @@ export function unauthorizedResponse(correlationId?: string): Response {
     status: 401,
     headers: { 
       "content-type": "application/json; charset=UTF-8",
-      "WWW-Authenticate": "Basic realm=\"Riding Lookup API\""
+      "WWW-Authenticate": "Basic realm=\"Riding & Address API\""
     }
   });
 }

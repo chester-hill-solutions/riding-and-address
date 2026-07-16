@@ -24,7 +24,7 @@ export function env() {
     stripePriceMetered: process.env.STRIPE_PRICE_METERED || '',
     paidCheckoutEnabled: process.env.PAID_CHECKOUT_ENABLED === 'true',
     resendApiKey: process.env.RESEND_API_KEY || '',
-    emailFrom: process.env.EMAIL_FROM || (prod ? '' : 'Riding Lookup <noreply@localhost>'),
+    emailFrom: process.env.EMAIL_FROM || (prod ? '' : 'Riding & Address <noreply@localhost>'),
     founderUserIds: (process.env.FOUNDER_USER_IDS || '')
       .split(',')
       .map((s) => s.trim())

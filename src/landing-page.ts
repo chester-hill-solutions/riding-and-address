@@ -20,8 +20,8 @@ export function createLandingPage(baseUrl: string): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Find Canadian federal and provincial electoral ridings by postal code, address, or coordinates.">
-  <title>Riding Lookup API</title>
+  <meta name="description" content="Canadian address geocoding, autocomplete, and electoral district API.">
+  <title>Riding &amp; Address API</title>
   <style>
     :root {
       --bg: #f4f6f8;
@@ -399,7 +399,7 @@ export function createLandingPage(baseUrl: string): string {
 </head>
 <body>
   <nav class="nav">
-    <a class="brand" href="${baseUrl}/">Riding Lookup</a>
+    <a class="brand" href="${baseUrl}/">Riding &amp; Address</a>
     <div class="nav-links">
       <a href="${baseUrl}/health">Health</a>
       <a href="https://github.com/chester-hill-solutions/riding-and-address/tree/main/docs">Guides</a>
@@ -411,10 +411,11 @@ export function createLandingPage(baseUrl: string): string {
   <header class="hero">
     <div class="hero-grid">
       <div>
-        <span class="eyebrow">Riding Lookup · Chester Hill Solutions</span>
-        <h1>Look up federal and provincial ridings from any address in Canada</h1>
+        <span class="eyebrow">Riding &amp; Address · Chester Hill Solutions</span>
+        <h1>Resolve Canadian addresses to federal and provincial ridings</h1>
         <p class="lead">
-          Metered API for campaign orgs and SaaS form vendors: fast lookup plus drop-in address autocomplete.
+          Geocode, autocomplete, and map any Canadian address to its riding.
+          Metered API for campaign orgs and SaaS form vendors.
           Complement OpenNorth when you need reps; lead with <code>/embed.js</code> when you need address UX.
         </p>
         <div class="hero-actions">

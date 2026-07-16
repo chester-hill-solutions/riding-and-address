@@ -1,4 +1,4 @@
-# Riding Lookup portal
+# Riding & Address portal
 
 Self-serve Customer portal: signup, org (workspace), invites, Server/Browser keys, usage, Stripe metered Checkout (gated).
 

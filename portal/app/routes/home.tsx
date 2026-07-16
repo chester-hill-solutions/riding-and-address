@@ -7,11 +7,11 @@ import {
 
 export function meta(): Route.MetaDescriptors {
   return [
-    { title: 'Riding Lookup portal' },
+    { title: 'Riding & Address portal' },
     {
       name: 'description',
       content:
-        'Customer portal for the Riding Lookup API: mint Server and Browser keys, watch monthly usage, and manage fuse settings.',
+        'Canadian address geocoding, autocomplete, and electoral district API. Mint Server and Browser keys, watch monthly usage, and manage fuse settings.',
     },
   ];
 }
@@ -22,7 +22,7 @@ export default function Home() {
       <header className="site-header">
         <nav className="nav shell" aria-label="Main navigation">
           <Link className="brand" to="/">
-            Riding Lookup
+            Riding & Address
           </Link>
           <div className="nav__links">
             <a href="#how-it-works">How it works</a>
@@ -38,9 +38,9 @@ export default function Home() {
       <main>
         <section className="hero shell">
           <div className="hero__copy">
-            <h1>Turn a Canadian address into its electoral riding.</h1>
+            <h1>Resolve Canadian addresses to federal and provincial ridings.</h1>
             <p className="hero__lead">
-              One API for federal and supported provincial riding lookups. Built for campaign
+              Geocode, autocomplete, and map any Canadian address to its riding. Built for campaign
               tools, civic products, and internal data workflows.
             </p>
             <div className="button-row">
@@ -153,7 +153,7 @@ Authorization: Bearer sk_••••••••
 
       <footer className="site-footer">
         <div className="shell">
-          <span>Riding Lookup by Chester Hill Solutions</span>
+          <span>Riding & Address by Chester Hill Solutions</span>
           <Link to="/login">Customer login</Link>
         </div>
       </footer>

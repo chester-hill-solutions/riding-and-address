@@ -1,6 +1,6 @@
 # Dataset changelog
 
-Customer-facing record of boundary and address-data vintages served by Riding Lookup.
+Customer-facing record of boundary and address-data vintages served by Riding & Address.
 
 | Date (UTC) | Dataset id | Year | Notes |
 |---|---|---|---|

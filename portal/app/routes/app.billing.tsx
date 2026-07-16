@@ -17,7 +17,7 @@ import { SubmitButton } from '~/components/SubmitButton';
 
 export function meta(): Route.MetaDescriptors {
   return [
-    { title: 'Billing · Riding Lookup portal' },
+    { title: 'Billing · Riding & Address portal' },
     { name: 'description', content: 'Plan, metered subscription, and Stripe Customer Portal.' },
   ];
 }

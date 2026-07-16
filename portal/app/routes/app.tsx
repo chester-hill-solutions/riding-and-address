@@ -23,7 +23,7 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
       <header className="app-header">
         <div className="shell">
           <Link className="brand" to="/app">
-            Riding Lookup
+            Riding & Address
           </Link>
           <div className="account-summary">
             <span className="plan-badge">{plan} plan</span>

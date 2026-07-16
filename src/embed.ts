@@ -11,7 +11,7 @@
 export const EMBED_VERSION = '1.1.0';
 
 export function createEmbedScript(baseUrl: string): string {
-  return `/* Riding Lookup autocomplete widget v${EMBED_VERSION} */
+  return `/* Riding & Address autocomplete widget v${EMBED_VERSION} */
 (function (global, factory) {
   if (global.RidingLookup) return;
   global.RidingLookup = factory(global);

@@ -13,7 +13,7 @@ import { SubmitButton } from '~/components/SubmitButton';
 
 export function meta(): Route.MetaDescriptors {
   return [
-    { title: 'Invites · Riding Lookup portal' },
+    { title: 'Invites · Riding & Address portal' },
     { name: 'description', content: 'Invite teammates to your Customer as members.' },
   ];
 }
@@ -41,7 +41,7 @@ export async function action({ request }: Route.ActionArgs) {
       invitedByUserId: userId,
       baseUrl: env().baseUrl,
     });
-    await sendInviteEmail(invite.email, invite.inviteUrl, ws?.name || 'Riding Lookup org');
+    await sendInviteEmail(invite.email, invite.inviteUrl, ws?.name || 'Riding & Address org');
     return { ok: true as const, email: invite.email };
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'Could not send the invite' };
