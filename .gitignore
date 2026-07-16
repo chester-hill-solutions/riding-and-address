@@ -2,7 +2,8 @@
 .env
 
 # Dead build output: wrangler builds from src/worker.ts, nothing serves dist/
-dist/
+# Anchor to repo root so portal/vendor/**/dist (CHS packages) stays trackable.
+/dist/
 .wrangler
 .oda-import
 .keys
