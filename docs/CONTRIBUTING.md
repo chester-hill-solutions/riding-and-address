@@ -83,7 +83,8 @@ The CanCoder API is a Cloudflare Worker that provides geospatial lookup services
 
 ### Environment Configuration
 
-The project uses several configuration options in `wrangler.jsonc`:
+The project uses several configuration options in `portal/wrangler.jsonc`
+(combined API + portal Worker; deploy with `npm run deploy` from the repo root):
 
 - **Geocoding providers**: GeoGratis (primary, always used first), with fallback to `nominatim` (default), `mapbox`, or `google`
 - **Batch processing**: Configurable batch size and timeouts
@@ -291,9 +292,9 @@ The project uses **Vitest** with 27 test files covering unit tests, integration 
 
 1. `npm run lint` — ESLint on `src/`, `test/`, and `scripts/` (warnings fail the build)
 2. `npm run typecheck` — TypeScript strict check for source, tests, and scripts
-3. `wrangler deploy --dry-run` — validates Worker bundle and `wrangler.jsonc`
+3. Portal CI: `npm --prefix portal ci && npm --prefix portal run typecheck && npm --prefix portal run build && wrangler deploy --dry-run` (from `portal/`)
 4. `npm audit --audit-level=high --omit=dev` — production dependency audit
-5. `npm test` — full Vitest suite (378+ tests)
+5. `npm test` — full Vitest suite
 
 Run the same checks locally with:
 

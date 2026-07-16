@@ -1,6 +1,7 @@
 /**
  * Portal schema: Better Auth tables from CHS + app Customer projection metadata.
- * Workspace = Customer org (maps to Worker customer:{id}).
+ * Workspace = Customer org (maps to Worker customer:{id}). D1/SQLite — see
+ * portal/migrations/0001_init.sql for the DDL (mirrors @chester-hill-solutions/auth-d1's schema).
  */
 export {
   user,
@@ -14,13 +15,13 @@ export {
   workspaceRoles,
   workspaceFeatures,
   workspaceFeaturePermissions,
-} from '@chester-hill-solutions/auth-postgres/schema';
+} from '@chester-hill-solutions/auth-d1/schema';
 
-import { boolean, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
-import { workspaces } from '@chester-hill-solutions/auth-postgres/schema';
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { workspaces } from '@chester-hill-solutions/auth-d1/schema';
 
 /** CanCoder billing fields projected alongside CHS workspace. */
-export const customerBilling = pgTable('customer_billing', {
+export const customerBilling = sqliteTable('customer_billing', {
   workspaceId: text('workspace_id')
     .primaryKey()
     .references(() => workspaces.id, { onDelete: 'cascade' }),
@@ -28,15 +29,19 @@ export const customerBilling = pgTable('customer_billing', {
   customerId: text('customer_id').notNull().unique(),
   plan: text('plan').notNull().default('free'),
   fuseLimit: integer('fuse_limit').notNull().default(1000), // keep in sync with DEFAULT_FREE_MONTHLY_ALLOWANCE
-  fuseSoftWarn: boolean('fuse_soft_warn').notNull().default(false),
-  batchEnabled: boolean('batch_enabled').notNull().default(false),
+  fuseSoftWarn: integer('fuse_soft_warn', { mode: 'boolean' }).notNull().default(false),
+  batchEnabled: integer('batch_enabled', { mode: 'boolean' }).notNull().default(false),
   stripeCustomerId: text('stripe_customer_id'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
 });
 
 /** Local mirror of minted keys (secrets never stored for server keys after display). */
-export const apiKeyMirror = pgTable('api_key_mirror', {
+export const apiKeyMirror = sqliteTable('api_key_mirror', {
   id: text('id').primaryKey(),
   workspaceId: text('workspace_id')
     .notNull()
@@ -45,6 +50,8 @@ export const apiKeyMirror = pgTable('api_key_mirror', {
   kind: text('kind').notNull(),
   label: text('label'),
   origins: text('origins'),
-  disabled: boolean('disabled').notNull().default(false),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  disabled: integer('disabled', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
 });

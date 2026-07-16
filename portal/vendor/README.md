@@ -1,6 +1,6 @@
 # Vendored `@chester-hill-solutions` packages
 
-These packages are vendored so the portal installs in CI and Railway without a sibling
+These packages are vendored so the portal installs in CI and Cloudflare builds without a sibling
 `chester-hill-solutions` checkout or GitHub Packages `write:packages` publish.
 
 Commit **`dist/`** with each package (the root `.gitignore` only ignores `/dist/` at the
@@ -10,14 +10,14 @@ Source of truth remains the CHS monorepo. To refresh after upstream changes:
 
 ```bash
 # from ridingLookup/
-for pkg in auth auth-postgres auth-react-router; do
-  (cd ../chester-hill-solutions/packages/$pkg && npx tsc)
+for pkg in auth auth-d1 auth-react-router; do
+  (cd ../chester-hill-solutions/packages/$pkg && bun run build)
   rm -rf portal/vendor/@chester-hill-solutions/$pkg
   mkdir -p portal/vendor/@chester-hill-solutions/$pkg
   cp ../chester-hill-solutions/packages/$pkg/package.json portal/vendor/@chester-hill-solutions/$pkg/
   cp -R ../chester-hill-solutions/packages/$pkg/dist portal/vendor/@chester-hill-solutions/$pkg/
 done
-# then rewrite package.json deps to file:../auth as needed and npm install in portal/
+# rewrite workspace deps to file:../auth as needed, then npm install in portal/
 ```
 
 Prefer publishing to GitHub Packages (see `portal/.npmrc`) when `write:packages` is available,

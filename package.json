@@ -25,9 +25,9 @@
     "wrangler": "^4.105.0"
   },
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "deploy:staging": "wrangler deploy --env staging",
+    "dev": "npm --prefix portal run dev",
+    "deploy": "npm --prefix portal run deploy",
+    "deploy:staging": "npm --prefix portal run deploy:staging",
     "build": "tsc --noEmit && tsc --noEmit -p tsconfig.dom.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.dom.json",
     "lint": "eslint src/**/*.ts test/**/*.ts scripts/**/*.ts --max-warnings 0",

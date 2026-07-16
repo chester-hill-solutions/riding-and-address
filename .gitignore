@@ -12,6 +12,9 @@ node_modules
 portal/node_modules
 portal/.env
 portal/build
+portal/dist
+portal/.wrangler
 portal/.react-router
+*.tsbuildinfo
 *.geojson
 data/ridings/.raw/

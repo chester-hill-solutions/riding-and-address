@@ -1,10 +1,13 @@
 # Spike: CHS auth + Stripe Billing Meters (W0-6)
 
+> **Superseded 2026-07-16:** Portal runs on the same Cloudflare Worker with D1
+> (`@chester-hill-solutions/auth-d1`), not Railway Postgres. Kept for historical context.
+
 ## Verdict
 
 | Dependency | Status | Notes |
 |---|---|---|
-| `@chester-hill-solutions/auth*` + Postgres on Railway RR7 | **Pass (assumed)** | Packages are the CHS standard for RR7 portals; this repo has no vendor checkout yet — portal will depend on published GH Packages. Worker stays key-auth only (no session cookies on API). |
+| `@chester-hill-solutions/auth*` + Postgres on Railway RR7 | **Superseded** | Replaced by Workers + D1 (`auth-d1`). Worker API stays key-auth only (no session cookies on lookup routes). |
 | Stripe Billing Meters | **Pass (assumed)** | Use Stripe Billing Meters + meter events from the Worker/ledger sync path. Create meter `riding_lookup_api_call` (Billable unit). Paid Checkout stays behind `PAID_CHECKOUT_ENABLED` until product addendum. |
 
 ## Env / secrets (portal)

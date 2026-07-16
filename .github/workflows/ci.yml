@@ -40,9 +40,6 @@ jobs:
       - name: Check billing invariants
         run: npm run check:billing-invariants
 
-      - name: Validate Worker bundle
-        run: npx wrangler deploy --dry-run
-
       - name: Audit dependencies
         run: npm audit --audit-level=high --omit=dev
 
@@ -71,9 +68,9 @@ jobs:
         working-directory: portal
         run: npm run typecheck
 
-      - name: Portal build
+      - name: Portal build + Worker dry-run
         working-directory: portal
         env:
-          # Build-time only; requireEnv() runs at server boot in production.
           NODE_ENV: production
-        run: npm run build
+          CLOUDFLARE_ACCOUNT_ID: ad5ec479b9a421faa2ed06c3d1c2b23a
+        run: npm run build && npx wrangler deploy --dry-run --env=""

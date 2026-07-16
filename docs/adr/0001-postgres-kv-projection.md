@@ -1,5 +1,9 @@
-# Postgres canonical; KV edge projection via Worker admin API
+# Portal D1 canonical; KV edge projection for API keys
 
-Customer, User, and billing state live in Postgres (portal). API keys and Customer config used at the edge are projected into Cloudflare KV. The portal never holds a Cloudflare API token; it calls a Worker admin projection API with an operator secret so revoke can delete KV synchronously.
+**Status:** Accepted (amended 2026-07-16)
 
-**Considered:** Portal writing KV via Cloudflare API (wider blast radius); Worker reading Postgres on every request (latency and coupling).
+Customer, User, and billing state live in the portal **D1** database (`PORTAL_DB`). API keys and Customer config used on billable API paths are projected into Cloudflare KV. Portal mutations call projection helpers **in-process** inside the same Worker (no HTTP self-loop). An optional Bearer admin API (`/admin/projection/*`) remains for operator tooling.
+
+**History:** v1 of this ADR used Postgres (Railway) as the canonical store and HTTP projection. CanCoder is now Workers + D1 only; see CHS ADR-0009 (`auth-d1` path).
+
+**Considered:** Portal writing KV via Cloudflare API (wider blast radius); API routes reading D1 on every request (extra latency vs hashed-key KV lookup).

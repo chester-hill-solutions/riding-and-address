@@ -7,12 +7,12 @@ Guides for operating, extending, and integrating with the CanCoder API.
 | Guide | Description |
 |-------|-------------|
 | [CONTEXT.md](../CONTEXT.md) | Glossary (Customer, keys, Billable unit, Fuse, Enterprise) |
-| [ADRs](adr/) | Postgres/KV projection, DO ledger, hashed keys, dataset versioning |
+| [ADRs](adr/) | Portal D1/KV projection, DO ledger, hashed keys, dataset versioning |
 | [Dataset changelog](DATASET_CHANGELOG.md) | Customer-facing vintage log |
 | [Cache purge runbook](ops/cache-purge-runbook.md) | R2 upload → purge → warm → verify |
 | [Alerts](ops/alerts.md) | 5xx / circuit-open Observability |
 | [Suggest index staging](ops/suggest-index-staging.md) | Enable `/api/search` safely |
-| [Portal](../portal/README.md) | Self-serve Customer app (Railway + CHS auth) |
+| [Portal](../portal/README.md) | Self-serve Customer app + marketing (Workers + D1 + CHS auth-d1) |
 
 ## Operations
 

@@ -330,10 +330,11 @@ wrangler secret put BASIC_AUTH
 | Operator | `BASIC_AUTH` | Admin/ops only when `API_KEYS` is bound |
 | Public demo | none | `/api/demo/*` IP-limited; not billable |
 
-Self-serve portal: [`portal/`](portal/). Projection admin: `/admin/projection/*`.
+Self-serve portal + marketing share this Worker ([`portal/`](portal/), D1 `PORTAL_DB`).
+Projection admin: `/admin/projection/*` (portal also projects in-process).
 
 ```bash
-wrangler kv namespace create API_KEYS   # then uncomment the binding in wrangler.jsonc
+wrangler kv namespace create API_KEYS   # then uncomment the binding in portal/wrangler.jsonc
 npm run keys -- customer create --id cust_acme --plan free --remote
 npm run keys -- create-server --customer cust_acme --remote
 npm run keys -- create-browser --customer cust_acme --origins "https://acme.com" --remote
@@ -375,15 +376,18 @@ Postal-only fast path and `geocode_method=postal_centroid` are documented in [do
 
 ### Develop and deploy
 
+Config lives in [`portal/wrangler.jsonc`](portal/wrangler.jsonc) (combined portal SSR + API).
+
 #### Local development
 ```bash
-wrangler dev
+npm run dev
+# or: cd portal && npm run db:migrate:local && npm run dev
 ```
-The development environment uses remote R2 storage and KV for full feature testing.
 
 #### Production deployment
 ```bash
-wrangler deploy
+npm run deploy
+# builds portal + deploys the combined Worker
 ```
 
 #### Initialize spatial database (optional)
@@ -405,7 +409,7 @@ curl -X POST https://your-worker.your-subdomain.workers.dev/api/database/sync \
 
 #### Intelligent Caching
 - **Multi-layer caching**: LRU caches for GeoJSON data, spatial indexes, and geocoding results
-- **Automatic cache warming**: Cloudflare Cron Trigger every 6 hours (`0 */6 * * *` in `wrangler.jsonc`)
+- **Automatic cache warming**: Cloudflare Cron Trigger every 6 hours (`0 */6 * * *` in `portal/wrangler.jsonc`)
 - **Circuit breakers**: Automatic failover when external services are unavailable
 
 **Note on Cron Trigger**: `wrangler.jsonc` schedules `0 */6 * * *`. Each run calls the Worker `scheduled` handler to (1) warm riding/lookup caches for common locations and (2) process pending webhook deliveries. It is unrelated to API key metering or Stripe.

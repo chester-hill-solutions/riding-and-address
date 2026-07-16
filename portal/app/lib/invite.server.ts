@@ -1,5 +1,5 @@
 import { InviteError, hashOpaqueToken } from '@chester-hill-solutions/auth';
-import { createInvitation, redeemInvitation } from '@chester-hill-solutions/auth-postgres';
+import { createInvitation, redeemInvitation } from '@chester-hill-solutions/auth-d1';
 import { eq } from 'drizzle-orm';
 import { getDb } from '~/lib/db.server';
 import { workspaceInvitations, workspaces } from '~/db/schema';

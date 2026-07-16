@@ -1,4 +1,4 @@
-import { auth as createBetterAuth, createSessionReader } from '@chester-hill-solutions/auth-postgres';
+import { auth as createBetterAuth, createSessionReader } from '@chester-hill-solutions/auth-d1';
 import { drizzleAdapter } from '@better-auth/drizzle-adapter';
 import { createRequireSessionUserId } from '@chester-hill-solutions/auth-react-router';
 import { getDb } from '~/lib/db.server';
@@ -14,28 +14,29 @@ function buildAuth() {
     baseURL: baseUrl,
     trustedOrigins: [baseUrl],
     database: drizzleAdapter(getDb(), {
-      provider: 'pg',
+      provider: 'sqlite',
       schema: authSchema,
     }),
     emailAndPassword: { enabled: true },
     advanced: {
       database: {
         // The CHS auth schema uses uuid primary keys; better-auth's default
-        // nanoid-style ids are rejected by Postgres ("invalid input syntax
-        // for type uuid").
+        // nanoid-style ids are rejected by the unique index on `user.email` only
+        // incidentally — kept for parity with the Postgres deploy's id scheme.
         generateId: () => crypto.randomUUID(),
       },
     },
   });
 }
 
-let authInstance: ReturnType<typeof buildAuth> | null = null;
-
+/**
+ * D1 is bound per-request (see cloudflare-context.server.ts), so unlike the Postgres portal this
+ * cannot build one `auth` instance at module load and cache it for the life of the process — the
+ * `drizzleAdapter(getDb(), ...)` call above must run inside the current request's Cloudflare
+ * context. Build fresh per call; `better-auth`'s own instance construction is cheap (no network).
+ */
 export function getAuth() {
-  if (!authInstance) {
-    authInstance = buildAuth();
-  }
-  return authInstance;
+  return buildAuth();
 }
 
 export function getSession() {

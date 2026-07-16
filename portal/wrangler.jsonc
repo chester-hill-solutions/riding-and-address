@@ -1,0 +1,240 @@
+{
+  "name": "riding-lookup",
+  // Worker entry for the combined deploy: routes portal (RR) + API (src/worker.ts) from one Worker.
+  // Built and deployed via the Cloudflare Vite plugin (see vite.config.ts) — run `npm run build`
+  // then `wrangler deploy` from this directory (or `npm run deploy`).
+  "main": "./workers/app.ts",
+  // 2024-09-23+ required for nodejs_compat v2 mode (below) — bumped from the API worker's
+  // original 2024-09-01 for that reason; no other behavior changes are expected at this bump.
+  "compatibility_date": "2024-09-23",
+  // Required for node:async_hooks (portal request-scoped D1/env context) and CHS auth/Stripe deps.
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Bind an R2 bucket that will store the large GeoJSON files
+  // Create the bucket with: wrangler r2 bucket create ridings
+  "r2_buckets": [
+    {
+      "binding": "RIDINGS",
+      "bucket_name": "ridings"
+    }
+  ],
+
+  "kv_namespaces": [
+    {
+      "binding": "GEOCODING_CACHE",
+      "id": "e1ebe0d5eb39443e89d854526d97a6b6"
+    },
+    {
+      "binding": "LOOKUP_CACHE",
+      "id": "4c86b30f085146429527b7b232347a79"
+    },
+    {
+      "binding": "WEBHOOKS",
+      "id": "3b23842cd96b40369311f52298a987cf"
+    }
+    // Customer keys + customer:{id} projection. While unbound, key gates stay off (legacy open API).
+    // Namespace created 2026-07-16. Leave commented for soft free API; uncomment + redeploy
+    // for metered free tier / commercial launch (then seed customers via `npm run keys`).
+    // {
+    //   "binding": "API_KEYS",
+    //   "id": "2d0152b0958c48fab4a98b3046e0c08e"
+    // }
+  ],
+
+  "d1_databases": [
+    {
+      "binding": "ODA_DB",
+      "database_name": "oda-addresses",
+      "database_id": "1e8710be-6de1-4003-a8fa-69907f867096"
+    },
+    {
+      "binding": "RIDING_DB",
+      "database_name": "riding-lookup-db",
+      "database_id": "64e55bc2-0e52-46bb-a9cd-56bf465464dc"
+    },
+    {
+      // Portal-only: Better Auth + workspace + billing/key-mirror tables. Never shares
+      // a database with ODA_DB/RIDING_DB (those stay API-worker-only, per migration plan).
+      "binding": "PORTAL_DB",
+      "database_name": "cancoder-portal",
+      "database_id": "27a4c465-62d3-4bfc-b311-a97f72d7ac50",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "QUEUE_MANAGER",
+        "class_name": "QueueManagerDO"
+      },
+      {
+        "name": "CIRCUIT_BREAKER_DO",
+        "class_name": "CircuitBreakerDO"
+      },
+      // Per-key daily request counter. KV cannot do this correctly: it is eventually consistent
+      // and caps writes at roughly 1/sec/key.
+      {
+        "name": "API_KEY_USAGE",
+        "class_name": "ApiKeyUsageDO"
+      }
+    ]
+  },
+
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["QueueManagerDO"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["CircuitBreakerDO"]
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["ApiKeyUsageDO"]
+    }
+  ],
+
+  "vars": {
+    // Geocoding: GeoGratis is always used first (no configuration needed)
+    // Optional: set fallback geocoding provider. Supported: "nominatim" (default), "mapbox", or "google"
+    // For Mapbox, set MAPBOX_TOKEN as a secret: wrangler secret put MAPBOX_TOKEN
+    // For Google, set GOOGLE_MAPS_KEY as a secret: wrangler secret put GOOGLE_MAPS_KEY
+    // BASIC_AUTH (operator secret, "username:password") MUST be set: admin/diagnostic routes
+    // (/metrics, /webhooks, /api/database/*, /admin/circuit-breaker/reset, /api/cache/warm,
+    // queue endpoints) fail CLOSED and return 401 when it is unset.
+    //   prod/staging: wrangler secret put BASIC_AUTH
+    //   local dev:    add BASIC_AUTH=user:pass to .dev.vars (picked up by wrangler dev)
+    // Batch processing configuration
+    "BATCH_SIZE": 50,
+    "BATCH_TIMEOUT": 30000,
+    "GEOCODING_TIMEOUT": 10000,
+    "LOOKUP_TIMEOUT": 5000,
+    "TOTAL_TIMEOUT": 60000,
+    "RATE_LIMIT": 100,
+    "GEOCODER": "google",
+    "ODA_GEOCODING_ENABLED": "true",
+    "ODA_PROVINCES": "AB,BC,MB,NB,NT,NS,ON,PE,QC,SK",
+    "ODA_MIN_CONFIDENCE": "0.6",
+    "ODA_NN_MAX_CANDIDATES": "50",
+    "ODA_MAX_REVERSE_DISTANCE_METERS": "25000",
+    "ODA_MAX_AMBIGUOUS_MATCHES": "5",
+    "SPATIAL_DB_ENABLED": "false",
+    // Ships dark. While false, /api/search is not registered and falls through to the /api
+    // catch-all exactly as it did before the route existed. Flip to "true" only after
+    // `npm run build:oda:suggest -- --provinces ON --remote` has populated the index.
+    "ODA_SUGGEST_ENABLED": "false",
+    "ODA_SUGGEST_LIMIT": "7",
+    "FREE_MONTHLY_ALLOWANCE": "1000",
+    "DEMO_RATE_LIMIT": "30",
+    "ALERTS_ENABLED": "true",
+    // Portal (React Router) vars — see portal/.env.example for local dev via .dev.vars.
+    // Secrets (AUTH_SECRET, STRIPE_*, RESEND_API_KEY) must be set with `wrangler secret put`.
+    "ENVIRONMENT": "production",
+    "BASE_URL": "https://riding-lookup.chester-hill-solutions.workers.dev",
+    "PUBLIC_API_BASE_URL": "https://riding-lookup.chester-hill-solutions.workers.dev",
+    "PAID_CHECKOUT_ENABLED": "false",
+    "EMAIL_FROM": "CanCoder <noreply@example.com>",
+    "FOUNDER_USER_IDS": ""
+    // ALLOWED_ORIGINS: set via wrangler secret/vars to portal + embed origins when tightening CORS
+    // PROJECTION_ADMIN_SECRET / STRIPE_*: wrangler secret put …
+  },
+
+  "env": {
+    "staging": {
+      "name": "riding-lookup-staging",
+      "vars": {
+        "BATCH_SIZE": 50,
+        "BATCH_TIMEOUT": 30000,
+        "GEOCODING_TIMEOUT": 10000,
+        "LOOKUP_TIMEOUT": 5000,
+        "TOTAL_TIMEOUT": 60000,
+        "RATE_LIMIT": 100,
+        "GEOCODER": "google",
+        "ODA_GEOCODING_ENABLED": "true",
+        "ODA_PROVINCES": "AB,BC,MB,NB,NT,NS,ON,PE,QC,SK",
+        "ODA_MIN_CONFIDENCE": "0.6",
+        "ODA_NN_MAX_CANDIDATES": "50",
+        "ODA_MAX_REVERSE_DISTANCE_METERS": "25000",
+        "ODA_MAX_AMBIGUOUS_MATCHES": "5",
+        "SPATIAL_DB_ENABLED": "false",
+        "ODA_SUGGEST_ENABLED": "false",
+        "ODA_SUGGEST_LIMIT": "7",
+        "FREE_MONTHLY_ALLOWANCE": "1000",
+        "DEMO_RATE_LIMIT": "30",
+        "ALERTS_ENABLED": "true",
+        "ENVIRONMENT": "staging",
+        "BASE_URL": "https://riding-lookup-staging.chester-hill-solutions.workers.dev",
+        "PUBLIC_API_BASE_URL": "https://riding-lookup-staging.chester-hill-solutions.workers.dev",
+        "PAID_CHECKOUT_ENABLED": "false",
+        "EMAIL_FROM": "CanCoder <noreply@example.com>",
+        "FOUNDER_USER_IDS": ""
+      },
+      "r2_buckets": [
+        {
+          "binding": "RIDINGS",
+          "bucket_name": "ridings-staging"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "GEOCODING_CACHE",
+          "id": "420ccb1d5ffa4ee1806f15c28785b006"
+        },
+        {
+          "binding": "LOOKUP_CACHE",
+          "id": "eaa5ed634c30410f8f0b7d680de7ad31"
+        },
+        {
+          "binding": "WEBHOOKS",
+          "id": "1e6ef0958b124067a0f453ea451c8667"
+        }
+        // Namespace created 2026-07-16. Uncomment with prod when enabling key gates:
+        // { "binding": "API_KEYS", "id": "363048976bc74248b091f69510a1b759" }
+      ],
+      "d1_databases": [
+        {
+          "binding": "ODA_DB",
+          "database_name": "oda-addresses-staging",
+          "database_id": "ddc57d33-273b-41d0-b4f9-cd7545110be9"
+        },
+        {
+          "binding": "RIDING_DB",
+          "database_name": "riding-lookup-db-staging",
+          "database_id": "b78db82b-2ee3-40f0-a52a-15f93706790d"
+        },
+        {
+          "binding": "PORTAL_DB",
+          "database_name": "cancoder-portal-staging",
+          "database_id": "16c693a1-6432-4064-966a-5860da5cb389",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "durable_objects": {
+        "bindings": [
+          { "name": "QUEUE_MANAGER", "class_name": "QueueManagerDO" },
+          { "name": "CIRCUIT_BREAKER_DO", "class_name": "CircuitBreakerDO" },
+          { "name": "API_KEY_USAGE", "class_name": "ApiKeyUsageDO" }
+        ]
+      },
+      // Same as top-level: cache warm + webhook drain every 6h (not billing).
+      "triggers": {
+        "crons": ["0 */6 * * *"]
+      },
+      "observability": {
+        "enabled": true
+      }
+    }
+  },
+
+  "observability": {
+    "enabled": true
+  },
+
+  // Cron every 6h → forwarded to the API worker's `scheduled` handler: warm lookup caches +
+  // process pending webhooks. Not used for billing/metering. See README "Note on Cron Trigger".
+  "triggers": {
+    "crons": ["0 */6 * * *"]
+  }
+}

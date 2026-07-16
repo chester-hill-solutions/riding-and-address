@@ -70,7 +70,7 @@ import { safeParseBatchLookupRequests } from './validation';
 import { QueueManagerDO } from './queue-manager';
 import { ApiKeyUsageDO } from './api-key-usage-do';
 import { CircuitBreakerDO } from './circuit-breaker-do';
-import { createLandingPage, createApiReference, createOpenAPISpec } from './docs';
+import { createApiReference, createOpenAPISpec } from './docs';
 import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS } from './config';
 import {
   apiKeysEnabled,
@@ -357,18 +357,12 @@ export default {
         });
       }
       
-      // Handle landing page
+      // GET "/" is owned by the portal (see workers/app.ts) — the API worker never sees it in
+      // the combined deploy, but keep a safe fallback for direct/standalone use of this Worker.
       if (pathname === "/") {
-        const baseUrl = `${url.protocol}//${url.host}`;
-        return new Response(createLandingPage(baseUrl), {
-          headers: {
-            'content-type': 'text/html; charset=UTF-8',
-            'Access-Control-Allow-Origin': '*',
-            ...securityHeaders(),
-          },
-        });
+        return badRequest("Not found — see /docs", 404, "NOT_FOUND", correlationId);
       }
-      
+
       // Handle OpenAPI docs
       if (pathname === "/api/docs") {
         const baseUrl = `${url.protocol}//${url.host}`;
