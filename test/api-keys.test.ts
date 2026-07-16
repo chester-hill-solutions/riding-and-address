@@ -8,9 +8,12 @@ import {
   generateApiKey,
   clearApiKeyCache,
   apiKeysEnabled,
+  httpStatusForKeyDenial,
   type ApiKeyRecord,
+  type KeyDenialReason,
 } from '../src/api-keys';
 import { utcDay, consumeDailyQuota } from '../src/api-key-usage-do';
+import { clearCustomerCache, type CustomerRecord } from '../src/customer';
 import { Env } from '../src/types';
 
 /**
@@ -20,15 +23,31 @@ import { Env } from '../src/types';
 
 const KEY: ApiKeyRecord = {
   id: 'pk_live_abc',
+  kind: 'browser',
+  customerId: 'cust_acme',
   label: 'Acme',
   origins: ['https://acme.com', 'https://*.acme.com'],
   dailyLimit: 1000,
 };
 
-function createKeyEnv(keys: Record<string, ApiKeyRecord | null> = { pk_live_abc: KEY }): Env {
+const CUSTOMER: CustomerRecord = {
+  id: 'cust_acme',
+  plan: 'free',
+  fuseLimit: 1000,
+};
+
+function createKeyEnv(
+  keys: Record<string, ApiKeyRecord | null> = { pk_live_abc: KEY },
+  customers: Record<string, CustomerRecord | null> = { cust_acme: CUSTOMER }
+): Env {
   return {
     API_KEYS: {
-      get: vi.fn(async (name: string) => keys[name.replace(/^key:/, '')] ?? null),
+      get: vi.fn(async (name: string) => {
+        if (name.startsWith('customer:')) {
+          return customers[name.slice('customer:'.length)] ?? null;
+        }
+        return keys[name.replace(/^key:/, '')] ?? null;
+      }),
     },
   } as unknown as Env;
 }
@@ -37,7 +56,10 @@ function req(url: string, headers: Record<string, string> = {}): Request {
   return new Request(url, { headers });
 }
 
-beforeEach(() => clearApiKeyCache());
+beforeEach(() => {
+  clearApiKeyCache();
+  clearCustomerCache();
+});
 
 describe('originMatches', () => {
   it('matches an exact origin', () => {
@@ -198,7 +220,8 @@ describe('authorizeBrowserKey', () => {
     await authorizeBrowserKey(env, request());
     await authorizeBrowserKey(env, request());
     await authorizeBrowserKey(env, request());
-    expect(env.API_KEYS!.get).toHaveBeenCalledTimes(1);
+    // First call: key + customer; later calls use ≤60s caches.
+    expect(env.API_KEYS!.get).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -311,5 +334,28 @@ describe('authorizeSearchRequest — either credential', () => {
   it('is open when nothing at all is configured', async () => {
     const result = await authorizeSearchRequest({} as Env, req('https://x.test/api/search?q=main'), false);
     expect(result.ok).toBe(true);
+  });
+});
+
+describe('httpStatusForKeyDenial', () => {
+  /**
+   * Prevents lookup vs search from remapping the same KeyDenialReason to different statuses.
+   * Handlers must call this helper — see scripts/check-billing-invariants.mjs.
+   */
+  it('maps every KeyDenialReason to a stable status', () => {
+    const expected: Record<KeyDenialReason, number> = {
+      KEY_REQUIRED: 401,
+      KEY_INVALID: 401,
+      KEY_DISABLED: 401,
+      ORIGIN_REQUIRED: 403,
+      ORIGIN_NOT_ALLOWED: 403,
+      WRONG_KEY_KIND: 403,
+      BATCH_NOT_ENABLED: 403,
+      CUSTOMER_NOT_FOUND: 403,
+      DAILY_LIMIT_EXCEEDED: 429,
+    };
+    for (const [reason, status] of Object.entries(expected) as [KeyDenialReason, number][]) {
+      expect(httpStatusForKeyDenial(reason)).toBe(status);
+    }
   });
 });

@@ -134,6 +134,15 @@ export class CircuitBreaker {
     
     if (state.failureCount >= this.failureThreshold) {
       state.state = 'OPEN';
+      // Structured alert line for Workers Observability / log drains (see docs/ops/alerts.md).
+      console.error(
+        JSON.stringify({
+          alert: 'circuit_open',
+          key,
+          failureCount: state.failureCount,
+          ts: new Date().toISOString(),
+        })
+      );
     }
   }
 

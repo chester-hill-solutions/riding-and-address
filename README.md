@@ -321,21 +321,22 @@ wrangler secret put BASIC_AUTH
 > **Clean break: there is no opt-out.** Callers relying on the old behaviour must send real
 > credentials. Check your logs for `X-Google-API-Key` before deploying.
 
-**Two credentials, by design.** `BASIC_AUTH` is a secret you hold server-side; it works **from any
-domain**, needs no key, and is never subject to origin checks or daily caps. A browser cannot hold
-a secret, so `/api/search` also accepts a *public* browser key bound to an origin allowlist — the
-same split Google draws between web-service keys and browser keys.
+**Credentials for the chargeable product** (see [`CONTEXT.md`](CONTEXT.md)):
 
-| Caller | Credential | Origin checked? | Daily cap? |
-|--------|-----------|-----------------|------------|
-| Your backend | `BASIC_AUTH` | No — works from anywhere | No |
-| A browser widget | `pk_live_...` | Yes, per key | Yes |
+| Caller | Credential | Notes |
+|--------|-----------|--------|
+| Customer backend | Server key `sk_*` (`Authorization: Bearer`) | Lookup/geocode; hashed at rest; monthly Customer fuse |
+| Browser widget | Browser key `pk_*` | `/api/search` + `/embed.js`; origin allowlist + daily cap; same Customer meter |
+| Operator | `BASIC_AUTH` | Admin/ops only when `API_KEYS` is bound |
+| Public demo | none | `/api/demo/*` IP-limited; not billable |
 
-See [the contract](docs/oda-geolocation-contract.md#browser-api-keys).
+Self-serve portal: [`portal/`](portal/). Projection admin: `/admin/projection/*`.
 
 ```bash
 wrangler kv namespace create API_KEYS   # then uncomment the binding in wrangler.jsonc
-npm run keys -- create --label "Acme" --origins "https://acme.com,https://*.acme.com" --remote
+npm run keys -- customer create --id cust_acme --plan free --remote
+npm run keys -- create-server --customer cust_acme --remote
+npm run keys -- create-browser --customer cust_acme --origins "https://acme.com" --remote
 ```
 
 #### 9) Set environment variables
@@ -404,15 +405,10 @@ curl -X POST https://your-worker.your-subdomain.workers.dev/api/database/sync \
 
 #### Intelligent Caching
 - **Multi-layer caching**: LRU caches for GeoJSON data, spatial indexes, and geocoding results
-- **Automatic cache warming**: Background cache warming every 6 hours (currently uses setInterval; consider migrating to Cloudflare Cron Triggers for production)
+- **Automatic cache warming**: Cloudflare Cron Trigger every 6 hours (`0 */6 * * *` in `wrangler.jsonc`)
 - **Circuit breakers**: Automatic failover when external services are unavailable
 
-**Note on Cache Warming**: The current implementation uses `setInterval` for cache warming. For production deployments, consider using Cloudflare Cron Triggers by adding to `wrangler.jsonc`:
-```toml
-[triggers]
-crons = ["0 */6 * * *"]  # Every 6 hours
-```
-Then handle the scheduled event in the worker's `scheduled` handler instead of using `setInterval`.
+**Note on Cron Trigger**: `wrangler.jsonc` schedules `0 */6 * * *`. Each run calls the Worker `scheduled` handler to (1) warm riding/lookup caches for common locations and (2) process pending webhook deliveries. It is unrelated to API key metering or Stripe.
 
 #### Spatial Optimization
 - **Spatial indexing**: Bounding box pre-filtering for faster point-in-polygon tests

@@ -27,8 +27,8 @@ import {
   withTimeout, 
   withRetry, 
   ridingNameFromProperties,
-  checkBasicAuth,
-  checkAdminAuth, 
+  checkAdminAuth,
+  hasValidBasicAuth,
   badRequest, 
   unauthorizedResponse, 
   rateLimitExceededResponse,
@@ -70,6 +70,27 @@ import { ApiKeyUsageDO } from './api-key-usage-do';
 import { CircuitBreakerDO } from './circuit-breaker-do';
 import { createLandingPage, createApiReference, createOpenAPISpec } from './docs';
 import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS } from './config';
+import {
+  apiKeysEnabled,
+  authorizeLookupRequest,
+  httpStatusForKeyDenial,
+  type KeyAuthResult,
+} from './api-keys';
+import { handleProjectionRequest } from './projection-handlers';
+import { recordSuccessfulBillable, type BillableAuthContext } from './billing';
+import { resolveCorsOrigin, securityHeaders } from './http-headers';
+
+function keyAuthFailureResponse(auth: KeyAuthResult, correlationId: string): Response {
+  const status = auth.reason ? httpStatusForKeyDenial(auth.reason) : 401;
+  return badRequest(auth.message || 'Unauthorized', status, auth.reason || 'UNAUTHORIZED', correlationId);
+}
+
+function billingFromAuth(auth: KeyAuthResult): BillableAuthContext | null {
+  if (auth.key && auth.customer) {
+    return { key: auth.key, customer: auth.customer };
+  }
+  return null;
+}
 
 // Global state
 
@@ -310,16 +331,17 @@ export default {
       const url = new URL(request.url);
       const pathname = url.pathname;
       
-      // CORS configuration - can be customized per endpoint
       const getCorsHeaders = (origin?: string | null): Record<string, string> => {
-        // Allow all origins by default, but can be restricted per endpoint
-        const allowedOrigin = origin || '*';
+        const allowedOrigin = resolveCorsOrigin(env, origin);
         return {
           'Access-Control-Allow-Origin': allowedOrigin,
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Google-API-Key, X-Correlation-ID, X-Request-ID',
+          'Access-Control-Allow-Headers':
+            'Content-Type, Authorization, X-Api-Key, X-Google-API-Key, X-Correlation-ID, X-Request-ID',
           'Access-Control-Max-Age': '86400',
-          'X-Correlation-ID': correlationId
+          ...(allowedOrigin !== '*' ? { 'Access-Control-Allow-Credentials': 'true' } : {}),
+          'X-Correlation-ID': correlationId,
+          ...securityHeaders(),
         };
       };
       
@@ -336,10 +358,11 @@ export default {
       if (pathname === "/") {
         const baseUrl = `${url.protocol}//${url.host}`;
         return new Response(createLandingPage(baseUrl), {
-          headers: { 
-            "content-type": "text/html; charset=UTF-8",
-            'Access-Control-Allow-Origin': '*'
-          }
+          headers: {
+            'content-type': 'text/html; charset=UTF-8',
+            'Access-Control-Allow-Origin': '*',
+            ...securityHeaders(),
+          },
         });
       }
       
@@ -869,7 +892,24 @@ export default {
       
       // Batch processing endpoints
       if (pathname.startsWith('/batch')) {
-        if (!checkAdminAuth(request, env)) {
+        // Enterprise batch: operator BASIC_AUTH OR Customer Server key with batchEnabled
+        let batchBilling: BillableAuthContext | null = null;
+        if (apiKeysEnabled(env)) {
+          const basic = hasValidBasicAuth(request, env);
+          if (!basic) {
+            const auth = await authorizeLookupRequest(env, request, false);
+            if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
+            if (!auth.customer?.batchEnabled) {
+              return badRequest(
+                'Batch requires an Enterprise Customer with batchEnabled',
+                403,
+                'BATCH_NOT_ENABLED',
+                correlationId
+              );
+            }
+            batchBilling = billingFromAuth(auth);
+          }
+        } else if (!checkAdminAuth(request, env)) {
           return unauthorizedResponse(correlationId);
         }
         
@@ -908,6 +948,36 @@ export default {
               request,
               cb
             );
+
+            // Same Billable unit as realtime: each successful item without error.
+            // Once the fuse denies an increment, redact that item and all remaining
+            // successes so results are not returned free past the hard fuse.
+            if (batchBilling) {
+              let fuseExceeded = false;
+              for (const item of results) {
+                if (item.error) continue;
+                if (fuseExceeded) {
+                  item.properties = null;
+                  item.riding = undefined;
+                  item.province_data = undefined;
+                  item.error = 'Monthly usage fuse exceeded';
+                  continue;
+                }
+                const billed = await recordSuccessfulBillable(env, batchBilling, {
+                  waitUntil: (task) => ctx.waitUntil(task),
+                });
+                if (!billed.allowed) {
+                  fuseExceeded = true;
+                  item.properties = null;
+                  item.riding = undefined;
+                  item.province_data = undefined;
+                  item.error =
+                    typeof billed.body?.error === 'string'
+                      ? billed.body.error
+                      : 'Monthly usage fuse exceeded';
+                }
+              }
+            }
             
             return new Response(JSON.stringify({ results }), {
               headers: { 
@@ -1161,25 +1231,52 @@ export default {
         });
       }
 
+      // Portal → Worker KV projection (operator secret)
+      if (pathname.startsWith('/admin/projection/')) {
+        return handleProjectionRequest(request, env, pathname);
+      }
+
+      // Public demo routes — no Customer key; IP rate-limited; not billable
+      if (pathname.startsWith('/api/demo/') && request.method === 'GET') {
+        const demoLimit = parseInt(env.DEMO_RATE_LIMIT || '30', 10);
+        const demoClient = `demo:${getClientId(request)}`;
+        if (!checkRateLimit({ ...env, RATE_LIMIT: demoLimit }, demoClient)) {
+          return rateLimitExceededResponse(correlationId);
+        }
+        const demoPath = pathname.replace(/^\/api\/demo/, '/api') || '/api';
+        if (demoPath === '/api/geocode') return handleGeocodeRoute(request, env);
+        if (demoPath === '/api/reverse') return handleReverseRoute(request, env);
+        if (demoPath === '/api/normalize-address') return handleNormalizeAddressRoute(request, env);
+        return handleLookupRequest(
+          request,
+          env,
+          demoPath === '/api' ? '/api/federal' : demoPath,
+          lookupRiding,
+          correlationId,
+          startTime,
+          getCorsHeaders,
+          ctx,
+          null
+        );
+      }
+
       // ODA geolocation endpoints
       if (pathname === '/api/geocode' && request.method === 'GET') {
-        if (!checkBasicAuth(request, env)) {
-          return unauthorizedResponse(correlationId);
-        }
-        return handleGeocodeRoute(request, env);
+        const auth = await authorizeLookupRequest(env, request, hasValidBasicAuth(request, env));
+        if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
+        const response = await handleGeocodeRoute(request, env);
+        return response;
       }
 
       if (pathname === '/api/reverse' && request.method === 'GET') {
-        if (!checkBasicAuth(request, env)) {
-          return unauthorizedResponse(correlationId);
-        }
+        const auth = await authorizeLookupRequest(env, request, hasValidBasicAuth(request, env));
+        if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
         return handleReverseRoute(request, env);
       }
 
       if (pathname === '/api/normalize-address' && request.method === 'GET') {
-        if (!checkBasicAuth(request, env)) {
-          return unauthorizedResponse(correlationId);
-        }
+        const auth = await authorizeLookupRequest(env, request, hasValidBasicAuth(request, env));
+        if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
         return handleNormalizeAddressRoute(request, env);
       }
 
@@ -1209,9 +1306,8 @@ export default {
           return rateLimitExceededResponse(correlationId);
         }
 
-        if (!checkBasicAuth(request, env)) {
-          return unauthorizedResponse(correlationId);
-        }
+        const auth = await authorizeLookupRequest(env, request, hasValidBasicAuth(request, env));
+        if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
 
         return handleLookupRequest(
           request,
@@ -1221,7 +1317,8 @@ export default {
           correlationId,
           startTime,
           getCorsHeaders,
-          ctx
+          ctx,
+          billingFromAuth(auth)
         );
       }
       

@@ -20,29 +20,44 @@ export class ApiKeyUsageDO {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    const day = url.searchParams.get('day') || utcDay(Date.now());
+    const period =
+      url.searchParams.get('month') ||
+      url.searchParams.get('day') ||
+      utcDay(Date.now());
+    const prefix = url.searchParams.has('month') ? 'month' : 'count';
     const limit = parseInt(url.searchParams.get('limit') || '0', 10);
+    const storageKey = `${prefix}:${period}`;
 
     if (url.pathname === '/peek') {
-      const count = (await this.state.storage.get<number>(`count:${day}`)) || 0;
-      return json({ day, count, limit, allowed: limit <= 0 || count < limit });
+      const count = (await this.state.storage.get<number>(storageKey)) || 0;
+      return json({
+        day: period,
+        month: period,
+        count,
+        limit,
+        allowed: limit <= 0 || count < limit,
+      });
     }
 
     // Read-modify-write is safe here: a DO serialises its own requests, which is the entire
     // reason the counter lives in one.
-    const current = (await this.state.storage.get<number>(`count:${day}`)) || 0;
+    const current = (await this.state.storage.get<number>(storageKey)) || 0;
 
     if (limit > 0 && current >= limit) {
       // Fail closed, and do not increment: a blocked request should not inflate the number the
       // operator sees, nor keep pushing the counter up during an attack.
-      return json({ day, count: current, limit, allowed: false });
+      return json({ day: period, month: period, count: current, limit, allowed: false });
     }
 
     const next = current + 1;
-    await this.state.storage.put(`count:${day}`, next);
-    await this.pruneOldDays(day);
+    await this.state.storage.put(storageKey, next);
+    if (prefix === 'count') {
+      await this.pruneOldDays(period);
+    } else {
+      await this.pruneOldMonths(period);
+    }
 
-    return json({ day, count: next, limit, allowed: true });
+    return json({ day: period, month: period, count: next, limit, allowed: true });
   }
 
   /** Keep only a short window; without this every key accretes a row per day forever. */
@@ -59,6 +74,21 @@ export class ApiKeyUsageDO {
       }
     } catch (error) {
       console.warn('[ApiKeyUsageDO] prune failed:', error);
+    }
+  }
+
+  private async pruneOldMonths(currentMonth: string): Promise<void> {
+    if (Math.random() > 0.01) return;
+    try {
+      const entries = await this.state.storage.list<number>({ prefix: 'month:' });
+      for (const key of entries.keys()) {
+        const month = key.slice('month:'.length);
+        if (month < currentMonth.slice(0, 7) && month < monthBefore(currentMonth, 3)) {
+          await this.state.storage.delete(key);
+        }
+      }
+    } catch (error) {
+      console.warn('[ApiKeyUsageDO] month prune failed:', error);
     }
   }
 }
@@ -84,6 +114,66 @@ export interface UsageResult {
   count: number;
   limit: number;
   day: string;
+  month?: string;
+}
+
+/** UTC calendar month `YYYY-MM`. */
+export function utcMonth(nowMs: number): string {
+  return new Date(nowMs).toISOString().slice(0, 7);
+}
+
+function monthBefore(month: string, months: number): string {
+  const [y, m] = month.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 - months, 1));
+  return d.toISOString().slice(0, 7);
+}
+
+export async function consumeMonthlyQuota(
+  env: Env,
+  customerId: string,
+  monthlyLimit: number,
+  nowMs: number = Date.now()
+): Promise<UsageResult> {
+  const month = utcMonth(nowMs);
+  if (!env.API_KEY_USAGE) {
+    return { allowed: true, count: 0, limit: monthlyLimit, day: month, month };
+  }
+
+  try {
+    const id = env.API_KEY_USAGE.idFromName(`customer:${customerId}`);
+    const stub = env.API_KEY_USAGE.get(id);
+    const response = await stub.fetch(
+      `https://usage/consume?month=${month}&limit=${monthlyLimit}`,
+      { method: 'POST' }
+    );
+    const result = (await response.json()) as UsageResult;
+    return { ...result, month: result.month || month };
+  } catch (error) {
+    console.warn(`[ApiKeyUsage] monthly counter unavailable for ${customerId}:`, error);
+    return { allowed: true, count: 0, limit: monthlyLimit, day: month, month };
+  }
+}
+
+export async function peekMonthlyQuota(
+  env: Env,
+  customerId: string,
+  monthlyLimit: number,
+  nowMs: number = Date.now()
+): Promise<UsageResult> {
+  const month = utcMonth(nowMs);
+  if (!env.API_KEY_USAGE) {
+    return { allowed: true, count: 0, limit: monthlyLimit, day: month, month };
+  }
+
+  try {
+    const id = env.API_KEY_USAGE.idFromName(`customer:${customerId}`);
+    const stub = env.API_KEY_USAGE.get(id);
+    const response = await stub.fetch(`https://usage/peek?month=${month}&limit=${monthlyLimit}`);
+    const result = (await response.json()) as UsageResult;
+    return { ...result, month: result.month || month };
+  } catch {
+    return { allowed: true, count: 0, limit: monthlyLimit, day: month, month };
+  }
 }
 
 /**

@@ -166,7 +166,33 @@ const LOOKUP_QUERY_PARAMETERS = [
   },
   INCLUDE_PROVINCE_PARAMETER,
   RETURN_QUERY_PARAMETER,
+  {
+    name: "dataset",
+    in: "query" as const,
+    description:
+      "Optional dataset pin (R2 key id or year). Hard-fails with DATASET_UNAVAILABLE when it does not match the currently served vintage. Alias: pin.",
+    required: false,
+    schema: { type: "string", example: "federalridings-2024.geojson" },
+  },
+  {
+    name: "geocode_method",
+    in: "query" as const,
+    description:
+      "Accuracy mode. Default point-in-polygon after geocoding. Use postal_centroid for coarser postal-code centroid geocoding (documented dual-mode; not an electoral-authority warranty).",
+    required: false,
+    schema: { type: "string", enum: ["postal_centroid"], example: "postal_centroid" },
+  },
 ];
+
+const DATASET_RESPONSE_PROPERTY = {
+  type: "object",
+  description: "Dataset vintage served for this response (id/year). Pin mismatches return 404 DATASET_UNAVAILABLE.",
+  properties: {
+    id: { type: "string", example: "federalridings-2024.geojson" },
+    year: { type: "integer", example: 2024 },
+    name: { type: "string", example: "Federal" },
+  },
+};
 
 const RETURN_RESPONSE_PROPERTIES = {
   province_data: {
@@ -185,6 +211,7 @@ const RETURN_RESPONSE_PROPERTIES = {
     nullable: true,
     description: "Municipality when return includes municipality",
   },
+  dataset: DATASET_RESPONSE_PROPERTY,
 };
 
 function buildProvincialEndpointSpecs(): Record<string, unknown> {
@@ -731,8 +758,8 @@ export function createOpenAPISpec(baseUrl: string) {
               },
             },
             "400": { description: "INVALID_QUERY (missing q, unknown province, or both location hints), INVALID_CONTAINER_ID, or INVALID_CURSOR" },
-            "401": { description: "Authentication required, or KEY_REQUIRED when browser keys are enabled" },
-            "403": { description: "KEY_INVALID, KEY_DISABLED, ORIGIN_REQUIRED, or ORIGIN_NOT_ALLOWED" },
+            "401": { description: "KEY_REQUIRED, KEY_INVALID, or KEY_DISABLED when browser keys are enabled" },
+            "403": { description: "ORIGIN_REQUIRED, ORIGIN_NOT_ALLOWED, WRONG_KEY_KIND, or CUSTOMER_NOT_FOUND" },
             "429": { description: "Rate limit exceeded, or DAILY_LIMIT_EXCEEDED for the key (resets 00:00 UTC)" },
             "503": { description: "SUGGEST_INDEX_MISSING — run npm run build:oda:suggest" },
           },

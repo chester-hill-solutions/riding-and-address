@@ -2,6 +2,9 @@
 
 import { Env } from './types';
 import { parseBatchLookupRequests } from './validation';
+import { performExpandedLookup, expandedLookupResponseFields } from './lookup-expansion';
+import { lookupRidingFromR2 } from './lookup-riding';
+import { geocodeIfNeeded } from './geocoding';
 
 export interface QueueJob {
   id: string;
@@ -728,17 +731,34 @@ export class QueueManager {
   }
 
   private async processJob(job: QueueJob): Promise<BatchLookupResponse> {
-    // This is a placeholder - in reality, this would call the actual lookup logic
-    // For now, we'll simulate processing time and return a mock result
-    await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 100));
-    
-    return {
-      id: job.request.id,
-      query: job.request.query,
-      point: { lon: -75.6972, lat: 45.4215 },
-      properties: { FED_NUM: "35047", FED_NAME: "Ottawa Centre" },
-      processingTime: Date.now() - job.startedAt!
-    };
+    const started = job.startedAt ?? Date.now();
+
+    try {
+      const expanded = await performExpandedLookup(
+        this.env,
+        job.request.pathname,
+        job.request.query,
+        lookupRidingFromR2,
+        {
+          geocodeIfNeeded: (env, query, req, cb) => geocodeIfNeeded(env, query, req, undefined, cb),
+        }
+      );
+      return {
+        id: job.request.id,
+        query: job.request.query,
+        point: expanded.point,
+        ...expandedLookupResponseFields(expanded),
+        processingTime: Date.now() - started,
+      };
+    } catch (error) {
+      return {
+        id: job.request.id,
+        query: job.request.query,
+        properties: null,
+        error: error instanceof Error ? error.message : 'Lookup failed',
+        processingTime: Date.now() - started,
+      };
+    }
   }
 
   private calculateRetryDelay(attempt: number): number {

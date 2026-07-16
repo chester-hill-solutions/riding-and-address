@@ -411,20 +411,20 @@ export function createLandingPage(baseUrl: string): string {
   <header class="hero">
     <div class="hero-grid">
       <div>
-        <span class="eyebrow">Canadian electoral districts</span>
+        <span class="eyebrow">Riding Lookup · Chester Hill Solutions</span>
         <h1>Look up federal and provincial ridings from any address in Canada</h1>
         <p class="lead">
-          Resolve a postal code, street address, or coordinates to riding metadata.
-          Built on Cloudflare Workers with optional ODA self-hosted geocoding.
+          Metered API for campaign orgs and SaaS form vendors: fast lookup plus drop-in address autocomplete.
+          Complement OpenNorth when you need reps; lead with <code>/embed.js</code> when you need address UX.
         </p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="${baseUrl}/docs">Browse API reference</a>
-          <a class="btn btn-secondary" href="https://github.com/chester-hill-solutions/riding-and-address">View on GitHub</a>
+          <a class="btn btn-secondary" href="${baseUrl}/embed.js">Embed widget</a>
         </div>
         <div class="hero-meta">
           <span class="pill"><strong>Federal</strong> 2024 boundaries</span>
           ${pillOptions}
-          <span class="pill"><strong>ODA</strong> geocoding optional</span>
+          <span class="pill"><strong>Demo</strong> /api/demo/* rate-limited</span>
         </div>
       </div>
 
@@ -471,19 +471,19 @@ export function createLandingPage(baseUrl: string): string {
   </header>
 
   <section class="section">
-    <h2>What you get</h2>
+    <h2>Who it is for</h2>
     <div class="cards">
       <article class="card">
-        <h3>Location to riding</h3>
-        <p>Postal codes, addresses, and lat/lon resolve to federal riding properties such as <code>FED_NUM</code> and <code>FED_NAME</code>.</p>
+        <h3>Campaign &amp; political orgs</h3>
+        <p>Resolve voter or donor addresses to ridings in bulk or realtime. Enterprise batch is sales-assisted.</p>
       </article>
       <article class="card">
-        <h3>Provincial enrichment</h3>
-        <p>Use <code>/api/combined</code> or <code>include_province=true</code> to attach matching provincial results for any supported province.</p>
+        <h3>SaaS &amp; form vendors</h3>
+        <p>Ship address autocomplete via <code>/embed.js</code> and <code>/api/search</code>, then one lookup call on select.</p>
       </article>
       <article class="card">
-        <h3>Fast repeat lookups</h3>
-        <p>Warm KV caches deliver sub-10ms responses for cached coordinates and postcodes at the edge.</p>
+        <h3>Accuracy modes</h3>
+        <p>Default is point-in-polygon on official electoral open data. Optional <code>geocode_method=postal_centroid</code> is documented and coarser. Not an electoral-authority warranty.</p>
       </article>
     </div>
   </section>
@@ -533,6 +533,7 @@ export function createLandingPage(baseUrl: string): string {
     <a href="${baseUrl}/health">Health check</a>
     <a href="https://github.com/chester-hill-solutions/riding-and-address/tree/main/docs">Markdown guides</a>
     <a href="https://github.com/chester-hill-solutions/riding-and-address">GitHub repository</a>
+    <span>Chester Hill Solutions</span>
   </footer>
 
   <script>
@@ -615,7 +616,9 @@ export function createLandingPage(baseUrl: string): string {
         if (!params) {
           return null;
         }
-        return baseUrl + endpoint + '?' + params.toString();
+        // Public try-it uses non-billable demo routes (IP rate-limited).
+        const demoPath = '/api/demo' + (endpoint === '/api' ? '/federal' : endpoint.replace(/^\\/api/, ''));
+        return baseUrl + demoPath + '?' + params.toString();
       }
 
       function buildCurl() {

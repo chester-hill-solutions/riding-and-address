@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { createLookupTestEnv, fetchLookup, TORONTO_LAT, TORONTO_LON } from './helpers/lookup-test-env';
 import { Env, Suggestion } from '../src/types';
+import { clearApiKeyCache } from '../src/api-keys';
+import { clearCustomerCache } from '../src/customer';
 
 interface SearchBody {
   suggestions?: Suggestion[];
@@ -209,16 +211,39 @@ describe('GET /api/search — flag on', () => {
 describe('browser key gate on /api/search', () => {
   const KEY = {
     id: 'pk_live_abc',
+    kind: 'browser',
+    customerId: 'cust_acme',
     origins: ['https://acme.com', 'https://*.acme.com'],
     dailyLimit: 1000,
   };
+  const CUSTOMER = {
+    id: 'cust_acme',
+    plan: 'free',
+    fuseLimit: 1000,
+  };
 
-  function withKeys(env: Env, keys: Record<string, unknown> = { pk_live_abc: KEY }): Env {
+  function withKeys(
+    env: Env,
+    keys: Record<string, unknown> = { pk_live_abc: KEY },
+    customers: Record<string, unknown> = { cust_acme: CUSTOMER }
+  ): Env {
     return {
       ...env,
-      API_KEYS: { get: async (name: string) => keys[name.replace(/^key:/, '')] ?? null },
+      API_KEYS: {
+        get: async (name: string) => {
+          if (name.startsWith('customer:')) {
+            return customers[name.slice('customer:'.length)] ?? null;
+          }
+          return keys[name.replace(/^key:/, '')] ?? null;
+        },
+      },
     } as unknown as Env;
   }
+
+  beforeEach(() => {
+    clearApiKeyCache();
+    clearCustomerCache();
+  });
 
   const base = () => enabled(withSuggestDb(createLookupTestEnv()));
 
@@ -241,6 +266,14 @@ describe('browser key gate on /api/search', () => {
     });
     expect(response.status).toBe(401);
     expect((await readJson(response)).code).toBe('KEY_REQUIRED');
+  });
+
+  it('401s an unknown browser key (same status as lookup KEY_INVALID)', async () => {
+    const response = await fetchLookup(withKeys(base()), '/api/search?q=main st tor&key=pk_live_missing', {
+      headers: { Origin: 'https://acme.com' },
+    });
+    expect(response.status).toBe(401);
+    expect((await readJson(response)).code).toBe('KEY_INVALID');
   });
 
   it('403s a stolen key used from someone else site', async () => {

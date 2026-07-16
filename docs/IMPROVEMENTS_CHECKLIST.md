@@ -1,5 +1,7 @@
 # Riding Lookup API - Improvement Checklist
 
+> **Historical / aspirational.** This checklist tracks past engineering work and ideas. It is **not** the chargeable-product roadmap. For product glossary and launch architecture see root [`CONTEXT.md`](../CONTEXT.md) and [`docs/adr/`](adr/).
+
 ## 🚀 Performance & Scalability Improvements
 
 ### 1. Geospatial Indexing & Optimization

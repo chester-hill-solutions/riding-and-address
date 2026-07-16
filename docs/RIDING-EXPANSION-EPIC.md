@@ -11,29 +11,16 @@ Expand riding-and-address API coverage from 3 datasets (Federal, Ontario, Quebec
 - [ ] Batch processing and combined endpoints support all new provinces
 - [ ] Cache warming covers all new datasets
 
-## Current State
-| Code | Province | Status | Dataset | Year |
-|------|----------|--------|---------|------|
-| — | Federal | ✅ LIVE | `federalridings-2024.geojson` | 2024 |
-| on | Ontario | ✅ LIVE | `ontarioridings-2022.geojson` | 2022 |
-| qc | Quebec | ✅ LIVE | `quebecridings-2025.geojson` | 2025 |
+## Current State (vs `src/datasets.ts`)
 
-## Target State
-| Code | Province/Territory | Registry status | R2 | Priority | Data Source |
-|------|-------------------|-----------------|-----|----------|-------------|
-| bc | British Columbia | registered | pending | P1 | Elections BC |
-| ab | Alberta | registered | pending | P1 | Elections Alberta |
-| ns | Nova Scotia | registered | pending | P1 | Elections Nova Scotia |
-| nb | New Brunswick | registered | pending | P1 | Elections New Brunswick |
-| mb | Manitoba | registered | pending | P2 | Elections Manitoba |
-| sk | Saskatchewan | registered | pending | P2 | Elections Saskatchewan |
-| nl | Newfoundland and Labrador | registered | pending | P2 | Elections NL |
-| pe | Prince Edward Island | registered | pending | P2 | Elections PEI |
-| nt | Northwest Territories | registered | pending | P3 | Elections NWT |
-| nu | Nunavut | registered | pending | P3 | Elections Nunavut |
-| yt | Yukon | registered | pending | P3 | Elections Yukon |
+The registry marks federal + all provincial/territorial codes **`live`** (endpoints exist). Confirm R2 objects per environment via health/dataset checks. Boundaries are official electoral open data (not OpenNorth); StatCan ODA is addresses only. See [`data/ridings/README.md`](../data/ridings/README.md) and [`DATASET_CHANGELOG.md`](DATASET_CHANGELOG.md).
 
-Registry status (`live` / `registered`) is defined in `src/datasets.ts`. Flip to `live` after R2 upload.
+The historical “Target State” table below is superseded for status tracking; keep acquisition notes in Stories.
+
+## Historical target table (superseded for status)
+| Code | Province/Territory | Notes |
+|------|-------------------|-------|
+| bc…yt | All codes in `PROVINCIAL_DATASETS` | Registry `live`; upload/verify R2 as needed |
 
 ---
 
