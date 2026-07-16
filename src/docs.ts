@@ -13,7 +13,7 @@ export { createLandingPage } from './landing-page';
  * Must match the `@scalar/api-reference` devDependency in package.json — dependabot bumps that
  * one and cannot see this constant, so `test/docs.test.ts` asserts they agree.
  */
-const SCALAR_API_REFERENCE_VERSION = "1.62.7";
+const SCALAR_API_REFERENCE_VERSION = "1.62.8";
 
 export function createApiReference(baseUrl: string): string {
   return `<!DOCTYPE html>
