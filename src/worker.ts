@@ -75,6 +75,7 @@ import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS } from './config';
 import {
   apiKeysEnabled,
   authorizeLookupRequest,
+  extractApiKey,
   httpStatusForKeyDenial,
   type KeyAuthResult,
 } from './api-keys';
@@ -1245,8 +1246,18 @@ export default {
         request.method === 'GET' &&
         isOdaSuggestEnabled(env)
       ) {
-        const clientId = getClientId(request);
-        if (!checkRateLimit(env, clientId)) {
+        // The portal try-it key is public and shared by every visitor, so its daily cap alone
+        // would let one abuser exhaust it for everyone. Hold those requests to the stricter
+        // per-IP demo rate (own bucket — typing must not starve /api/demo/* riding lookups).
+        const isDemoKey =
+          !!env.DEMO_BROWSER_API_KEY && extractApiKey(request) === env.DEMO_BROWSER_API_KEY;
+        const clientId = isDemoKey
+          ? `demo-search:${getClientId(request)}`
+          : getClientId(request);
+        const searchRateEnv = isDemoKey
+          ? { ...env, RATE_LIMIT: parseInt(env.DEMO_RATE_LIMIT || '30', 10) }
+          : env;
+        if (!checkRateLimit(searchRateEnv, clientId)) {
           return rateLimitExceededResponse(correlationId);
         }
         // No checkBasicAuth here: /api/search accepts EITHER basic auth or a browser key, and a

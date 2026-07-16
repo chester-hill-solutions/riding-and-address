@@ -322,6 +322,64 @@ describe('browser key gate on /api/search', () => {
     expect((await readJson(response)).code).toBe('ORIGIN_REQUIRED');
   });
 
+  it('accepts a same-origin browser GET, which sends Sec-Fetch-Site but no Origin header', async () => {
+    // The portal try-it widget calls /api/search on its own Worker origin; browsers omit the
+    // Origin header on same-origin GETs, so the key is credited with the request URL's origin.
+    const key = { ...KEY, origins: ['https://lookup.test'] };
+    const response = await fetchLookup(
+      withKeys(base(), { pk_live_abc: key }),
+      '/api/search?q=main st tor&key=pk_live_abc',
+      { headers: { 'Sec-Fetch-Site': 'same-origin' } }
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it('does not credit the URL origin on a cross-site fetch that omitted Origin', async () => {
+    const key = { ...KEY, origins: ['https://lookup.test'] };
+    const response = await fetchLookup(
+      withKeys(base(), { pk_live_abc: key }),
+      '/api/search?q=main st tor&key=pk_live_abc',
+      { headers: { 'Sec-Fetch-Site': 'cross-site' } }
+    );
+    expect(response.status).toBe(403);
+    expect((await readJson(response)).code).toBe('ORIGIN_REQUIRED');
+  });
+
+  it('same-origin credit still enforces the allowlist', async () => {
+    // Allowlist has acme.com only; the request URL origin (lookup.test) must not slip through.
+    const response = await fetchLookup(
+      withKeys(base()),
+      '/api/search?q=main st tor&key=pk_live_abc',
+      { headers: { 'Sec-Fetch-Site': 'same-origin' } }
+    );
+    expect(response.status).toBe(403);
+    expect((await readJson(response)).code).toBe('ORIGIN_NOT_ALLOWED');
+  });
+
+  it('holds the shared demo key to DEMO_RATE_LIMIT per IP', async () => {
+    // The try-it key is public and shared by every visitor: without a per-IP clamp, one abuser
+    // exhausts its daily cap for everyone.
+    const env = {
+      ...withKeys(base()),
+      DEMO_BROWSER_API_KEY: 'pk_live_abc',
+      DEMO_RATE_LIMIT: '2',
+    } as Env;
+    const headers = { Origin: 'https://acme.com', 'CF-Connecting-IP': '203.0.113.77' };
+
+    const first = await fetchLookup(env, '/api/search?q=main st tor&key=pk_live_abc', { headers });
+    const second = await fetchLookup(env, '/api/search?q=main st tor&key=pk_live_abc', { headers });
+    const third = await fetchLookup(env, '/api/search?q=main st tor&key=pk_live_abc', { headers });
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(third.status).toBe(429);
+
+    // Another visitor (different IP) is not affected by the abuser's bucket.
+    const otherIp = await fetchLookup(env, '/api/search?q=main st tor&key=pk_live_abc', {
+      headers: { Origin: 'https://acme.com', 'CF-Connecting-IP': '203.0.113.78' },
+    });
+    expect(otherIp.status).toBe(200);
+  });
+
   it('accepts the key by header as well as query param', async () => {
     const response = await fetchLookup(withKeys(base()), '/api/search?q=main st tor', {
       headers: { Origin: 'https://acme.com', 'X-Api-Key': 'pk_live_abc' },

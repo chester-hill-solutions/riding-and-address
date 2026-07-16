@@ -233,6 +233,22 @@ export function extractBearerToken(request: Request): string | null {
   return match?.[1]?.trim() || null;
 }
 
+/**
+ * The origin a Browser key should be checked against. Browsers omit the Origin header on
+ * same-origin GETs (e.g. the portal try-it widget calling /api/search on the combined Worker),
+ * but always send Sec-Fetch-Site — use it to credit the request URL's own origin. Non-browser
+ * clients gain nothing here: they could spoof Origin just as easily, and browser keys are
+ * public identifiers whose allowlist only means anything inside a real browser.
+ */
+function effectiveBrowserOrigin(request: Request): string | null {
+  const origin = request.headers.get('Origin');
+  if (origin) return origin;
+  if (request.headers.get('Sec-Fetch-Site') === 'same-origin') {
+    return new URL(request.url).origin;
+  }
+  return null;
+}
+
 export async function authorizeBrowserKey(env: Env, request: Request): Promise<KeyAuthResult> {
   if (!apiKeysEnabled(env)) return { ok: true };
 
@@ -252,7 +268,7 @@ export async function authorizeBrowserKey(env: Env, request: Request): Promise<K
     return { ok: false, reason: 'KEY_DISABLED', message: 'This API key has been disabled.' };
   }
 
-  const origin = request.headers.get('Origin');
+  const origin = effectiveBrowserOrigin(request);
   if (!origin) {
     return {
       ok: false,

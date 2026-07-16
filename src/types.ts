@@ -32,6 +32,12 @@ export interface Env {
   /** IP rate limit for /api/demo/* (default 30/min). */
   DEMO_RATE_LIMIT?: string;
   /**
+   * Public pk_* browser key used by the portal try-it embed. /api/search requests presenting
+   * this key are held to DEMO_RATE_LIMIT per IP: the key is shared by every portal visitor,
+   * so its daily cap alone would let one abuser exhaust it for everyone.
+   */
+  DEMO_BROWSER_API_KEY?: string;
+  /**
    * Comma-separated origins allowed for credentialed CORS (portal + embeds).
    * When unset, reflect request Origin or `*` (legacy open CORS).
    */
