@@ -3,10 +3,14 @@
  * Civic utilitarian CanCoder page — hero, live try-it, product pillars, pricing.
  */
 
+import { DEFAULT_FREE_MONTHLY_ALLOWANCE } from './customer';
 import { PROVINCIAL_DATASETS } from './datasets';
 
-const FREE_MONTHLY = '1,000';
-const METERED_PRICE = '$0.005';
+/** Display only; keep in sync with portal/app/lib/pricing.ts (billing-invariants gate). */
+const METERED_UNIT_PRICE_USD = 0.005;
+
+const FREE_MONTHLY = DEFAULT_FREE_MONTHLY_ALLOWANCE.toLocaleString('en-CA');
+const METERED_PRICE = `$${METERED_UNIT_PRICE_USD.toFixed(3)}`;
 
 const SAMPLES = [
   { label: 'Ottawa', query: '24 Sussex Dr, Ottawa, ON', lat: 45.4445, lon: -75.6939 },
