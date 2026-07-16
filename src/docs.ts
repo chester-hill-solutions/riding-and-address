@@ -7,8 +7,13 @@ const PROVINCIAL_DATASET_STEMS = PROVINCIAL_DATASETS.map((d) => d.r2Key.replace(
 
 export { createLandingPage } from './landing-page';
 
-/** Keep in sync with devDependency `@scalar/api-reference` in package.json */
-const SCALAR_API_REFERENCE_VERSION = "1.59.3";
+/**
+ * Version of the Scalar bundle loaded from CDN by the API reference page.
+ *
+ * Must match the `@scalar/api-reference` devDependency in package.json — dependabot bumps that
+ * one and cannot see this constant, so `test/docs.test.ts` asserts they agree.
+ */
+const SCALAR_API_REFERENCE_VERSION = "1.62.1";
 
 export function createApiReference(baseUrl: string): string {
   return `<!DOCTYPE html>
@@ -553,6 +558,207 @@ export function createOpenAPISpec(baseUrl: string) {
             "422": { description: "AMBIGUOUS_LOCATION or LOW_CONFIDENCE_GEOCODE" },
           },
           security: [{ basicAuth: [] }],
+        },
+      },
+      "/api/search": {
+        get: {
+          summary: "Address autocomplete (as-you-type)",
+          description: [
+            "Ranked address suggestions for a partial query, for use behind a search box.",
+            "Requires ODA_SUGGEST_ENABLED; while it is off this path is not registered.",
+            "",
+            "Results come in two levels, told apart by `next`:",
+            "",
+            "- `next: \"search\"` — a **container**: either a street (`dataLevel: Street`) or a",
+            "  building with many units (`dataLevel: Premise`, `unitCount`). The query is not",
+            "  specific enough to name one address, so the set is returned with a count. Call this",
+            "  endpoint again with `containerId` to drill in, or `cursor` to page.",
+            "- `next: \"lookup\"` — a **resolved address** (`dataLevel: Premise`, or `RangedPremise`",
+            "  when the civic number falls inside the street's range but has no exact record).",
+            "  Take `location` and call `/api/federal` or `/api/combined` to get the riding.",
+            "",
+            "Suggestions never carry a riding: this endpoint reads only D1 and never loads",
+            "boundary data. Riding is resolved once, for the address the user actually selects.",
+          ].join("\n"),
+          tags: ["ODA Geolocation"],
+          parameters: [
+            {
+              name: "q",
+              in: "query",
+              required: true,
+              description:
+                "Partial address. Under 3 characters returns an empty list rather than an error.",
+              schema: { type: "string", default: "250 main st tor", example: "250 main st tor" },
+            },
+            {
+              name: "province",
+              in: "query",
+              description:
+                "Comma-separated province codes to search. Defaults to ODA_PROVINCES. NL, NU and YT are not in the ODA dataset.",
+              schema: { type: "string", example: "ON" },
+            },
+            {
+              name: "limit",
+              in: "query",
+              description: "Maximum suggestions to return.",
+              schema: { type: "integer", default: 7, minimum: 1, maximum: 20 },
+            },
+            {
+              name: "containerId",
+              in: "query",
+              description:
+                "Drill into a container: pass the `id` of a `next: \"search\"` suggestion. A street container lists its civic numbers; a building container lists its units.",
+              schema: { type: "string" },
+            },
+            {
+              name: "cursor",
+              in: "query",
+              description:
+                "Page within a container: pass the previous response's `nextCursor`. Opaque keyset; absence of `nextCursor` means the last page.",
+              schema: { type: "string" },
+            },
+            {
+              name: "key",
+              in: "query",
+              description:
+                "Browser API key (`pk_live_...`), required only when the API_KEYS binding is configured. Public by design: security comes from the key's server-side origin allowlist and daily cap, not from secrecy. May also be sent as `X-Api-Key`.",
+              schema: { type: "string" },
+            },
+            {
+              name: "locationBias",
+              in: "query",
+              description:
+                "`lat,lon`. Soft: reorders results by proximity but never drops them. Mutually exclusive with locationRestriction.",
+              schema: { type: "string", example: "43.65,-79.38" },
+            },
+            {
+              name: "locationRestriction",
+              in: "query",
+              description:
+                "`minLat,minLon,maxLat,maxLon`. Hard: excludes results outside the box. Mutually exclusive with locationBias.",
+              schema: { type: "string", example: "43.5,-79.7,43.9,-79.1" },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Ranked suggestions, best first",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      query: { type: "object" },
+                      suggestions: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string" },
+                            text: { type: "string" },
+                            structuredFormat: {
+                              type: "object",
+                              description: "mainText/secondaryText with match offsets for bolding.",
+                            },
+                            description: { type: "string" },
+                            types: { type: "array", items: { type: "string" } },
+                            next: { type: "string", enum: ["search", "lookup"] },
+                            dataLevel: {
+                              type: "string",
+                              enum: ["Premise", "RangedPremise", "Street"],
+                            },
+                            location: { type: "object" },
+                            cursor: {
+                              type: "integer",
+                              description: "Suggested caret position if this row is selected.",
+                            },
+                            score: { type: "number" },
+                            addressCount: {
+                              type: "integer",
+                              description: "Containers only: how many addresses this container holds.",
+                            },
+                            unitCount: {
+                              type: "integer",
+                              description:
+                                "Building containers only: distinct units sharing this civic. Counts real units, not duplicate records.",
+                            },
+                            civicRange: { type: "object" },
+                            addressComponents: { type: "object" },
+                            distanceMeters: { type: "integer" },
+                          },
+                        },
+                      },
+                      nextCursor: {
+                        type: "string",
+                        description:
+                          "Present when the container has more rows than `limit`. Pass back as `cursor`; absence means the last page.",
+                      },
+                      provinces: {
+                        type: "array",
+                        items: { type: "string" },
+                        description:
+                          "Provinces actually searched, so an empty list can be told apart from a province with no data.",
+                      },
+                      dataSource: { type: "object" },
+                      correlationId: { type: "string" },
+                    },
+                    example: {
+                      query: { q: "main st tor", province: "ON", limit: 7 },
+                      suggestions: [
+                        {
+                          id: "T04ACVRPUk9OVE98T04ATUFJTnxTVA",
+                          text: "Main St, Toronto, ON",
+                          structuredFormat: {
+                            mainText: { text: "Main St", matches: [{ startOffset: 0, endOffset: 4 }] },
+                            secondaryText: { text: "Toronto, ON" },
+                          },
+                          description: "Toronto, ON",
+                          types: ["street", "container"],
+                          next: "search",
+                          dataLevel: "Street",
+                          location: { lat: 43.6891, lon: -79.2989 },
+                          cursor: 8,
+                          score: 0.71,
+                          addressCount: 250,
+                          civicRange: { min: 1, max: 499 },
+                        },
+                      ],
+                      provinces: ["ON"],
+                      dataSource: { provider: "statcan-oda", version: "2021001" },
+                      correlationId: "req_1784155868025_s13wy7bf6",
+                    },
+                  },
+                },
+              },
+            },
+            "400": { description: "INVALID_QUERY (missing q, unknown province, or both location hints), INVALID_CONTAINER_ID, or INVALID_CURSOR" },
+            "401": { description: "Authentication required, or KEY_REQUIRED when browser keys are enabled" },
+            "403": { description: "KEY_INVALID, KEY_DISABLED, ORIGIN_REQUIRED, or ORIGIN_NOT_ALLOWED" },
+            "429": { description: "Rate limit exceeded, or DAILY_LIMIT_EXCEEDED for the key (resets 00:00 UTC)" },
+            "503": { description: "SUGGEST_INDEX_MISSING — run npm run build:oda:suggest" },
+          },
+          security: [{ basicAuth: [] }],
+        },
+      },
+      "/embed.js": {
+        get: {
+          summary: "Drop-in autocomplete widget",
+          description: [
+            "JavaScript widget that wires /api/search into an existing form. One script tag:",
+            "",
+            "    <script src='/embed.js' data-province='ON' defer></script>",
+            "",
+            "It finds the address field in each form, fills the address on selection, and emits",
+            "the riding as a `ridinglookup:riding` event. Requires ODA_SUGGEST_ENABLED; 404s while",
+            "off. See the API contract doc for the full options and events.",
+          ].join("\n"),
+          tags: ["ODA Geolocation"],
+          responses: {
+            "200": {
+              description: "The widget source",
+              content: { "application/javascript": { schema: { type: "string" } } },
+            },
+            "404": { description: "Address autocomplete is not enabled" },
+          },
         },
       },
       "/api/reverse": {
@@ -1641,16 +1847,21 @@ export function createOpenAPISpec(baseUrl: string) {
         },
       },
     },
-    securitySchemes: {
-      basicAuth: {
-        type: "http",
-        scheme: "basic",
-      },
-      apiKey: {
-        type: "apiKey",
-        in: "header",
-        name: "X-Google-API-Key",
-        description: "Google Maps API key for BYOK authentication",
+    // OpenAPI 3.0 requires securitySchemes under `components`. It previously sat here as a
+    // sibling of `paths`, where it is silently ignored -- every `security: [{ basicAuth: [] }]`
+    // on the paths above referenced a scheme the document never actually defined.
+    components: {
+      securitySchemes: {
+        basicAuth: {
+          type: "http",
+          scheme: "basic",
+        },
+        apiKey: {
+          type: "apiKey",
+          in: "header",
+          name: "X-Google-API-Key",
+          description: "Google Maps API key for BYOK authentication",
+        },
       },
     },
     tags: [
@@ -1663,12 +1874,17 @@ export function createOpenAPISpec(baseUrl: string) {
         description: "Federal plus Ontario or Quebec provincial riding in one request",
       },
       {
-        name: "Quebec Ridings",
-        description: "Operations for Quebec provincial riding lookups",
+        name: "Provincial Ridings",
+        description: "Operations for provincial and territorial riding lookups",
       },
       {
-        name: "Ontario Ridings",
-        description: "Operations for Ontario provincial riding lookups",
+        name: "ODA Geolocation",
+        description:
+          "Self-hosted geocoding and address autocomplete over the Statistics Canada Open Database of Addresses",
+      },
+      {
+        name: "ODA Admin",
+        description: "ODA database schema and import statistics",
       },
       {
         name: "Batch Processing",

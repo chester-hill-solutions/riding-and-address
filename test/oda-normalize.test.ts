@@ -1,11 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildSearchKey,
+  buildStreetKey,
   foldAccents,
+  formatStreetLabel,
   normalizeOdaCsvRow,
   normalizeProvince,
+  normalizeSearchToken,
+  normalizeStreetDirection,
+  normalizeStreetType,
   parseAddressQuery,
   parseFreeformAddress,
+  parseStreetKey,
   buildCityKey,
 } from '../src/oda-normalize';
 import { haversineMeters } from '../src/oda-geocoding';
@@ -121,6 +127,77 @@ describe('oda-normalize', () => {
     expect(row?.streetName).toBe('RUMBELLOW');
     expect(row?.streetType).toBe('CRESCENT');
     expect(row?.city).toBe('AJAX');
+  });
+});
+
+describe('parseStreetKey', () => {
+  it('splits name, type and direction', () => {
+    expect(parseStreetKey('MAIN|ST|N')).toEqual({
+      streetName: 'MAIN',
+      streetType: 'ST',
+      streetDirection: 'N',
+    });
+  });
+
+  it('splits name and type', () => {
+    expect(parseStreetKey('MAIN|ST')).toEqual({
+      streetName: 'MAIN',
+      streetType: 'ST',
+      streetDirection: '',
+    });
+  });
+
+  it('resolves the ambiguous two-part case by value, not position', () => {
+    // `MAIN|N` and `MAIN|ST` are both two parts; only the value sets can tell them apart.
+    expect(parseStreetKey('MAIN|N')).toEqual({
+      streetName: 'MAIN',
+      streetType: '',
+      streetDirection: 'N',
+    });
+  });
+
+  it('treats a lone part as a name, even when it looks like a type', () => {
+    expect(parseStreetKey('ST')).toEqual({ streetName: 'ST', streetType: '', streetDirection: '' });
+  });
+
+  it('handles a multi-word street name', () => {
+    expect(parseStreetKey('OLD KINGSTON|RD|E')).toEqual({
+      streetName: 'OLD KINGSTON',
+      streetType: 'RD',
+      streetDirection: 'E',
+    });
+  });
+
+  it('returns empty parts for an empty key', () => {
+    expect(parseStreetKey('')).toEqual({ streetName: '', streetType: '', streetDirection: '' });
+  });
+
+  it('round-trips buildStreetKey for canonical inputs', () => {
+    const cases: Array<[string, string, string]> = [
+      ['MAIN', 'ST', 'N'],
+      ['MAIN', 'STREET', ''],
+      ['QUEEN', 'AVENUE', 'WEST'],
+      ['STE-CATHERINE', 'RUE', ''],
+      ['BAY', '', ''],
+    ];
+
+    for (const [name, type, dir] of cases) {
+      const key = buildStreetKey(name, type, dir);
+      const parsed = parseStreetKey(key);
+      expect(parsed.streetName).toBe(normalizeSearchToken(name));
+      expect(parsed.streetType).toBe(normalizeStreetType(type));
+      expect(parsed.streetDirection).toBe(normalizeStreetDirection(dir));
+    }
+  });
+});
+
+describe('formatStreetLabel', () => {
+  it('title-cases the street for display', () => {
+    expect(formatStreetLabel('MAIN|ST|N')).toBe('Main St N');
+  });
+
+  it('keeps hyphenated names capitalised on both sides', () => {
+    expect(formatStreetLabel('STE-CATHERINE|RUE')).toBe('Ste-Catherine Rue');
   });
 });
 

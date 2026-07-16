@@ -205,6 +205,61 @@ export function buildStreetKey(
     .join('|');
 }
 
+/** Canonical outputs of normalizeStreetType / normalizeStreetDirection. Disjoint sets. */
+const STREET_TYPE_VALUES: ReadonlySet<string> = new Set(Object.values(STREET_TYPE_SEARCH));
+const STREET_DIR_VALUES: ReadonlySet<string> = new Set(Object.values(STREET_DIR_SEARCH));
+
+export interface ParsedStreetKey {
+  streetName: string;
+  streetType: string;
+  streetDirection: string;
+}
+
+/**
+ * Inverse of buildStreetKey. Since buildStreetKey drops empty parts, position alone is
+ * ambiguous (`MAIN|N` is name+direction, `MAIN|ST` is name+type), so parts are classified
+ * from the end against the canonical value sets rather than by index.
+ *
+ * Unknown street types survive buildStreetKey unmapped, so they fold back into streetName
+ * rather than round-tripping. That is lossless for display, which is the only consumer.
+ */
+export function parseStreetKey(streetKey: string): ParsedStreetKey {
+  const parts = streetKey.split('|').filter(Boolean);
+  if (parts.length === 0) {
+    return { streetName: '', streetType: '', streetDirection: '' };
+  }
+  // A lone part is always the name — a street genuinely named "ST" must not parse as a bare type.
+  if (parts.length === 1) {
+    return { streetName: parts[0], streetType: '', streetDirection: '' };
+  }
+
+  let streetDirection = '';
+  if (STREET_DIR_VALUES.has(parts[parts.length - 1])) {
+    streetDirection = parts.pop()!;
+  }
+
+  let streetType = '';
+  if (parts.length > 1 && STREET_TYPE_VALUES.has(parts[parts.length - 1])) {
+    streetType = parts.pop()!;
+  }
+
+  return { streetName: parts.join(' '), streetType, streetDirection };
+}
+
+/** Display label for a street container, e.g. `MAIN|ST|N` -> "Main St N". */
+export function formatStreetLabel(streetKey: string): string {
+  const { streetName, streetType, streetDirection } = parseStreetKey(streetKey);
+  return [titleCaseStreet(streetName), titleCaseStreet(streetType), streetDirection]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function titleCaseStreet(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/(^|[\s/-])([a-z])/g, (_, sep: string, ch: string) => sep + ch.toUpperCase());
+}
+
 export function buildSearchKey(parts: {
   civic?: string;
   streetName?: string;

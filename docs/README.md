@@ -10,13 +10,13 @@ Guides for operating, extending, and integrating with the Riding Lookup API.
 | [Performance](performance.md) | Latency benchmarks, caching, and issue #8 optimizations |
 | [OpenNorth comparison](comparison-opennorth.md) | Speed and robustness vs Represent API |
 | [Postal vs point lookup](postal-vs-point-lookup.md) | Why postal results differ from OpenNorth |
-| [ODA data import](oda-data-import.md) | Download, import, resume, and verify StatCan ODA in D1 |
+| [ODA data import](oda-data-import.md) | Download, import, resume, and verify StatCan ODA in D1; build the autocomplete index |
 
 ## ODA geocoding
 
 | Guide | Description |
 |-------|-------------|
-| [API contract](oda-geolocation-contract.md) | Request/response shapes for ODA-backed geocoding |
+| [API contract](oda-geolocation-contract.md) | Request/response shapes for ODA-backed geocoding, `/api/search` autocomplete, the `/embed.js` widget, and browser API keys |
 | [Canada Post-style addresses](canada-post-style-addresses.md) | Normalization and mailing-field format |
 | [Fixture examples](oda-fixtures.md) | Test addresses and expected behavior |
 

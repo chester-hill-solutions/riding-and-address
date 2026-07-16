@@ -1,8 +1,9 @@
-import { Env, GeoJSONFeatureCollection, GeoJSONGeometry, SpatialIndex, CacheWarmingState, QueryParams, LookupResult, LookupCacheEntry, CircuitBreakerExecuteOptions } from './types';
+import { Env, GeoJSONFeatureCollection, GeoJSONGeometry, SpatialIndex, CacheWarmingState, QueryParams, LookupResult, LookupCacheEntry, CircuitBreakerExecuteOptions, Suggestion, SuggestQueryParams } from './types';
 import { geocodeIfNeeded } from './geocoding';
 import { TIME_CONSTANTS, TIME_CONSTANTS_SECONDS } from './config';
 import { geocodingCircuitBreaker } from './circuit-breaker';
 import { pickDataset, getLiveWarmTargets } from './datasets';
+import { normalizeSearchToken } from './oda-normalize';
 
 // Cache configuration
 export const CACHE_CONFIG = {
@@ -561,6 +562,78 @@ export async function setCachedLookupResult(env: Env, cacheKey: string, result: 
     });
   } catch (error) {
     console.warn('Failed to cache lookup result:', error);
+    // Don't throw - cache errors should never fail requests
+  }
+}
+
+interface SuggestCacheEntry {
+  suggestions: Suggestion[];
+  provinces: string[];
+  nextCursor?: string;
+  timestamp: number;
+}
+
+/**
+ * Cache key for GET /api/search.
+ *
+ * Kept separate from generateLookupCacheKey rather than overloading it: the inputs are free text
+ * plus hints, not QueryParams, and there is no dataset involved. A locationBias is bucketed to
+ * ~1km so nearby keystrokes share an entry instead of each caret position minting a new one.
+ */
+export function generateSuggestCacheKey(params: SuggestQueryParams): string {
+  const q = normalizeSearchToken(params.q);
+  const provinces = [...params.provinces].sort().join(',');
+
+  let bias = '';
+  if (params.locationBias) {
+    const bucket = (v: number) => (Math.round(v * 100) / 100).toFixed(2);
+    bias = `${bucket(params.locationBias.lat)},${bucket(params.locationBias.lon)}`;
+  }
+
+  let restriction = '';
+  if (params.locationRestriction) {
+    const r = params.locationRestriction;
+    restriction = [r.minLat, r.minLon, r.maxLat, r.maxLon].map((v) => v.toFixed(4)).join(',');
+  }
+
+  // The cursor is part of the key: without it page 2 of a container would be served page 1's
+  // cached body, since every other input is identical.
+  return `suggest:v1:${q}:${provinces}:${params.limit}:${params.containerId || ''}:${params.cursor || ''}:${bias}:${restriction}`;
+}
+
+export async function getCachedSuggestions(
+  env: Env,
+  cacheKey: string,
+  ttlSeconds: number
+): Promise<SuggestCacheEntry | null> {
+  if (!env.LOOKUP_CACHE) return null;
+
+  try {
+    const cached = (await env.LOOKUP_CACHE.get(cacheKey, 'json')) as SuggestCacheEntry | null;
+    if (!cached) return null;
+    if (Date.now() - cached.timestamp > ttlSeconds * 1000) return null;
+    return cached;
+  } catch (error) {
+    console.warn('Failed to get cached suggestions:', error);
+    return null;
+  }
+}
+
+export async function setCachedSuggestions(
+  env: Env,
+  cacheKey: string,
+  suggestions: Suggestion[],
+  provinces: string[],
+  ttlSeconds: number,
+  nextCursor?: string
+): Promise<void> {
+  if (!env.LOOKUP_CACHE) return;
+
+  try {
+    const entry: SuggestCacheEntry = { suggestions, provinces, nextCursor, timestamp: Date.now() };
+    await env.LOOKUP_CACHE.put(cacheKey, JSON.stringify(entry), { expirationTtl: ttlSeconds });
+  } catch (error) {
+    console.warn('Failed to cache suggestions:', error);
     // Don't throw - cache errors should never fail requests
   }
 }

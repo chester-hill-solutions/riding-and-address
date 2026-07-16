@@ -8,7 +8,10 @@ import {
   handleNormalizeAddressRoute,
   handleOdaInit,
   handleOdaStats,
+  handleSearchRoute,
 } from './oda-handlers';
+import { isOdaSuggestEnabled } from './oda-config';
+import { createEmbedScript, EMBED_VERSION } from './embed';
 import { 
   geoCacheLRU, 
   spatialIndexCacheLRU, 
@@ -63,6 +66,7 @@ import {
 } from './batch';
 import { safeParseBatchLookupRequests } from './validation';
 import { QueueManagerDO } from './queue-manager';
+import { ApiKeyUsageDO } from './api-key-usage-do';
 import { CircuitBreakerDO } from './circuit-breaker-do';
 import { createLandingPage, createApiReference, createOpenAPISpec } from './docs';
 import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS } from './config';
@@ -1141,6 +1145,22 @@ export default {
         }
       }
 
+      // Drop-in autocomplete widget. Gated with /api/search: a widget whose only data source is
+      // unregistered would fail silently on the integrator's page, which is worse than a 404.
+      if (pathname === '/embed.js' && request.method === 'GET') {
+        if (!isOdaSuggestEnabled(env)) {
+          return badRequest('Address autocomplete is not enabled', 404, 'NOT_FOUND', correlationId);
+        }
+        return new Response(createEmbedScript(new URL(request.url).origin), {
+          headers: {
+            'content-type': 'application/javascript; charset=UTF-8',
+            'Cache-Control': 'public, max-age=300, s-maxage=3600',
+            'X-Embed-Version': EMBED_VERSION,
+            ...getCorsHeaders(request.headers.get('Origin')),
+          },
+        });
+      }
+
       // ODA geolocation endpoints
       if (pathname === '/api/geocode' && request.method === 'GET') {
         if (!checkBasicAuth(request, env)) {
@@ -1161,6 +1181,25 @@ export default {
           return unauthorizedResponse(correlationId);
         }
         return handleNormalizeAddressRoute(request, env);
+      }
+
+      // Address autocomplete. Must stay above the /api catch-all below, which would otherwise
+      // swallow it and silently serve a federal lookup (pickDataset falls back to federal) --
+      // a wrong-but-200 response. Gated on the flag so that when it is off, /api/search falls
+      // through to exactly the behaviour it had before this route existed.
+      if (
+        pathname === '/api/search' &&
+        request.method === 'GET' &&
+        isOdaSuggestEnabled(env)
+      ) {
+        const clientId = getClientId(request);
+        if (!checkRateLimit(env, clientId)) {
+          return rateLimitExceededResponse(correlationId);
+        }
+        // No checkBasicAuth here: /api/search accepts EITHER basic auth or a browser key, and a
+        // hard basic-auth gate would 401 the widget before it could ever present its key.
+        // handleSearchRoute owns that decision.
+        return handleSearchRoute(request, env, correlationId, getCorsHeaders, ctx);
       }
 
       // Main lookup endpoint
@@ -1209,4 +1248,5 @@ export default {
 // Export Durable Objects
 export { QueueManagerDO };
 export { CircuitBreakerDO };
+export { ApiKeyUsageDO };
 

@@ -129,6 +129,8 @@ When enabled, address geocoding uses Statistics Canada's [Open Database of Addre
 - `GET /api/geocode` — forward geocode (address/postal → coordinates)
 - `GET /api/reverse` — reverse geocode (coordinates → nearest address)
 - `GET /api/normalize-address` — Canada Post-style address normalization
+- `GET /api/search` — as-you-type address autocomplete ([contract](docs/oda-geolocation-contract.md#get-apisearch))
+- `GET /embed.js` — drop-in autocomplete widget for any form ([usage](docs/oda-geolocation-contract.md#get-embedjs--drop-in-widget))
 - `POST /api/oda/init` — initialize ODA schema (admin)
 - `GET /api/oda/stats` — import statistics (admin)
 
@@ -145,11 +147,18 @@ npm run import:oda:all
 
 # Or one province at a time (use --resume for long runs)
 npm run import:oda -- --download --provinces AB,BC --remote --skip-schema --resume
+
+# Optional: build the autocomplete index for /api/search.
+# Derived entirely from tables the import already wrote, so this takes seconds,
+# not hours, and is safe to re-run per province.
+npm run build:oda:suggest -- --provinces ON --remote
 ```
 
 See [docs/oda-data-import.md](docs/oda-data-import.md) for all import flags.
 
-Set `ODA_GEOCODING_ENABLED = "true"` in `wrangler.jsonc` after import.
+Set `ODA_GEOCODING_ENABLED = "true"` in `wrangler.jsonc` after import. `/api/search` is
+gated separately by `ODA_SUGGEST_ENABLED`, which stays `"false"` until the suggest index is
+built — while it is off, the route is not registered at all.
 
 **Limitations:** ODA v1.0 is 2021 collection data. Coverage: AB, BC, MB, NB, NT, NS, ON, PE, QC, SK (10 provinces). NL, NU, and YT use fallback geocoders. Returned addresses are Canada Post-style but not Canada Post-certified.
 
@@ -290,7 +299,7 @@ wrangler secret put GOOGLE_MAPS_KEY
 Set `GEOCODER = "google"` in `wrangler.jsonc`.
 
 *Alternative: Per-request API key*
-You can pass the Google API key as a header `X-Google-API-Key` with each request instead of setting the environment variable. This bypasses basic authentication automatically.
+You can pass the Google API key as a header `X-Google-API-Key` with each request instead of setting the environment variable. It supplies the key used for geocoding; it does **not** authenticate the request (see below).
 
 #### 8) Configure authentication (optional)
 Set basic authentication for admin endpoints:
@@ -299,22 +308,67 @@ wrangler secret put BASIC_AUTH
 # Enter: username:password (will be base64 encoded automatically)
 ```
 
-**Security Note: Authentication Bypass with Google API Key**
-- If a request includes the `X-Google-API-Key` header, basic authentication is automatically bypassed
-- This allows users to use their own Google Maps API key without needing the configured basic auth credentials
-- **Important**: If a Google API key is compromised, the attacker will have full access to the API
-- Consider implementing additional rate limiting or access controls per API key if needed
+> **⚠️ Breaking change: `X-Google-API-Key` no longer bypasses basic auth.**
+>
+> Previously, *any* request carrying that header skipped `BASIC_AUTH` entirely — with any value at
+> all. `curl -H 'X-Google-API-Key: garbage'` returned real data on every protected route, and
+> because rate limits were bucketed on that same unvalidated header, rotating the value also
+> walked around the rate limiter.
+>
+> The header's job is BYOK: supplying your own Google key for geocoding. Bringing a geocoding key
+> is not the same as being authorized to use this service, so it no longer authenticates anything.
+>
+> **Clean break: there is no opt-out.** Callers relying on the old behaviour must send real
+> credentials. Check your logs for `X-Google-API-Key` before deploying.
+
+**Two credentials, by design.** `BASIC_AUTH` is a secret you hold server-side; it works **from any
+domain**, needs no key, and is never subject to origin checks or daily caps. A browser cannot hold
+a secret, so `/api/search` also accepts a *public* browser key bound to an origin allowlist — the
+same split Google draws between web-service keys and browser keys.
+
+| Caller | Credential | Origin checked? | Daily cap? |
+|--------|-----------|-----------------|------------|
+| Your backend | `BASIC_AUTH` | No — works from anywhere | No |
+| A browser widget | `pk_live_...` | Yes, per key | Yes |
+
+See [the contract](docs/oda-geolocation-contract.md#browser-api-keys).
+
+```bash
+wrangler kv namespace create API_KEYS   # then uncomment the binding in wrangler.jsonc
+npm run keys -- create --label "Acme" --origins "https://acme.com,https://*.acme.com" --remote
+```
 
 #### 9) Set environment variables
 Configure in `wrangler.jsonc` under `"vars"`:
-```toml
-BATCH_SIZE = 50              # Maximum items per batch
-BATCH_TIMEOUT = 30000        # Batch request ceiling (ms)
-GEOCODING_TIMEOUT = 10000    # Single geocode chain budget (ms)
-LOOKUP_TIMEOUT = 5000        # Point-in-polygon lookup (ms)
-TOTAL_TIMEOUT = 60000        # Maximum total request time (ms)
-RATE_LIMIT = 100             # Requests per minute per IP
+```jsonc
+{
+  "vars": {
+    "BATCH_SIZE": 50,                  // Maximum items per batch
+    "BATCH_TIMEOUT": 30000,            // Batch request ceiling (ms)
+    "GEOCODING_TIMEOUT": 10000,        // Single geocode chain budget (ms)
+    "LOOKUP_TIMEOUT": 5000,            // Point-in-polygon lookup (ms)
+    "TOTAL_TIMEOUT": 60000,            // Maximum total request time (ms)
+    "RATE_LIMIT": 100,                 // Requests per minute per IP
+    "GEOCODER": "google",              // Fallback geocoder: "nominatim" | "mapbox" | "google"
+    "SPATIAL_DB_ENABLED": "false",     // Opt-in D1 R-tree pre-filter for lookups
+
+    // ODA self-hosted geocoding — see docs/oda-geolocation-contract.md
+    "ODA_GEOCODING_ENABLED": "true",
+    "ODA_PROVINCES": "AB,BC,MB,NB,NT,NS,ON,PE,QC,SK",
+    "ODA_MIN_CONFIDENCE": "0.6",       // Results below this are rejected
+    "ODA_NN_MAX_CANDIDATES": "50",
+    "ODA_MAX_REVERSE_DISTANCE_METERS": "25000",
+    "ODA_MAX_AMBIGUOUS_MATCHES": "5",
+
+    // Address autocomplete (/api/search). While disabled the route is not registered.
+    "ODA_SUGGEST_ENABLED": "false",
+    "ODA_SUGGEST_LIMIT": "7"           // Default suggestions returned
+  }
+}
 ```
+
+Full list of `ODA_*` variables, including the optional autocomplete tuning knobs, is in
+[docs/oda-geolocation-contract.md](docs/oda-geolocation-contract.md#configuration).
 
 Postal-only fast path and `geocode_method=postal_centroid` are documented in [docs/postal-vs-point-lookup.md](docs/postal-vs-point-lookup.md).
 

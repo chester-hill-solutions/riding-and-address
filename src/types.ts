@@ -18,6 +18,10 @@ export interface Env {
   GEOCODING_CACHE?: KVNamespace;
   LOOKUP_CACHE?: KVNamespace;
   WEBHOOKS?: KVNamespace;
+  /** Browser API keys. When unbound, /api/search is open and key checks are skipped. */
+  API_KEYS?: KVNamespace;
+  /** Per-key daily counters. When unbound, the daily cap is not enforced. */
+  API_KEY_USAGE?: DurableObjectNamespace;
   RIDING_DB?: D1Database;
   SPATIAL_DB_ENABLED?: string; // 'true' or '1' to enable spatial database
   ODA_DB?: D1Database;
@@ -28,6 +32,12 @@ export interface Env {
   ODA_MAX_REVERSE_DISTANCE_METERS?: string;
   ODA_MAX_AMBIGUOUS_MATCHES?: string;
   ODA_MAX_POSTAL_CENTROID_DISTANCE_METERS?: string;
+  ODA_SUGGEST_ENABLED?: string; // 'true' or '1' to register GET /api/search
+  ODA_SUGGEST_LIMIT?: string;
+  ODA_SUGGEST_MAX_LIMIT?: string;
+  ODA_SUGGEST_MIN_QUERY_LENGTH?: string;
+  ODA_SUGGEST_CANDIDATE_WINDOW?: string;
+  ODA_SUGGEST_CACHE_TTL?: string;
 }
 
 // ODA geocoding types
@@ -77,6 +87,96 @@ export interface OdaGeocodeMetadata {
   matchedFields?: string[];
   mailingAddress?: CanadaPostStyleAddress;
   dataSource?: OdaDataSource;
+}
+
+// Autocomplete (GET /api/search) types.
+//
+// Envelope follows Google Places Autocomplete (suggestions[], structuredFormat, StringRange
+// offsets); drill-down semantics follow Canada Post AddressComplete (next, description,
+// dataLevel). Suggestions deliberately carry no riding — the caller resolves that from
+// `location` via the existing lookup routes once the user selects one.
+
+/** Zero-based, endOffset exclusive — Google's StringRange. */
+export interface StringRange {
+  startOffset: number;
+  endOffset: number;
+}
+
+export interface FormattableText {
+  text: string;
+  matches?: StringRange[];
+}
+
+/**
+ * Canada Post's precision ladder. `Street` is a container (many addresses); `Premise` is a real
+ * ODA row; `RangedPremise` is a civic that falls inside a street's range but has no exact row.
+ */
+export type SuggestionDataLevel = 'Premise' | 'RangedPremise' | 'Street';
+
+/**
+ * What kind of set a container holds. A `Premise` is a container when one civic number holds
+ * many units (a tower): `next` is what separates "this is an address" from "this is a building,
+ * drill in". `unitCount` reports how many.
+ */
+
+/**
+ * `search` means call /api/search again with containerId. `lookup` means this row has a real
+ * point — call /api/federal?lat=&lon= with it. There is no retrieve step: leaves carry their
+ * data inline.
+ */
+export type SuggestionNext = 'search' | 'lookup';
+
+export interface Suggestion {
+  id: string;
+  text: string;
+  structuredFormat: {
+    mainText: FormattableText;
+    secondaryText: FormattableText;
+  };
+  description: string;
+  types: string[];
+  next: SuggestionNext;
+  dataLevel: SuggestionDataLevel;
+  location: { lat: number; lon: number };
+  /** Suggested caret position if this row is selected, so the user can keep typing to refine. */
+  cursor: number;
+  score: number;
+  /** Container rows only: a real integer, not text buried in `description`. */
+  addressCount?: number;
+  /** Building containers only: how many units share this civic number. */
+  unitCount?: number;
+  civicRange?: { min: number | null; max: number | null };
+  /** Leaf rows only. */
+  addressComponents?: OdaAddressComponents;
+  distanceMeters?: number;
+}
+
+export interface SuggestQueryParams {
+  q: string;
+  provinces: string[];
+  limit: number;
+  containerId?: string;
+  /** Opaque keyset cursor from a previous response's `nextCursor`. Only valid with containerId. */
+  cursor?: string;
+  /** Soft: reorders by proximity, never drops rows. Mutually exclusive with locationRestriction. */
+  locationBias?: { lat: number; lon: number };
+  /** Hard: bbox filter. Mutually exclusive with locationBias. */
+  locationRestriction?: { minLat: number; minLon: number; maxLat: number; maxLon: number };
+}
+
+export interface SuggestResponse {
+  query: { q: string; province?: string; limit: number; containerId?: string };
+  suggestions: Suggestion[];
+  /**
+   * Present when a container has more rows than `limit`. Pass back as `cursor` to continue.
+   * Keyset, not an offset, so paging deep into a large street stays cheap and cannot skip or
+   * repeat rows if the data changes underneath.
+   */
+  nextCursor?: string;
+  /** Echoed so callers can tell "no match" from "province not covered" (NL/NU/YT are absent). */
+  provinces: string[];
+  dataSource: { provider: 'statcan-oda'; version: string };
+  correlationId: string;
 }
 
 // Geocoding interfaces

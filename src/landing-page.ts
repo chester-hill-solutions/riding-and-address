@@ -508,6 +508,16 @@ export function createLandingPage(baseUrl: string): string {
         <span class="route-desc">Forward geocode via ODA when self-hosted geocoding is enabled</span>
       </a>
       <a class="route" href="${baseUrl}/docs">
+        <span class="method">GET</span>
+        <span class="route-path">/api/search</span>
+        <span class="route-desc">As-you-type address autocomplete; select a result, then look up its riding</span>
+      </a>
+      <a class="route" href="${baseUrl}/docs">
+        <span class="method">GET</span>
+        <span class="route-path">/embed.js</span>
+        <span class="route-desc">Drop-in autocomplete widget: one script tag, works with existing forms</span>
+      </a>
+      <a class="route" href="${baseUrl}/docs">
         <span class="method post">POST</span>
         <span class="route-path">/batch</span>
         <span class="route-desc">Process up to 100 lookups in a single request</span>
