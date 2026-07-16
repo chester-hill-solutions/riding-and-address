@@ -477,11 +477,19 @@ export function checkRateLimit(env: Env, clientId: string): boolean {
  * @param request - The incoming HTTP request
  * @returns Client identifier string (e.g., "api:key123" or "ip:1.2.3.4")
  */
-export function getClientId(request: Request): string {
-  // Use IP address or API key for rate limiting
-  const apiKey = request.headers.get("X-Google-API-Key");
-  if (apiKey) return `api:${apiKey}`;
-  
+/**
+ * Rate-limit bucket for a request.
+ *
+ * Buckets used to key off the raw `X-Google-API-Key` header, which nobody validates: rotating the
+ * value handed you a fresh bucket every request, so the limit could be walked around indefinitely.
+ * Only an authenticated principal may name its own bucket; everything else is bucketed by IP.
+ *
+ * @param principal Verified identity (e.g. an accepted browser key id). Never take this from an
+ *                  unvalidated header.
+ */
+export function getClientId(request: Request, principal?: string): string {
+  if (principal) return `key:${principal}`;
+
   const cfConnectingIp = request.headers.get("CF-Connecting-IP");
   const xForwardedFor = request.headers.get("X-Forwarded-For");
   const ip = cfConnectingIp || xForwardedFor?.split(',')[0] || "unknown";
@@ -630,10 +638,20 @@ function verifyBasicAuthCredentials(request: Request, env: Env): boolean {
   try {
     const encoded = authHeader.substring(6);
     const decoded = atob(encoded);
-    return decoded === env.BASIC_AUTH;
+    return timingSafeEqual(decoded, env.BASIC_AUTH || "");
   } catch {
     return false;
   }
+}
+
+/** Compare without an early exit, so response time does not leak how much of the secret matched. */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 /**
@@ -644,12 +662,33 @@ function verifyBasicAuthCredentials(request: Request, env: Env): boolean {
  * - If X-Google-API-Key header is provided, basic auth is bypassed (BYOK - Bring Your Own Key)
  * - Otherwise, HTTP Basic Authentication is required using the configured BASIC_AUTH secret
  */
+/**
+ * Basic auth for user-level routes.
+ *
+ * `X-Google-API-Key` used to grant access outright, by presence alone and with any value at all
+ * (`curl -H 'X-Google-API-Key: garbage'` was a complete bypass on every protected route). The
+ * header's real job is BYOK: it supplies the caller's own Google key for geocoding. Bringing a
+ * geocoding key is not the same as being authorized to use this service, so it no longer
+ * authenticates anything.
+ */
 export function checkBasicAuth(request: Request, env: Env): boolean {
   if (!env.BASIC_AUTH) return true;
+  return verifyBasicAuthCredentials(request, env);
+}
 
-  const googleApiKey = request.headers.get("X-Google-API-Key");
-  if (googleApiKey) return true;
-
+/**
+ * True only when the caller actually presented valid credentials.
+ *
+ * Distinct from checkBasicAuth, which returns true when BASIC_AUTH is simply unconfigured --
+ * "nobody is checking" is not the same as "this caller is authenticated", and only the latter
+ * should unlock anything.
+ *
+ * BASIC_AUTH is a real secret held server-side, so it is not origin-bound: a request carrying it
+ * is trusted from any domain. That is the web-service-key half of the split browser keys make up
+ * the other half of.
+ */
+export function hasValidBasicAuth(request: Request, env: Env): boolean {
+  if (!env.BASIC_AUTH) return false;
   return verifyBasicAuthCredentials(request, env);
 }
 

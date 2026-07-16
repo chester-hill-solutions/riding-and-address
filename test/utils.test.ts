@@ -326,8 +326,33 @@ describe('validateAndSanitizeQuery include_province', () => {
 });
 
 describe('checkBasicAuth', () => {
-  it('allows BYOK lookup access when BASIC_AUTH is configured', () => {
-    const request = authRequest({ 'X-Google-API-Key': 'test-key' });
+  it('allows everything when BASIC_AUTH is unset', () => {
+    expect(checkBasicAuth(authRequest({}), {} as never)).toBe(true);
+  });
+
+  it('accepts valid credentials', () => {
+    const request = authRequest({ Authorization: `Basic ${btoa('admin:secret')}` });
+    expect(checkBasicAuth(request, { BASIC_AUTH: 'admin:secret' } as never)).toBe(true);
+  });
+
+  it('rejects wrong credentials', () => {
+    const request = authRequest({ Authorization: `Basic ${btoa('admin:wrong')}` });
+    expect(checkBasicAuth(request, { BASIC_AUTH: 'admin:secret' } as never)).toBe(false);
+  });
+
+  it('does NOT accept the BYOK header as authorization', () => {
+    // This previously returned true for any value at all, making BASIC_AUTH decorative on every
+    // protected route: `curl -H 'X-Google-API-Key: garbage'` was a complete bypass. The header's
+    // job is supplying a caller's own Google key for geocoding; that is not authorization.
+    const request = authRequest({ 'X-Google-API-Key': 'garbage' });
+    expect(checkBasicAuth(request, { BASIC_AUTH: 'admin:secret' } as never)).toBe(false);
+  });
+
+  it('still needs real credentials alongside a BYOK key', () => {
+    const request = authRequest({
+      'X-Google-API-Key': 'AIzaSyRealLookingKey',
+      Authorization: `Basic ${btoa('admin:secret')}`,
+    });
     expect(checkBasicAuth(request, { BASIC_AUTH: 'admin:secret' } as never)).toBe(true);
   });
 });
