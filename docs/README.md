@@ -2,13 +2,25 @@
 
 Guides for operating, extending, and integrating with the Riding Lookup API.
 
+## Product & architecture
+
+| Guide | Description |
+|-------|-------------|
+| [CONTEXT.md](../CONTEXT.md) | Glossary (Customer, keys, Billable unit, Fuse, Enterprise) |
+| [ADRs](adr/) | Postgres/KV projection, DO ledger, hashed keys, dataset versioning |
+| [Dataset changelog](DATASET_CHANGELOG.md) | Customer-facing vintage log |
+| [Cache purge runbook](ops/cache-purge-runbook.md) | R2 upload → purge → warm → verify |
+| [Alerts](ops/alerts.md) | 5xx / circuit-open Observability |
+| [Suggest index staging](ops/suggest-index-staging.md) | Enable `/api/search` safely |
+| [Portal](../portal/README.md) | Self-serve Customer app (Railway + CHS auth) |
+
 ## Operations
 
 | Guide | Description |
 |-------|-------------|
 | [Hosting decision](hosting.md) | Cloudflare Workers vs GCP migration notes |
 | [Performance](performance.md) | Latency benchmarks, caching, and issue #8 optimizations |
-| [OpenNorth comparison](comparison-opennorth.md) | Speed and robustness vs Represent API |
+| [OpenNorth comparison](comparison-opennorth.md) | Speed and robustness vs Represent API (complement for reps) |
 | [Postal vs point lookup](postal-vs-point-lookup.md) | Why postal results differ from OpenNorth |
 | [ODA data import](oda-data-import.md) | Download, import, resume, and verify StatCan ODA in D1; build the autocomplete index |
 

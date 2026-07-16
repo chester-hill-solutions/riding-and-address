@@ -25,12 +25,13 @@
       "binding": "WEBHOOKS",
       "id": "3b23842cd96b40369311f52298a987cf"
     },
-    // Browser API keys for /api/search. Commented out deliberately: while this binding is
-    // absent, /api/search stays open and no key is required, so shipping the code changes
-    // nothing on its own. To turn the gate on:
+    // Customer keys + customer:{id} projection. While unbound, key gates stay off (legacy open API).
+    // Enable for chargeable prod/staging:
     //   wrangler kv namespace create API_KEYS
-    //   (paste the id below, uncomment, redeploy)
-    //   npm run keys -- create --label "Acme" --origins "https://acme.com,https://*.acme.com" --remote
+    //   wrangler kv namespace create API_KEYS --env staging
+    //   (paste ids below / under env.staging, redeploy)
+    //   npm run keys -- customer create --id cust_demo --plan free --remote
+    //   npm run keys -- create-server --customer cust_demo --remote
     // {
     //   "binding": "API_KEYS",
     //   "id": "PASTE_KV_NAMESPACE_ID_HERE"
@@ -96,7 +97,86 @@
     // catch-all exactly as it did before the route existed. Flip to "true" only after
     // `npm run build:oda:suggest -- --provinces ON --remote` has populated the index.
     "ODA_SUGGEST_ENABLED": "false",
-    "ODA_SUGGEST_LIMIT": "7"
+    "ODA_SUGGEST_LIMIT": "7",
+    "FREE_MONTHLY_ALLOWANCE": "1000",
+    "DEMO_RATE_LIMIT": "30",
+    "ALERTS_ENABLED": "true"
+    // ALLOWED_ORIGINS: set via wrangler secret/vars to portal + embed origins when tightening CORS
+    // PROJECTION_ADMIN_SECRET / STRIPE_*: wrangler secret put …
+  },
+
+  "env": {
+    "staging": {
+      "name": "riding-lookup-staging",
+      "vars": {
+        "BATCH_SIZE": 50,
+        "BATCH_TIMEOUT": 30000,
+        "GEOCODING_TIMEOUT": 10000,
+        "LOOKUP_TIMEOUT": 5000,
+        "TOTAL_TIMEOUT": 60000,
+        "RATE_LIMIT": 100,
+        "GEOCODER": "google",
+        "ODA_GEOCODING_ENABLED": "true",
+        "ODA_PROVINCES": "AB,BC,MB,NB,NT,NS,ON,PE,QC,SK",
+        "ODA_MIN_CONFIDENCE": "0.6",
+        "ODA_NN_MAX_CANDIDATES": "50",
+        "ODA_MAX_REVERSE_DISTANCE_METERS": "25000",
+        "ODA_MAX_AMBIGUOUS_MATCHES": "5",
+        "SPATIAL_DB_ENABLED": "false",
+        "ODA_SUGGEST_ENABLED": "false",
+        "ODA_SUGGEST_LIMIT": "7",
+        "FREE_MONTHLY_ALLOWANCE": "1000",
+        "DEMO_RATE_LIMIT": "30",
+        "ALERTS_ENABLED": "true"
+      },
+      "r2_buckets": [
+        {
+          "binding": "RIDINGS",
+          "bucket_name": "ridings-staging"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "GEOCODING_CACHE",
+          "id": "PASTE_STAGING_GEOCODING_CACHE_ID"
+        },
+        {
+          "binding": "LOOKUP_CACHE",
+          "id": "PASTE_STAGING_LOOKUP_CACHE_ID"
+        },
+        {
+          "binding": "WEBHOOKS",
+          "id": "PASTE_STAGING_WEBHOOKS_ID"
+        }
+        // Uncomment when ready:
+        // { "binding": "API_KEYS", "id": "PASTE_STAGING_API_KEYS_ID" }
+      ],
+      "d1_databases": [
+        {
+          "binding": "ODA_DB",
+          "database_name": "oda-addresses-staging",
+          "database_id": "PASTE_STAGING_ODA_DB_ID"
+        },
+        {
+          "binding": "RIDING_DB",
+          "database_name": "riding-lookup-db-staging",
+          "database_id": "PASTE_STAGING_RIDING_DB_ID"
+        }
+      ],
+      "durable_objects": {
+        "bindings": [
+          { "name": "QUEUE_MANAGER", "class_name": "QueueManagerDO" },
+          { "name": "CIRCUIT_BREAKER_DO", "class_name": "CircuitBreakerDO" },
+          { "name": "API_KEY_USAGE", "class_name": "ApiKeyUsageDO" }
+        ]
+      },
+      "triggers": {
+        "crons": ["0 */6 * * *"]
+      },
+      "observability": {
+        "enabled": true
+      }
+    }
   },
 
   "d1_databases": [

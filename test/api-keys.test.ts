@@ -11,6 +11,7 @@ import {
   type ApiKeyRecord,
 } from '../src/api-keys';
 import { utcDay, consumeDailyQuota } from '../src/api-key-usage-do';
+import { clearCustomerCache, type CustomerRecord } from '../src/customer';
 import { Env } from '../src/types';
 
 /**
@@ -20,15 +21,31 @@ import { Env } from '../src/types';
 
 const KEY: ApiKeyRecord = {
   id: 'pk_live_abc',
+  kind: 'browser',
+  customerId: 'cust_acme',
   label: 'Acme',
   origins: ['https://acme.com', 'https://*.acme.com'],
   dailyLimit: 1000,
 };
 
-function createKeyEnv(keys: Record<string, ApiKeyRecord | null> = { pk_live_abc: KEY }): Env {
+const CUSTOMER: CustomerRecord = {
+  id: 'cust_acme',
+  plan: 'free',
+  fuseLimit: 1000,
+};
+
+function createKeyEnv(
+  keys: Record<string, ApiKeyRecord | null> = { pk_live_abc: KEY },
+  customers: Record<string, CustomerRecord | null> = { cust_acme: CUSTOMER }
+): Env {
   return {
     API_KEYS: {
-      get: vi.fn(async (name: string) => keys[name.replace(/^key:/, '')] ?? null),
+      get: vi.fn(async (name: string) => {
+        if (name.startsWith('customer:')) {
+          return customers[name.slice('customer:'.length)] ?? null;
+        }
+        return keys[name.replace(/^key:/, '')] ?? null;
+      }),
     },
   } as unknown as Env;
 }
@@ -37,7 +54,10 @@ function req(url: string, headers: Record<string, string> = {}): Request {
   return new Request(url, { headers });
 }
 
-beforeEach(() => clearApiKeyCache());
+beforeEach(() => {
+  clearApiKeyCache();
+  clearCustomerCache();
+});
 
 describe('originMatches', () => {
   it('matches an exact origin', () => {
@@ -198,7 +218,8 @@ describe('authorizeBrowserKey', () => {
     await authorizeBrowserKey(env, request());
     await authorizeBrowserKey(env, request());
     await authorizeBrowserKey(env, request());
-    expect(env.API_KEYS!.get).toHaveBeenCalledTimes(1);
+    // First call: key + customer; later calls use ≤60s caches.
+    expect(env.API_KEYS!.get).toHaveBeenCalledTimes(2);
   });
 });
 

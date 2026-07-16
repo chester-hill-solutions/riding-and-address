@@ -166,7 +166,33 @@ const LOOKUP_QUERY_PARAMETERS = [
   },
   INCLUDE_PROVINCE_PARAMETER,
   RETURN_QUERY_PARAMETER,
+  {
+    name: "dataset",
+    in: "query" as const,
+    description:
+      "Optional dataset pin (R2 key id or year). Hard-fails with DATASET_UNAVAILABLE when it does not match the currently served vintage. Alias: pin.",
+    required: false,
+    schema: { type: "string", example: "federalridings-2024.geojson" },
+  },
+  {
+    name: "geocode_method",
+    in: "query" as const,
+    description:
+      "Accuracy mode. Default point-in-polygon after geocoding. Use postal_centroid for coarser postal-code centroid geocoding (documented dual-mode; not an electoral-authority warranty).",
+    required: false,
+    schema: { type: "string", enum: ["postal_centroid"], example: "postal_centroid" },
+  },
 ];
+
+const DATASET_RESPONSE_PROPERTY = {
+  type: "object",
+  description: "Dataset vintage served for this response (id/year). Pin mismatches return 404 DATASET_UNAVAILABLE.",
+  properties: {
+    id: { type: "string", example: "federalridings-2024.geojson" },
+    year: { type: "integer", example: 2024 },
+    name: { type: "string", example: "Federal" },
+  },
+};
 
 const RETURN_RESPONSE_PROPERTIES = {
   province_data: {
@@ -185,6 +211,7 @@ const RETURN_RESPONSE_PROPERTIES = {
     nullable: true,
     description: "Municipality when return includes municipality",
   },
+  dataset: DATASET_RESPONSE_PROPERTY,
 };
 
 function buildProvincialEndpointSpecs(): Record<string, unknown> {

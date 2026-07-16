@@ -10,6 +10,7 @@ import {
 import { searchSuggestions, SuggestError } from './oda-suggest';
 import { authorizeSearchRequest } from './api-keys';
 import { consumeDailyQuota } from './api-key-usage-do';
+import { recordSuccessfulBillable } from './billing';
 import {
   generateSuggestCacheKey,
   getCachedSuggestions,
@@ -222,13 +223,27 @@ export async function handleSearchRoute(
     return suggestErrorResponse(error, correlationId, getCorsHeaders(origin));
   }
 
-  const respond = (
+  const respond = async (
     suggestions: SuggestResponse['suggestions'],
     provinces: string[],
     cacheStatus: 'HIT' | 'MISS',
     maxAge: number,
     nextCursor?: string
-  ): Response => {
+  ): Promise<Response> => {
+    // Billable unit: successful HTTP 200 search (including cache hits). Operator BASIC_AUTH skip.
+    if (auth.key && auth.customer) {
+      const billed = await recordSuccessfulBillable(env, { key: auth.key, customer: auth.customer });
+      if (!billed.allowed) {
+        return new Response(JSON.stringify({ ...billed.body, correlationId }), {
+          status: billed.status,
+          headers: {
+            'content-type': 'application/json; charset=UTF-8',
+            ...getCorsHeaders(origin),
+          },
+        });
+      }
+    }
+
     const body: SuggestResponse = {
       query: {
         q: params.q,

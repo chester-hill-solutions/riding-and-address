@@ -18,10 +18,26 @@ export interface Env {
   GEOCODING_CACHE?: KVNamespace;
   LOOKUP_CACHE?: KVNamespace;
   WEBHOOKS?: KVNamespace;
-  /** Browser API keys. When unbound, /api/search is open and key checks are skipped. */
+  /** API keys + customer projection. When unbound, Customer key checks are skipped. */
   API_KEYS?: KVNamespace;
-  /** Per-key daily counters. When unbound, the daily cap is not enforced. */
+  /** Per-key daily + per-Customer monthly counters. */
   API_KEY_USAGE?: DurableObjectNamespace;
+  /** Shared secret for portal → Worker KV projection admin API. */
+  PROJECTION_ADMIN_SECRET?: string;
+  /** Stripe secret for Billing Meter events (optional until paid checkout). */
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_METER_EVENT_NAME?: string;
+  /** Free-tier monthly Billable units (default 1000). */
+  FREE_MONTHLY_ALLOWANCE?: string;
+  /** IP rate limit for /api/demo/* (default 30/min). */
+  DEMO_RATE_LIMIT?: string;
+  /**
+   * Comma-separated origins allowed for credentialed CORS (portal + embeds).
+   * When unset, reflect request Origin or `*` (legacy open CORS).
+   */
+  ALLOWED_ORIGINS?: string;
+  /** Emit structured alert logs when circuit opens / elevated 5xx (default true). */
+  ALERTS_ENABLED?: string;
   RIDING_DB?: D1Database;
   SPATIAL_DB_ENABLED?: string; // 'true' or '1' to enable spatial database
   ODA_DB?: D1Database;

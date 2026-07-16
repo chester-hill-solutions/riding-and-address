@@ -2,7 +2,12 @@
 .env
 .wrangler
 .oda-import
+.keys
 
 node_modules
+portal/node_modules
+portal/.env
+portal/build
+portal/.react-router
 *.geojson
 data/ridings/.raw/

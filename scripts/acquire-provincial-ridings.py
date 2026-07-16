@@ -91,28 +91,21 @@ def write_geojson(gdf: gpd.GeoDataFrame, path: Path) -> None:
     print(f"Wrote {path.name}: {len(gdf)} features")
 
 
-def from_opennorth(slug: str, prov_code: str) -> gpd.GeoDataFrame:
-    url = f"https://represent.opennorth.ca/boundaries/{slug}/simple_shape"
-    data = fetch_json(url)
-    features = []
-    for obj in data.get("objects", []):
-        name = obj.get("name")
-        geom = obj.get("simple_shape")
-        if not name or not geom:
-            continue
-        features.append(
-            {
-                "type": "Feature",
-                "properties": {"ENGLISH_NAME": name, "PROV_TERR": prov_code},
-                "geometry": geom,
-            }
-        )
-    fc = {"type": "FeatureCollection", "features": features}
-    tmp = RAW_DIR / f"{prov_code}_opennorth.geojson"
-    tmp.parent.mkdir(parents=True, exist_ok=True)
-    tmp.write_text(json.dumps(fc))
-    gdf = gpd.read_file(tmp)
-    return normalize_gdf(gdf, prov_code)
+def from_local_geojson(prov_code: str, hint: str) -> gpd.GeoDataFrame:
+    """Load an officially downloaded GeoJSON placed under data/ridings/.raw/."""
+    candidates = [
+        RAW_DIR / f"{prov_code}.geojson",
+        RAW_DIR / f"{prov_code.lower()}.geojson",
+        RAW_DIR / f"{prov_code}_official.geojson",
+    ]
+    for path in candidates:
+        if path.is_file():
+            return normalize_gdf(gpd.read_file(path), prov_code)
+    raise FileNotFoundError(
+        f"No official GeoJSON for {prov_code} in {RAW_DIR}. "
+        f"Download from the elections commission and save as one of: "
+        f"{', '.join(p.name for p in candidates)}. Source hint: {hint}"
+    )
 
 
 def from_geojson_url(url: str, prov_code: str) -> gpd.GeoDataFrame:
@@ -221,28 +214,34 @@ ACQUISITIONS: dict[str, tuple[str, callable]] = {
     "abridings-2022.geojson": ("AB", acquire_ab),
     "nsridings-2022.geojson": (
         "NS",
-        lambda: from_opennorth("nova-scotia-electoral-districts-2019", "NS"),
+        lambda: from_local_geojson(
+            "NS",
+            "https://electionsnovascotia.ca/ (official provincial electoral maps / GIS)",
+        ),
     ),
     "nbridings-2022.geojson": ("NB", acquire_nb),
     "mbridings-2022.geojson": (
         "MB",
-        lambda: from_opennorth("manitoba-electoral-districts-2018", "MB"),
+        lambda: from_local_geojson(
+            "MB",
+            "https://www.electionsmanitoba.ca/ (official electoral division boundaries)",
+        ),
     ),
-    "skridings-2022.geojson": (
-        "SK",
-        lambda: from_opennorth("saskatchewan-electoral-districts-representation-act-2022", "SK"),
-    ),
-    "nlridings-2022.geojson": (
-        "NL",
-        lambda: from_opennorth("newfoundland-and-labrador-electoral-districts", "NL"),
-    ),
+    "skridings-2022.geojson": ("SK", acquire_sk_official),
+    "nlridings-2022.geojson": ("NL", acquire_nl_official),
     "peridings-2022.geojson": (
         "PE",
-        lambda: from_opennorth("prince-edward-island-electoral-districts-2017", "PE"),
+        lambda: from_local_geojson(
+            "PE",
+            "https://www.electionspei.ca/ (official electoral district boundaries)",
+        ),
     ),
     "ntridings-2022.geojson": (
         "NT",
-        lambda: from_opennorth("northwest-territories-electoral-districts-2013", "NT"),
+        lambda: from_local_geojson(
+            "NT",
+            "https://www.electionsnwt.ca/ (official electoral district boundaries)",
+        ),
     ),
     "nuridings-2022.geojson": ("NU", acquire_nu),
     "ytridings-2022.geojson": ("YT", acquire_yt),

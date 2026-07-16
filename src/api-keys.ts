@@ -1,42 +1,27 @@
 import { Env } from './types';
+import { CustomerRecord, loadCustomer } from './customer';
 
 /**
- * Browser API keys for /api/search.
- *
- * These keys are PUBLIC. They ride in a script tag and anyone can read them from view-source.
- * That is not a flaw in the scheme, it is the scheme: it is what Google and Loqate (Canada Post's
- * parent) both do, and Loqate says so plainly -- client-side integrations "don't hide your API
- * keys, which means your keys are visible to anyone viewing the source code of your website".
- *
- * The security therefore does not come from the key being secret. It comes from the server
- * checking the request's Origin against a per-key allowlist. That is an ACCOUNTING control, not
- * an access control:
- *
- *   - It stops someone lifting your key onto their own site: their browser reports their real
- *     origin and we reject it. This is the common case and it works.
- *   - It stops nothing against curl, which can send any Origin it likes. Anyone outside a
- *     browser is outside this model.
- *
- * Because a leak is a when-not-if, each key carries a hard daily cap (see api-key-usage-do.ts) --
- * Canada Post's idea, and a better one than Google's, which just sends you the bill.
- *
- * For real secrecy, use BASIC_AUTH from a server. That is the web-service-key half of the split
- * Google draws, and this is the browser-key half.
+ * Browser API keys (`pk_*`) are PUBLIC — origin allowlist + optional daily cap.
+ * Server API keys (`sk_*`) are secrets — stored as SHA-256 hashes in KV; raw shown once at mint.
  */
 
+export type ApiKeyKind = 'browser' | 'server';
+
 export interface ApiKeyRecord {
-  /** The key itself, e.g. "pk_live_a1b2c3...". Public. */
+  /** Public id: `pk_live_…` or display id for server keys. */
   id: string;
-  /** Human label for the dashboard/logs. */
+  kind: ApiKeyKind;
+  customerId: string;
   label?: string;
   /**
-   * Allowed origins, e.g. ["https://example.com", "https://*.example.com"]. A leading "*." matches
-   * one or more subdomain labels, following Google's wildcard semantics. Empty means no browser
-   * origin is allowed.
+   * Browser keys only. Allowed origins, e.g. ["https://example.com", "https://*.example.com"].
    */
   origins: string[];
-  /** Hard requests/day. 0 disables the cap; the fuse is opt-out, not opt-in. */
+  /** Browser-key abuse cap per UTC day. 0 disables. */
   dailyLimit: number;
+  /** Server keys only — hex SHA-256 of the secret. */
+  secretHash?: string;
   disabled?: boolean;
   createdAt?: string;
 }
@@ -47,19 +32,24 @@ export type KeyDenialReason =
   | 'KEY_DISABLED'
   | 'ORIGIN_REQUIRED'
   | 'ORIGIN_NOT_ALLOWED'
-  | 'DAILY_LIMIT_EXCEEDED';
+  | 'DAILY_LIMIT_EXCEEDED'
+  | 'WRONG_KEY_KIND'
+  | 'CUSTOMER_NOT_FOUND'
+  | 'BATCH_NOT_ENABLED';
 
 export interface KeyAuthResult {
   ok: boolean;
   key?: ApiKeyRecord;
+  customer?: CustomerRecord;
   reason?: KeyDenialReason;
   message?: string;
 }
 
 export const API_KEY_PREFIX = 'pk_';
+export const SERVER_KEY_PREFIX = 'sk_';
 
-/** Keys are immutable once issued, so an isolate may hold them for its lifetime. */
-const keyCache = new Map<string, ApiKeyRecord | null>();
+const POSITIVE_TTL_MS = 60_000;
+const keyCache = new Map<string, { record: ApiKeyRecord | null; expires: number; negative: boolean }>();
 
 export function apiKeysEnabled(env: Env): boolean {
   return Boolean(env.API_KEYS);
@@ -69,28 +59,108 @@ export function clearApiKeyCache(): void {
   keyCache.clear();
 }
 
+export async function sha256Hex(value: string): Promise<string> {
+  const data = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function cacheGet(id: string): ApiKeyRecord | null | undefined {
+  const hit = keyCache.get(id);
+  if (!hit) return undefined;
+  if (hit.expires <= Date.now()) {
+    keyCache.delete(id);
+    return undefined;
+  }
+  return hit.record;
+}
+
+function cacheSet(id: string, record: ApiKeyRecord | null): void {
+  keyCache.set(id, {
+    record,
+    expires: Date.now() + POSITIVE_TTL_MS,
+    negative: record === null,
+  });
+}
+
 export async function loadApiKey(env: Env, id: string): Promise<ApiKeyRecord | null> {
   if (!env.API_KEYS) return null;
-  if (keyCache.has(id)) return keyCache.get(id) ?? null;
+  const cached = cacheGet(id);
+  if (cached !== undefined) return cached;
 
   try {
     const record = (await env.API_KEYS.get(`key:${id}`, 'json')) as ApiKeyRecord | null;
-    keyCache.set(id, record);
+    cacheSet(id, record);
     return record;
   } catch (error) {
     console.warn('Failed to load API key:', error);
-    // Do not cache a transient failure as "no such key".
     return null;
   }
 }
 
-/**
- * Match an origin against one allowlist entry.
- *
- * Scheme and host must both match; a leading "*." wildcards subdomains. Paths are deliberately
- * not supported -- Google warns that full-path referrers are unreliable because browsers strip
- * the path from cross-origin requests, and Origin never carries one anyway.
- */
+export async function loadServerKeyBySecret(env: Env, secret: string): Promise<ApiKeyRecord | null> {
+  if (!env.API_KEYS || !secret.startsWith(SERVER_KEY_PREFIX)) return null;
+  const hash = await sha256Hex(secret);
+  const cached = cacheGet(`hash:${hash}`);
+  if (cached !== undefined) return cached;
+
+  try {
+    const record = (await env.API_KEYS.get(`keyhash:${hash}`, 'json')) as ApiKeyRecord | null;
+    cacheSet(`hash:${hash}`, record);
+    if (record) cacheSet(record.id, record);
+    return record;
+  } catch (error) {
+    console.warn('Failed to load server key:', error);
+    return null;
+  }
+}
+
+export async function putBrowserKey(env: Env, record: ApiKeyRecord): Promise<void> {
+  if (!env.API_KEYS) throw new Error('API_KEYS binding required');
+  const next: ApiKeyRecord = {
+    ...record,
+    kind: 'browser',
+    origins: record.origins || [],
+    createdAt: record.createdAt || new Date().toISOString(),
+  };
+  await env.API_KEYS.put(`key:${next.id}`, JSON.stringify(next));
+  cacheSet(next.id, next);
+}
+
+export async function putServerKey(
+  env: Env,
+  secret: string,
+  record: Omit<ApiKeyRecord, 'secretHash' | 'kind' | 'origins'>
+): Promise<ApiKeyRecord> {
+  if (!env.API_KEYS) throw new Error('API_KEYS binding required');
+  const hash = await sha256Hex(secret);
+  const next: ApiKeyRecord = {
+    ...record,
+    kind: 'server',
+    origins: [],
+    dailyLimit: 0,
+    secretHash: hash,
+    createdAt: record.createdAt || new Date().toISOString(),
+  };
+  await env.API_KEYS.put(`keyhash:${hash}`, JSON.stringify(next));
+  await env.API_KEYS.put(`key:${next.id}`, JSON.stringify({ ...next, secretHash: hash }));
+  cacheSet(`hash:${hash}`, next);
+  cacheSet(next.id, next);
+  return next;
+}
+
+export async function deleteApiKey(env: Env, id: string, secretHash?: string): Promise<void> {
+  if (!env.API_KEYS) throw new Error('API_KEYS binding required');
+  const existing = await loadApiKey(env, id);
+  await env.API_KEYS.delete(`key:${id}`);
+  const hash = secretHash || existing?.secretHash;
+  if (hash) {
+    await env.API_KEYS.delete(`keyhash:${hash}`);
+    cacheSet(`hash:${hash}`, null);
+  }
+  cacheSet(id, null);
+}
+
 export function originMatches(origin: string, pattern: string): boolean {
   if (!origin || !pattern) return false;
   if (pattern === '*') return true;
@@ -107,8 +177,6 @@ export function originMatches(origin: string, pattern: string): boolean {
 
   if (patternParts.host.startsWith('*.')) {
     const suffix = patternParts.host.slice(2);
-    // "*.example.com" covers app.example.com and a.b.example.com, but not example.com itself,
-    // and must not match a lookalike such as notexample.com.
     return originParts.host.endsWith(`.${suffix}`);
   }
 
@@ -125,7 +193,6 @@ export function isOriginAllowed(key: ApiKeyRecord, origin: string): boolean {
   return key.origins.some((pattern) => originMatches(origin, pattern));
 }
 
-/** Read the key from the query string or header. It is public, so either is fine. */
 export function extractApiKey(request: Request): string | null {
   const url = new URL(request.url);
   const fromQuery = url.searchParams.get('key');
@@ -133,10 +200,13 @@ export function extractApiKey(request: Request): string | null {
   return request.headers.get('X-Api-Key');
 }
 
-/**
- * Validate a browser key and its origin. Does not enforce the daily cap -- that costs a Durable
- * Object round trip and belongs after the cheap checks.
- */
+export function extractBearerToken(request: Request): string | null {
+  const header = request.headers.get('Authorization');
+  if (!header) return null;
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
+  return match?.[1]?.trim() || null;
+}
+
 export async function authorizeBrowserKey(env: Env, request: Request): Promise<KeyAuthResult> {
   if (!apiKeysEnabled(env)) return { ok: true };
 
@@ -149,15 +219,15 @@ export async function authorizeBrowserKey(env: Env, request: Request): Promise<K
   if (!key) {
     return { ok: false, reason: 'KEY_INVALID', message: 'Unknown API key.' };
   }
+  if (key.kind === 'server') {
+    return { ok: false, reason: 'WRONG_KEY_KIND', message: 'Use a Browser key (pk_*) for this route.' };
+  }
   if (key.disabled) {
     return { ok: false, reason: 'KEY_DISABLED', message: 'This API key has been disabled.' };
   }
 
   const origin = request.headers.get('Origin');
   if (!origin) {
-    // A real browser always sends Origin on the cross-origin fetch this key is for. Google leaves
-    // the no-referrer case undocumented; we choose to fail closed rather than hand an
-    // origin-restricted key a hole that any non-browser client can walk through.
     return {
       ok: false,
       reason: 'ORIGIN_REQUIRED',
@@ -168,41 +238,69 @@ export async function authorizeBrowserKey(env: Env, request: Request): Promise<K
     return {
       ok: false,
       reason: 'ORIGIN_NOT_ALLOWED',
-      // Canada Post names the offending domain back at you, which makes a misconfigured install
-      // obvious instead of mysterious.
       message: `This key cannot be used from ${origin} — its security settings do not include this domain.`,
     };
   }
 
-  return { ok: true, key };
+  if (!key.customerId) {
+    return { ok: false, reason: 'CUSTOMER_NOT_FOUND', message: 'This key is not linked to a Customer.' };
+  }
+  const customer = await loadCustomer(env, key.customerId);
+  if (!customer) {
+    return { ok: false, reason: 'CUSTOMER_NOT_FOUND', message: 'Customer not found for this key.' };
+  }
+  return { ok: true, key, customer };
 }
 
 /**
- * Authorize a /api/search request by either credential.
- *
- * | Caller has                          | API_KEYS bound | BASIC_AUTH set | Result                    |
- * |-------------------------------------|----------------|----------------|---------------------------|
- * | valid basic auth                    | either         | yes            | allow, from ANY origin    |
- * | browser key + allowed origin        | yes            | either         | allow, cap applies        |
- * | browser key + disallowed origin     | yes            | either         | 403                       |
- * | nothing                             | yes            | either         | 401 KEY_REQUIRED          |
- * | nothing                             | no             | yes            | 401 AUTH_REQUIRED         |
- * | nothing                             | no             | no             | allow (nothing configured)|
- *
- * Basic auth is checked first and deliberately skips the origin allowlist and the daily cap: it
- * is a server-held secret, not a public identifier, so restricting it by browser origin would be
- * meaningless (a backend sends no Origin at all) and capping it would throttle your own systems.
+ * Authorize Server key (Bearer sk_*) or legacy BASIC_AUTH for lookup/geocode routes.
+ * When API_KEYS is bound, Customer Server keys are required (BASIC_AUTH remains for admin).
  */
+export async function authorizeServerKey(env: Env, request: Request): Promise<KeyAuthResult> {
+  const bearer = extractBearerToken(request);
+  if (bearer?.startsWith(SERVER_KEY_PREFIX)) {
+    const key = await loadServerKeyBySecret(env, bearer);
+    if (!key || key.disabled) {
+      return { ok: false, reason: 'KEY_INVALID', message: 'Unknown or disabled Server key.' };
+    }
+    if (key.kind !== 'server') {
+      return { ok: false, reason: 'WRONG_KEY_KIND', message: 'Expected a Server key.' };
+    }
+    const customer = await loadCustomer(env, key.customerId);
+    if (!customer) {
+      return { ok: false, reason: 'CUSTOMER_NOT_FOUND', message: 'Customer not found for this key.' };
+    }
+    return { ok: true, key, customer };
+  }
+
+  // Browser key mistakenly sent as Bearer
+  if (bearer?.startsWith(API_KEY_PREFIX)) {
+    return {
+      ok: false,
+      reason: 'WRONG_KEY_KIND',
+      message: 'Browser keys cannot call lookup routes. Use a Server key (Authorization: Bearer sk_…).',
+    };
+  }
+
+  return { ok: false, reason: 'KEY_REQUIRED', message: 'Authorization: Bearer sk_… is required.' };
+}
+
 export async function authorizeSearchRequest(
   env: Env,
   request: Request,
   hasServerCredential: boolean
 ): Promise<KeyAuthResult> {
-  if (hasServerCredential) return { ok: true };
+  // BASIC_AUTH (operator) or a validated Server key: skip origin allowlist.
+  if (hasServerCredential) {
+    const bearer = extractBearerToken(request);
+    if (bearer?.startsWith(SERVER_KEY_PREFIX)) {
+      return authorizeServerKey(env, request);
+    }
+    return { ok: true };
+  }
 
   if (apiKeysEnabled(env)) return authorizeBrowserKey(env, request);
 
-  // No key store configured, but the service is protected: basic auth is the only way in.
   if (env.BASIC_AUTH) {
     return { ok: false, reason: 'KEY_REQUIRED', message: 'Authentication required.' };
   }
@@ -210,9 +308,47 @@ export async function authorizeSearchRequest(
   return { ok: true };
 }
 
-/** Mint a key id. Public, so this only needs to be unguessable enough not to be enumerable. */
+/** Customer-facing lookup auth when API_KEYS is enabled. */
+export async function authorizeLookupRequest(
+  env: Env,
+  request: Request,
+  hasBasicAuth: boolean
+): Promise<KeyAuthResult> {
+  if (!apiKeysEnabled(env)) {
+    // Legacy: open or BASIC_AUTH-only.
+    if (env.BASIC_AUTH && !hasBasicAuth) {
+      return { ok: false, reason: 'KEY_REQUIRED', message: 'Authentication required.' };
+    }
+    return { ok: true };
+  }
+
+  // Prefer Server key; BASIC_AUTH does not skip Customer metering when keys are enabled
+  // (operator admin routes use checkAdminAuth separately).
+  const server = await authorizeServerKey(env, request);
+  if (server.ok) return server;
+
+  // Allow BASIC_AUTH only as operator bypass without customer context (no billing).
+  if (hasBasicAuth) {
+    return { ok: true };
+  }
+
+  return server;
+}
+
 export function generateApiKey(live = true): string {
   const bytes = crypto.getRandomValues(new Uint8Array(24));
   const body = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
   return `${API_KEY_PREFIX}${live ? 'live' : 'test'}_${body}`;
+}
+
+export function generateServerKey(live = true): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  const body = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `${SERVER_KEY_PREFIX}${live ? 'live' : 'test'}_${body}`;
+}
+
+/** Short display id for server keys (not the secret). */
+export function serverKeyDisplayId(secret: string): string {
+  const body = secret.replace(/^sk_(live|test)_/, '');
+  return `sk_${secret.includes('_test_') ? 'test' : 'live'}_${body.slice(0, 8)}`;
 }

@@ -10,6 +10,19 @@ import {
   type LookupRidingFn,
 } from './lookup-expansion';
 import { resolveLookupPath } from './return-selector';
+import { BillableAuthContext, recordSuccessfulBillable } from './billing';
+import { FEDERAL_DATASET, PROVINCIAL_DATASETS } from './datasets';
+
+function datasetMetaForPath(pathname: string): { id: string; year: number; name: string } {
+  if (pathname === '/api' || pathname === '/api/federal' || pathname === '/api/combined') {
+    return { id: FEDERAL_DATASET.r2Key, year: FEDERAL_DATASET.year, name: FEDERAL_DATASET.name };
+  }
+  const provincial = PROVINCIAL_DATASETS.find((d) => d.path === pathname);
+  if (provincial) {
+    return { id: provincial.r2Key, year: provincial.year, name: provincial.name };
+  }
+  return { id: FEDERAL_DATASET.r2Key, year: FEDERAL_DATASET.year, name: FEDERAL_DATASET.name };
+}
 
 export async function handleLookupRequest(
   request: Request,
@@ -19,7 +32,8 @@ export async function handleLookupRequest(
   correlationId: string,
   startTime: number,
   getCorsHeaders: (origin?: string | null) => Record<string, string>,
-  ctx?: ExecutionContext
+  ctx?: ExecutionContext,
+  billing?: BillableAuthContext | null
 ): Promise<Response> {
   const { lookupPathname } = resolveLookupPath(pathname);
   const { validation } = parseQuery(request);
@@ -30,6 +44,19 @@ export async function handleLookupRequest(
 
   const sanitizedQuery = validation.sanitized!;
   const origin = request.headers.get('Origin');
+  const url = new URL(request.url);
+  const pin = url.searchParams.get('dataset') || url.searchParams.get('pin');
+  const datasetMeta = datasetMetaForPath(lookupPathname);
+
+  if (pin && pin !== datasetMeta.id && pin !== String(datasetMeta.year)) {
+    // Sparse history: only current vintage is served unless pin matches it.
+    return badRequest(
+      `Dataset '${pin}' is not available`,
+      404,
+      'DATASET_UNAVAILABLE',
+      correlationId
+    );
+  }
 
   incrementMetric('lookupRequests');
 
@@ -59,11 +86,25 @@ export async function handleLookupRequest(
 
     recordTiming('totalLookupTime', Date.now() - startTime);
 
+    if (billing?.customer && billing.key) {
+      const billed = await recordSuccessfulBillable(env, billing);
+      if (!billed.allowed) {
+        return new Response(JSON.stringify({ ...billed.body, correlationId }), {
+          status: billed.status,
+          headers: {
+            'content-type': 'application/json; charset=UTF-8',
+            ...getCorsHeaders(origin),
+          },
+        });
+      }
+    }
+
     return new Response(
       JSON.stringify({
         query: sanitizedQuery,
         point: expanded.point,
         ...expandedLookupResponseFields(expanded),
+        dataset: datasetMeta,
         correlationId,
       }),
       {
