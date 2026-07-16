@@ -170,6 +170,7 @@
           { "name": "API_KEY_USAGE", "class_name": "ApiKeyUsageDO" }
         ]
       },
+      // Same as top-level: cache warm + webhook drain every 6h (not billing).
       "triggers": {
         "crons": ["0 */6 * * *"]
       },
@@ -196,7 +197,8 @@
     "enabled": true
   },
 
-  // Cron Triggers for cache warming (every 6 hours)
+  // Cron every 6h → Worker `scheduled` handler: warm lookup caches + process pending webhooks.
+  // Not used for billing/metering. See README "Note on Cron Trigger".
   "triggers": {
     "crons": ["0 */6 * * *"]
   }
