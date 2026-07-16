@@ -261,7 +261,6 @@ export async function initializeSpatialDatabase(env: Env): Promise<boolean> {
       `).run();
     }
 
-    console.log('Spatial database initialized successfully');
     return true;
   } catch (error) {
     console.error('Failed to initialize spatial database:', error);
@@ -314,7 +313,6 @@ export async function insertFeaturesIntoDatabase(env: Env, dataset: string, feat
     }
 
     await env.RIDING_DB.batch(statements);
-    console.log(`Inserted ${features.length} features into spatial database for dataset: ${dataset}`);
     return true;
   } catch (error) {
     console.error('Failed to insert features into spatial database:', error);
@@ -394,6 +392,29 @@ export async function queryRidingFromDatabase(env: Env, dataset: string, lon: nu
   }
 }
 
+// Aggregate stats for the spatial database (admin /api/database/stats)
+export interface SpatialDatabaseStats {
+  features: number;
+  /** ISO timestamp of the most recent feature insert (rows are rewritten on sync), or null when empty. */
+  lastSync: string | null;
+}
+
+export async function getSpatialDatabaseStats(env: Env): Promise<SpatialDatabaseStats | null> {
+  const dbConfig = getSpatialDbConfig(env);
+  if (!dbConfig.ENABLED || !env.RIDING_DB) {
+    return null;
+  }
+
+  const row = await env.RIDING_DB.prepare(`
+    SELECT COUNT(*) AS features, MAX(created_at) AS last_sync FROM spatial_features
+  `).first();
+
+  return {
+    features: row && typeof row.features === 'number' ? row.features : 0,
+    lastSync: row && typeof row.last_sync === 'string' ? row.last_sync : null,
+  };
+}
+
 // Get all features from database with pagination
 export async function getAllFeaturesFromDatabase(env: Env, dataset: string, limit: number = 100, offset: number = 0): Promise<{ features: GeoJSONFeature[]; total: number }> {
   const dbConfig = getSpatialDbConfig(env);
@@ -463,8 +484,6 @@ export async function syncGeoJSONToDatabase(
   }
 
   try {
-    console.log(`Starting sync of ${dataset} to spatial database...`);
-    
     // Load GeoJSON data from R2
     const featureCollection = await loadGeo(env, dataset);
     
@@ -490,8 +509,7 @@ export async function syncGeoJSONToDatabase(
       const batch = featureCollection.features.slice(i, i + batchSize);
       await insertFeaturesIntoDatabase(env, dataset, batch);
     }
-    
-    console.log(`Successfully synced ${featureCollection.features.length} features to spatial database`);
+
     return true;
   } catch (error) {
     console.error('Failed to sync GeoJSON to spatial database:', error);

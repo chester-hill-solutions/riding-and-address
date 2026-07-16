@@ -1,70 +1,73 @@
-import { Form, useActionData } from 'react-router';
+import { Form } from 'react-router';
 import type { Route } from './+types/app.invites';
-import { requireSessionUserId } from '~/lib/auth.server';
-import { getDb } from '~/lib/db.server';
-import { workspaceInvitations, workspaceMembers, workspaces } from '~/db/schema';
-import { eq } from 'drizzle-orm';
+import { isOwnerOrAdmin, requireCustomer } from '~/lib/customer.server';
+import { createWorkspaceInvite } from '~/lib/invite.server';
 import { sendInviteEmail } from '~/lib/email.server';
 import { env } from '~/lib/env.server';
+import { getDb } from '~/lib/db.server';
+import { workspaces } from '~/db/schema';
+import { eq } from 'drizzle-orm';
+import { Panel } from '~/components/Panel';
+import { FormFeedback } from '~/components/FormFeedback';
+import { SubmitButton } from '~/components/SubmitButton';
 
-async function sha256Hex(value: string): Promise<string> {
-  const data = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+export function meta(): Route.MetaDescriptors {
+  return [
+    { title: 'Invites · Riding Lookup portal' },
+    { name: 'description', content: 'Invite teammates to your Customer as members.' },
+  ];
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  const userId = await requireSessionUserId(request);
-  const membership = (
-    await getDb().select().from(workspaceMembers).where(eq(workspaceMembers.userId, userId)).limit(1)
-  )[0];
-  if (!membership) return { error: 'No organization' };
-  if (membership.roleId !== 'owner' && membership.roleId !== 'admin') {
+  const { userId, membership } = await requireCustomer(request);
+  if (!isOwnerOrAdmin(membership)) {
     return { error: 'Only owners/admins can invite' };
   }
 
   const form = await request.formData();
-  const email = String(form.get('email') || '').trim().toLowerCase();
+  const email = String(form.get('email') || '')
+    .trim()
+    .toLowerCase();
   if (!email) return { error: 'Email required' };
 
   const ws = (
     await getDb().select().from(workspaces).where(eq(workspaces.id, membership.workspaceId)).limit(1)
   )[0];
-  const inviteId = crypto.randomUUID();
-  const token = crypto.randomUUID().replace(/-/g, '');
-  const tokenHash = await sha256Hex(token);
-  const now = new Date();
-  await getDb().insert(workspaceInvitations).values({
-    id: inviteId,
-    workspaceId: membership.workspaceId,
-    email,
-    roleId: 'member',
-    invitedByUserId: userId,
-    tokenHash,
-    status: 'pending',
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    createdAt: now,
-    updatedAt: now,
-  });
 
-  const inviteUrl = `${env().baseUrl}/signup?invite=${token}`;
-  await sendInviteEmail(email, inviteUrl, ws?.name || 'Riding Lookup org');
-  return { ok: true, email };
+  try {
+    const invite = await createWorkspaceInvite({
+      workspaceId: membership.workspaceId,
+      email,
+      invitedByUserId: userId,
+      baseUrl: env().baseUrl,
+    });
+    await sendInviteEmail(invite.email, invite.inviteUrl, ws?.name || 'Riding Lookup org');
+    return { ok: true as const, email: invite.email };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not send the invite' };
+  }
 }
 
-export default function InvitesPage() {
-  const data = useActionData<typeof action>();
+export default function InvitesPage({ actionData }: Route.ComponentProps) {
   return (
-    <section className="panel">
-      <h1>Invites</h1>
-      <p className="muted">Invite teammates as members. Owners manage keys and fuse settings.</p>
-      {data && 'error' in data && data.error ? <p className="error">{data.error}</p> : null}
-      {data && 'ok' in data && data.ok ? <p>Invite sent to {data.email}</p> : null}
+    <Panel title="Invites">
+      <p className="muted">
+        Invite teammates as members. Owners manage keys and fuse settings. Invitations expire after
+        7 days; sending a new invite to the same email replaces the previous one.
+      </p>
+      <FormFeedback
+        error={actionData && 'error' in actionData ? actionData.error : null}
+        success={
+          actionData && 'ok' in actionData && actionData.ok
+            ? `Invite sent to ${actionData.email}`
+            : null
+        }
+      />
       <Form method="post">
         <label htmlFor="email">Email</label>
         <input id="email" name="email" type="email" required />
-        <button type="submit">Send invite</button>
+        <SubmitButton pendingText="Sending…">Send invite</SubmitButton>
       </Form>
-    </section>
+    </Panel>
   );
 }

@@ -18,6 +18,7 @@ import {
   putCustomer,
 } from './customer';
 import { peekCustomerUsage } from './billing';
+import { timingSafeEqual } from './utils';
 
 function unauthorized(): Response {
   return new Response(JSON.stringify({ error: 'Unauthorized', code: 'PROJECTION_UNAUTHORIZED' }), {
@@ -38,7 +39,8 @@ export function checkProjectionAuth(request: Request, env: Env): boolean {
   if (!expected) return false;
   const header = request.headers.get('Authorization');
   const token = header?.replace(/^Bearer\s+/i, '').trim();
-  return Boolean(token && token === expected);
+  // Constant-time compare: a === early-exits on the first mismatching char, leaking prefix length.
+  return Boolean(token && timingSafeEqual(token, expected));
 }
 
 export async function handleProjectionRequest(

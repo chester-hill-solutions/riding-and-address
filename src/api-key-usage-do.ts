@@ -128,6 +128,25 @@ function monthBefore(month: string, months: number): string {
   return d.toISOString().slice(0, 7);
 }
 
+/**
+ * Monthly Customer fuse ledger.
+ *
+ * Fail-CLOSED when a hard fuse is enforced (`monthlyLimit > 0`) and the DO is
+ * missing or errors — otherwise free-tier abuse is unbounded during outages.
+ * When `monthlyLimit <= 0` (unlimited / soft-warn counting path), fail-open so
+ * availability is not tied to the counter (Stripe sync remains eventual per ADR 0002).
+ */
+function monthlyFailClosed(
+  monthlyLimit: number,
+  month: string
+): UsageResult {
+  return { allowed: false, count: 0, limit: monthlyLimit, day: month, month };
+}
+
+function monthlyFailOpen(monthlyLimit: number, month: string): UsageResult {
+  return { allowed: true, count: 0, limit: monthlyLimit, day: month, month };
+}
+
 export async function consumeMonthlyQuota(
   env: Env,
   customerId: string,
@@ -136,7 +155,7 @@ export async function consumeMonthlyQuota(
 ): Promise<UsageResult> {
   const month = utcMonth(nowMs);
   if (!env.API_KEY_USAGE) {
-    return { allowed: true, count: 0, limit: monthlyLimit, day: month, month };
+    return monthlyLimit > 0 ? monthlyFailClosed(monthlyLimit, month) : monthlyFailOpen(monthlyLimit, month);
   }
 
   try {
@@ -150,7 +169,7 @@ export async function consumeMonthlyQuota(
     return { ...result, month: result.month || month };
   } catch (error) {
     console.warn(`[ApiKeyUsage] monthly counter unavailable for ${customerId}:`, error);
-    return { allowed: true, count: 0, limit: monthlyLimit, day: month, month };
+    return monthlyLimit > 0 ? monthlyFailClosed(monthlyLimit, month) : monthlyFailOpen(monthlyLimit, month);
   }
 }
 
@@ -162,7 +181,7 @@ export async function peekMonthlyQuota(
 ): Promise<UsageResult> {
   const month = utcMonth(nowMs);
   if (!env.API_KEY_USAGE) {
-    return { allowed: true, count: 0, limit: monthlyLimit, day: month, month };
+    return monthlyLimit > 0 ? monthlyFailClosed(monthlyLimit, month) : monthlyFailOpen(monthlyLimit, month);
   }
 
   try {
@@ -172,7 +191,7 @@ export async function peekMonthlyQuota(
     const result = (await response.json()) as UsageResult;
     return { ...result, month: result.month || month };
   } catch {
-    return { allowed: true, count: 0, limit: monthlyLimit, day: month, month };
+    return monthlyLimit > 0 ? monthlyFailClosed(monthlyLimit, month) : monthlyFailOpen(monthlyLimit, month);
   }
 }
 

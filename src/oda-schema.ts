@@ -196,7 +196,6 @@ export async function initializeOdaDatabase(env: Env): Promise<boolean> {
       await env.ODA_DB.prepare(sql).run();
     }
 
-    console.log('ODA database initialized successfully');
     return true;
   } catch (error) {
     console.error('Failed to initialize ODA database:', error);

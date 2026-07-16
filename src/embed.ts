@@ -8,7 +8,7 @@
  * @cloudflare/workers-types.
  */
 
-export const EMBED_VERSION = '1.0.0';
+export const EMBED_VERSION = '1.1.0';
 
 export function createEmbedScript(baseUrl: string): string {
   return `/* Riding Lookup autocomplete widget v${EMBED_VERSION} */
@@ -29,7 +29,9 @@ export function createEmbedScript(baseUrl: string): string {
     limit: 7,
     fill: true,
     includeProvince: false,
-    useGeolocation: false
+    useGeolocation: false,
+    // '' follows the page's prefers-color-scheme; 'light'/'dark' pin the palette explicitly.
+    theme: ''
   };
 
   // Province selects are as likely to hold "Ontario" as "ON", so we can fill either.
@@ -229,20 +231,35 @@ export function createEmbedScript(baseUrl: string): string {
   // Dropdown
   // ---------------------------------------------------------------------------
 
+  // One dark ruleset, applied two ways: by the OS preference (unless the integrator pinned
+  // data-theme="light") and by an explicit data-theme="dark", which must win over a light OS.
+  var DARK_PANEL_VARS = '--rl-bg:#1b1f27;--rl-fg:#e6e9ef;--rl-muted:#98a2b3;'
+    + '--rl-border:#3a4150;--rl-active:#2c3444;--rl-pill:#3a4150;--rl-error:#f97066';
+
   var STYLES = [
     ':host{all:initial}',
-    '.panel{position:absolute;z-index:2147483647;background:#fff;color:#111;',
-    'border:1px solid #d0d5dd;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.14);',
+    '.panel{--rl-bg:#fff;--rl-fg:#111;--rl-muted:#667085;--rl-border:#d0d5dd;',
+    '--rl-active:#eef2ff;--rl-pill:#e4e7ec;--rl-error:#b42318;',
+    'position:absolute;z-index:2147483647;background:var(--rl-bg);color:var(--rl-fg);',
+    'border:1px solid var(--rl-border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.14);',
     'font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden;',
     'max-height:320px;overflow-y:auto;display:none}',
     '.panel[data-open="true"]{display:block}',
     '.item{padding:8px 12px;cursor:pointer;display:flex;justify-content:space-between;gap:12px;align-items:baseline}',
-    '.item[aria-selected="true"]{background:#eef2ff}',
-    '.main{color:#111}',
+    '.item[aria-selected="true"]{background:var(--rl-active)}',
+    '.main{color:var(--rl-fg)}',
     '.main b{font-weight:700}',
-    '.sub{color:#667085;font-size:12px;white-space:nowrap}',
-    '.count{color:#667085;font-size:11px;border:1px solid #e4e7ec;border-radius:999px;padding:1px 6px}',
-    '.empty{padding:10px 12px;color:#667085}'
+    '.sub{color:var(--rl-muted);font-size:12px;white-space:nowrap}',
+    '.count{color:var(--rl-muted);font-size:11px;border:1px solid var(--rl-pill);border-radius:999px;padding:1px 6px}',
+    '.empty{padding:10px 12px;color:var(--rl-muted)}',
+    '.error{padding:10px 12px;color:var(--rl-error)}',
+    '.panel[data-loading="true"]::after{content:"Searching…";display:block;',
+    'padding:8px 12px;color:var(--rl-muted);font-size:12px}',
+    // Visually hidden but announced: the aria-live region for screen readers.
+    '.status{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;',
+    'overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
+    '@media (prefers-color-scheme:dark){:host(:not([data-theme="light"])) .panel{' + DARK_PANEL_VARS + '}}',
+    ':host([data-theme="dark"]) .panel{' + DARK_PANEL_VARS + '}'
   ].join('');
 
   function createPanel() {
@@ -255,10 +272,18 @@ export function createEmbedScript(baseUrl: string): string {
     var panel = document.createElement('div');
     panel.className = 'panel';
     panel.setAttribute('role', 'listbox');
+    panel.setAttribute('aria-label', 'Address suggestions');
+    // The dropdown is purely visual to a screen reader; this polite live region is what
+    // actually announces result counts, empty results, and failures.
+    var status = document.createElement('div');
+    status.className = 'status';
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
     root.appendChild(style);
     root.appendChild(panel);
+    root.appendChild(status);
     document.body.appendChild(host);
-    return { host: host, panel: panel };
+    return { host: host, panel: panel, status: status };
   }
 
   function escapeHtml(value) {
@@ -312,10 +337,13 @@ export function createEmbedScript(baseUrl: string): string {
     var ui = createPanel();
     var listId = 'rl-list-' + Math.random().toString(36).slice(2, 9);
     ui.panel.id = listId;
+    if (config.theme === 'light' || config.theme === 'dark') {
+      ui.host.setAttribute('data-theme', config.theme);
+    }
 
     var state = {
       items: [], active: -1, open: false, containerId: null, seq: 0, controller: null,
-      timer: null, suppress: false
+      timer: null, loadingTimer: null, suppress: false
     };
 
     /**
@@ -360,10 +388,51 @@ export function createEmbedScript(baseUrl: string): string {
       input.removeAttribute('aria-activedescendant');
     }
 
+    function openPanel() {
+      state.open = true;
+      ui.panel.setAttribute('data-open', 'true');
+      input.setAttribute('aria-expanded', 'true');
+      position();
+    }
+
+    function announce(text) {
+      ui.status.textContent = text;
+    }
+
+    /**
+     * Pending indicator. Deferred 200ms so fast responses never flash it; the timer is
+     * cleared the moment the request settles or a newer request supersedes it.
+     */
+    function setLoading(on) {
+      if (state.loadingTimer) { clearTimeout(state.loadingTimer); state.loadingTimer = null; }
+      if (!on) {
+        ui.panel.removeAttribute('data-loading');
+        return;
+      }
+      state.loadingTimer = setTimeout(function () {
+        state.loadingTimer = null;
+        ui.panel.setAttribute('data-loading', 'true');
+        // First search from a closed panel: open it so "Searching…" is actually visible.
+        if (!state.open) {
+          ui.panel.innerHTML = '';
+          openPanel();
+        }
+      }, 200);
+    }
+
+    /** A single non-interactive row: the empty and error states of the panel. */
+    function renderNotice(className, text) {
+      state.active = -1;
+      input.removeAttribute('aria-activedescendant');
+      ui.panel.innerHTML = '<div class="' + className + '">' + escapeHtml(text) + '</div>';
+      openPanel();
+    }
+
     function render() {
       if (!state.items.length) {
         ui.panel.innerHTML = '';
         close();
+        announce('');
         return;
       }
       var html = '';
@@ -373,7 +442,7 @@ export function createEmbedScript(baseUrl: string): string {
         var main = (sf.mainText && sf.mainText.text) || item.text || '';
         var matches = sf.mainText && sf.mainText.matches;
         var sub = (sf.secondaryText && sf.secondaryText.text) || item.description || '';
-        var count = item.addressCount ? '<span class="count">' + item.addressCount + '</span>' : '';
+        var count = item.addressCount ? '<span class="count">' + escapeHtml(item.addressCount) + '</span>' : '';
         html += '<div class="item" role="option" id="' + listId + '-' + i + '"'
           + ' data-index="' + i + '" aria-selected="' + (i === state.active) + '">'
           + '<span class="main">' + highlight(main, matches) + '</span>'
@@ -381,10 +450,8 @@ export function createEmbedScript(baseUrl: string): string {
           + '</div>';
       }
       ui.panel.innerHTML = html;
-      state.open = true;
-      ui.panel.setAttribute('data-open', 'true');
-      input.setAttribute('aria-expanded', 'true');
-      position();
+      openPanel();
+      announce(state.items.length + (state.items.length === 1 ? ' suggestion' : ' suggestions'));
     }
 
     function setActive(index) {
@@ -418,6 +485,7 @@ export function createEmbedScript(baseUrl: string): string {
 
     function search(value) {
       if (!value || value.trim().length < config.minLength) {
+        setLoading(false);
         state.items = [];
         render();
         return Promise.resolve([]);
@@ -429,6 +497,7 @@ export function createEmbedScript(baseUrl: string): string {
       var controller = typeof global.AbortController === 'function' ? new global.AbortController() : null;
       state.controller = controller;
       var seq = ++state.seq;
+      setLoading(true);
 
       return fetch(buildUrl(value), {
         headers: { accept: 'application/json' },
@@ -441,16 +510,26 @@ export function createEmbedScript(baseUrl: string): string {
         })
         .then(function (body) {
           if (seq !== state.seq) return [];
+          setLoading(false);
           state.items = (body && body.suggestions) || [];
           state.active = -1;
-          render();
+          if (state.items.length) {
+            render();
+          } else {
+            // The query was long enough to search, so silently closing would read as a hang.
+            renderNotice('empty', 'No matching addresses');
+            announce('No results');
+          }
           return state.items;
         })
         .catch(function (error) {
+          // Aborted means superseded: the newer request now owns the panel and the indicator.
           if (error && error.name === 'AbortError') return [];
           if (seq !== state.seq) return [];
+          setLoading(false);
           state.items = [];
-          render();
+          renderNotice('error', 'Search unavailable — try again');
+          announce('Search unavailable');
           emit('error', { error: error });
           return [];
         });
@@ -582,6 +661,8 @@ export function createEmbedScript(baseUrl: string): string {
       select: select,
       close: close,
       destroy: function () {
+        if (state.timer) clearTimeout(state.timer);
+        if (state.loadingTimer) clearTimeout(state.loadingTimer);
         input.removeEventListener('input', onInput);
         input.removeEventListener('keydown', onKeyDown);
         document.removeEventListener('mousedown', onDocumentDown);
@@ -623,7 +704,8 @@ export function createEmbedScript(baseUrl: string): string {
       province: data.province,
       limit: data.limit ? parseInt(data.limit, 10) : undefined,
       includeProvince: data.includeProvince === 'true',
-      endpoint: data.endpoint
+      endpoint: data.endpoint,
+      theme: data.theme
     };
   }
 
@@ -642,7 +724,8 @@ export function createEmbedScript(baseUrl: string): string {
         province: scriptConfig.province,
         limit: scriptConfig.limit,
         includeProvince: scriptConfig.includeProvince,
-        endpoint: scriptConfig.endpoint
+        endpoint: scriptConfig.endpoint,
+        theme: scriptConfig.theme
       });
       if (instance) attached.push(instance);
     }

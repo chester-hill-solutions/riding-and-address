@@ -13,7 +13,7 @@ export { createLandingPage } from './landing-page';
  * Must match the `@scalar/api-reference` devDependency in package.json — dependabot bumps that
  * one and cannot see this constant, so `test/docs.test.ts` asserts they agree.
  */
-const SCALAR_API_REFERENCE_VERSION = "1.62.1";
+const SCALAR_API_REFERENCE_VERSION = "1.62.7";
 
 export function createApiReference(baseUrl: string): string {
   return `<!DOCTYPE html>
@@ -213,6 +213,72 @@ const RETURN_RESPONSE_PROPERTIES = {
   },
   dataset: DATASET_RESPONSE_PROPERTY,
 };
+
+const ODA_GEOCODE_PARAMETERS = [
+  { name: "address", in: "query", schema: { type: "string", default: "123 Main St, Toronto, ON" } },
+  { name: "postal", in: "query", required: true, schema: { type: "string", default: "K1A 0A6", example: "K1A 0A6" } },
+  { name: "city", in: "query", schema: { type: "string", default: "Ottawa" } },
+  { name: "state", in: "query", schema: { type: "string", default: "ON" } },
+];
+
+const ODA_REVERSE_PARAMETERS = [
+  { name: "lat", in: "query", required: true, schema: { type: "number", default: 45.4215, example: 45.4215 } },
+  { name: "lon", in: "query", required: true, schema: { type: "number", default: -75.6972, example: -75.6972 } },
+];
+
+const ODA_NORMALIZE_PARAMETERS = [
+  { name: "address", in: "query", schema: { type: "string", default: "123 Main St, Toronto, ON" } },
+  { name: "postal", in: "query", required: true, schema: { type: "string", default: "K1A 0A6", example: "K1A 0A6" } },
+];
+
+const DEMO_TIER_NOTE =
+  "Part of the public keyless demo tier: no Basic Auth and no API key. Requests are rate-limited " +
+  "per client IP (DEMO_RATE_LIMIT, default 30) and are not billable. Any GET lookup route can be " +
+  "tried by prefixing its path with /api/demo — including the provincial routes " +
+  "(e.g. /api/demo/ontario); /api/demo alone aliases /api/demo/federal.";
+
+/**
+ * The keyless demo mirrors of the lookup and ODA geolocation endpoints. Deliberately no
+ * `security` on any of them — being public is their entire point.
+ */
+function buildDemoEndpointSpecs(): Record<string, unknown> {
+  const demoResponses = {
+    "200": { description: "Same response shape as the mirrored authenticated endpoint" },
+    "429": { description: "Demo rate limit exceeded (per client IP)" },
+  };
+  const demoLookup = (summary: string, mirror: string) => ({
+    get: {
+      summary,
+      description: `Demo mirror of ${mirror}. ${DEMO_TIER_NOTE}`,
+      tags: ["Demo"],
+      parameters: LOOKUP_QUERY_PARAMETERS,
+      responses: demoResponses,
+    },
+  });
+  const demoOda = (summary: string, mirror: string, parameters: unknown[]) => ({
+    get: {
+      summary,
+      description: `Demo mirror of ${mirror}. ${DEMO_TIER_NOTE}`,
+      tags: ["Demo"],
+      parameters,
+      responses: demoResponses,
+    },
+  });
+  return {
+    "/api/demo/federal": demoLookup("Lookup federal riding by location (keyless demo)", "/api/federal"),
+    "/api/demo/combined": demoLookup(
+      "Lookup federal and provincial ridings in one call (keyless demo)",
+      "/api/combined"
+    ),
+    "/api/demo/geocode": demoOda("Forward geocode using ODA (keyless demo)", "/api/geocode", ODA_GEOCODE_PARAMETERS),
+    "/api/demo/reverse": demoOda("Reverse geocode using ODA (keyless demo)", "/api/reverse", ODA_REVERSE_PARAMETERS),
+    "/api/demo/normalize-address": demoOda(
+      "Normalize address to Canada Post-style format (keyless demo)",
+      "/api/normalize-address",
+      ODA_NORMALIZE_PARAMETERS
+    ),
+  };
+}
 
 function buildProvincialEndpointSpecs(): Record<string, unknown> {
   const paths: Record<string, unknown> = {};
@@ -569,17 +635,13 @@ export function createOpenAPISpec(baseUrl: string) {
         },
       },
       ...buildProvincialEndpointSpecs(),
+      ...buildDemoEndpointSpecs(),
       "/api/geocode": {
         get: {
           summary: "Forward geocode using ODA",
           description: "Geocode an address or postal code using the self-hosted ODA database. Requires ODA_GEOCODING_ENABLED.",
           tags: ["ODA Geolocation"],
-          parameters: [
-            { name: "address", in: "query", schema: { type: "string", default: "123 Main St, Toronto, ON" } },
-            { name: "postal", in: "query", required: true, schema: { type: "string", default: "K1A 0A6", example: "K1A 0A6" } },
-            { name: "city", in: "query", schema: { type: "string", default: "Ottawa" } },
-            { name: "state", in: "query", schema: { type: "string", default: "ON" } },
-          ],
+          parameters: ODA_GEOCODE_PARAMETERS,
           responses: {
             "200": { description: "Geocode result with confidence and mailingAddress" },
             "422": { description: "AMBIGUOUS_LOCATION or LOW_CONFIDENCE_GEOCODE" },
@@ -763,7 +825,9 @@ export function createOpenAPISpec(baseUrl: string) {
             "429": { description: "Rate limit exceeded, or DAILY_LIMIT_EXCEEDED for the key (resets 00:00 UTC)" },
             "503": { description: "SUGGEST_INDEX_MISSING — run npm run build:oda:suggest" },
           },
-          security: [{ basicAuth: [] }],
+          // Either scheme works: server-to-server callers use Basic Auth; the embed widget and
+          // other browser callers present a public pk_ key (see the `key` parameter above).
+          security: [{ basicAuth: [] }, { apiKey: [] }],
         },
       },
       "/embed.js": {
@@ -792,10 +856,7 @@ export function createOpenAPISpec(baseUrl: string) {
         get: {
           summary: "Reverse geocode using ODA",
           tags: ["ODA Geolocation"],
-          parameters: [
-            { name: "lat", in: "query", required: true, schema: { type: "number", default: 45.4215, example: 45.4215 } },
-            { name: "lon", in: "query", required: true, schema: { type: "number", default: -75.6972, example: -75.6972 } },
-          ],
+          parameters: ODA_REVERSE_PARAMETERS,
           responses: {
             "200": { description: "Nearest ODA address with distanceMeters" },
             "404": { description: "NO_NEARBY_ADDRESS" },
@@ -807,10 +868,7 @@ export function createOpenAPISpec(baseUrl: string) {
         get: {
           summary: "Normalize address to Canada Post-style format",
           tags: ["ODA Geolocation"],
-          parameters: [
-            { name: "address", in: "query", schema: { type: "string", default: "123 Main St, Toronto, ON" } },
-            { name: "postal", in: "query", required: true, schema: { type: "string", default: "K1A 0A6", example: "K1A 0A6" } },
-          ],
+          parameters: ODA_NORMALIZE_PARAMETERS,
           responses: { "200": { description: "Normalized mailing address" } },
           security: [{ basicAuth: [] }],
         },
@@ -1908,6 +1966,11 @@ export function createOpenAPISpec(baseUrl: string) {
         name: "ODA Geolocation",
         description:
           "Self-hosted geocoding and address autocomplete over the Statistics Canada Open Database of Addresses",
+      },
+      {
+        name: "Demo",
+        description:
+          "Public keyless demo tier: /api/demo/* mirrors of the lookup and ODA geolocation endpoints, rate-limited per IP and not billable",
       },
       {
         name: "ODA Admin",

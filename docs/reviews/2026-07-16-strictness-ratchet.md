@@ -22,9 +22,9 @@ Gate: `npm run check:billing-invariants` (also in `validate`). ADR: `docs/adr/00
 
 | Severity | Item | Notes |
 |---|---|---|
-| High | Checkout sets `plan: metered` before payment succeeds | Wait for Stripe webhook; keep pending until confirmed |
-| High | Portal members can mint keys / change fuse / start checkout without owner role | Align action guards with UI copy |
-| High | Usage DO fail-open on outage (`consumeMonthlyQuota` → `allowed: true`) | Product call: fail-closed for billable routes vs documented fail-open |
+| High | ~~Checkout sets `plan: metered` before payment succeeds~~ | Fixed: webhook activates metered |
+| High | ~~Portal members can mint keys / change fuse / start checkout without owner role~~ | Fixed: `requireOwnerOrAdmin` |
+| High | ~~Usage DO fail-open on outage (`consumeMonthlyQuota` → `allowed: true`)~~ | Fixed: fail-closed when hard fuse |
 | Medium | Projection bodies unvalidated (`request.json()` cast) | Zod schemas on projection PUT/POST |
 | Medium | Batch status `/batch/:id` not customer-scoped | Tenant-scope queue records |
 | Medium | Stripe meter has no outbox/reconciliation | ADR 0002 claims eventual — needs durable retry |
@@ -33,6 +33,10 @@ Gate: `npm run check:billing-invariants` (also in `validate`). ADR: `docs/adr/00
 
 ## Review checklist (human)
 
-- [ ] Confirm fail-open vs fail-closed when `API_KEY_USAGE` DO is down
-- [ ] Confirm Checkout may not activate metering until `checkout.session.completed` (or equivalent)
-- [ ] Confirm non-owner portal roles cannot mint Server keys
+- [x] Confirm fail-open vs fail-closed when `API_KEY_USAGE` DO is down
+      → **Fail-closed** for hard monthly fuse (`monthlyLimit > 0`); fail-open when
+      unlimited / soft-warn (`monthlyLimit <= 0`). Daily browser caps remain fail-open.
+- [x] Confirm Checkout may not activate metering until `checkout.session.completed` (or equivalent)
+      → Portal keeps `plan: free` at Checkout start; `api/stripe/webhook` sets `metered`.
+- [x] Confirm non-owner portal roles cannot mint Server keys
+      → `requireOwnerOrAdmin` on keys, billing, and fuse settings actions.

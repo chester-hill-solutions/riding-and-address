@@ -12,15 +12,7 @@ Self-serve Customer portal: signup, org (workspace), invites, Server/Browser key
 ## Local setup
 
 1. Copy `.env.example` → `.env` and fill values.
-2. From repo root monorepo sibling, ensure CHS auth packages are built:
-
-   ```bash
-   bun run --cwd ../chester-hill-solutions/packages/auth build
-   bun run --cwd ../chester-hill-solutions/packages/auth-postgres build
-   bun run --cwd ../chester-hill-solutions/packages/auth-react-router build
-   ```
-
-3. Install and run:
+2. Install and run (CHS auth packages are vendored under `vendor/@chester-hill-solutions/`):
 
    ```bash
    cd portal
@@ -29,7 +21,15 @@ Self-serve Customer portal: signup, org (workspace), invites, Server/Browser key
    npm run dev
    ```
 
-4. Worker must have `API_KEYS` bound and `PROJECTION_ADMIN_SECRET` matching `WORKER_PROJECTION_SECRET`.
+   To refresh vendored packages from a sibling CHS checkout, see `vendor/README.md`.
+
+3. Worker must have `API_KEYS` bound and `PROJECTION_ADMIN_SECRET` matching `WORKER_PROJECTION_SECRET`
+   for key minting / projection. Soft free API can run with `API_KEYS` unbound.
+
+## Stripe webhook
+
+Register `POST {BASE_URL}/api/stripe/webhook` in Stripe and set `STRIPE_WEBHOOK_SECRET`.
+Checkout keeps `plan: free` until `checkout.session.completed` activates `metered`.
 
 ## Paid Checkout
 

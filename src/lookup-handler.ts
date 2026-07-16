@@ -2,7 +2,7 @@ import { Env, CircuitBreakerExecuteOptions } from './types';
 import { geocodeIfNeeded } from './geocoding';
 import { geocodingCircuitBreaker } from './circuit-breaker';
 import { incrementMetric, recordTiming } from './metrics';
-import { parseQuery, badRequest } from './utils';
+import { parseQuery, badRequest, internalErrorResponse } from './utils';
 import { getTimeoutConfig } from './config';
 import {
   performExpandedLookup,
@@ -119,12 +119,8 @@ export async function handleLookupRequest(
     );
   } catch (error) {
     incrementMetric('errorCount');
-    console.error(`[${correlationId}] Lookup error:`, error);
-    return badRequest(
-      error instanceof Error ? error.message : 'Lookup failed',
-      500,
-      'LOOKUP_ERROR',
-      correlationId
-    );
+    // 5xx bodies stay generic: geocoder/R2/internal messages are logged with the correlation ID
+    // instead of being sent to the client.
+    return internalErrorResponse(error, 'Lookup error', correlationId, 'LOOKUP_ERROR');
   }
 }

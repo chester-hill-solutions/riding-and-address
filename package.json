@@ -9,7 +9,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260630.1",
     "@eslint/js": "^10.0.1",
-    "@scalar/api-reference": "^1.62.1",
+    "@scalar/api-reference": "^1.62.7",
     "@types/jsdom": "^28.0.3",
     "@types/node": "^26.0.1",
     "@typescript-eslint/eslint-plugin": "^8.62.1",

@@ -1,5 +1,15 @@
 import { env } from '~/lib/env.server';
 
+/** Escape a string for interpolation into HTML text or attribute values. */
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 /** Best-effort Resend (or no-op when unset). */
 export async function sendEmail(opts: { to: string; subject: string; html: string }): Promise<void> {
   const { resendApiKey, emailFrom } = env();
@@ -29,8 +39,8 @@ export async function sendInviteEmail(to: string, inviteUrl: string, orgName: st
   await sendEmail({
     to,
     subject: `Join ${orgName} on Riding Lookup`,
-    html: `<p>You have been invited to <strong>${orgName}</strong> on Riding Lookup.</p>
-           <p><a href="${inviteUrl}">Accept invitation</a></p>`,
+    html: `<p>You have been invited to <strong>${escapeHtml(orgName)}</strong> on Riding Lookup.</p>
+           <p><a href="${escapeHtml(inviteUrl)}">Accept invitation</a></p>`,
   });
 }
 

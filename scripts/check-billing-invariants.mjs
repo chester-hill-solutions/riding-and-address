@@ -176,6 +176,70 @@ for (const file of files) {
   });
 }
 
+// ── Rule: 200 lookup/search paths must record Billable units ─────────────────
+// A Billable unit is one successful HTTP 200 lookup or search response. The realtime lookup
+// handler and the search route must each call recordSuccessfulBillable, or 200s go unmetered.
+const BILLABLE_CALLSITE_FILES = ['src/lookup-handler.ts', 'src/oda-handlers.ts'];
+const BILLABLE_CALL_RE = /\brecordSuccessfulBillable\s*\(/;
+for (const relPath of BILLABLE_CALLSITE_FILES) {
+  const file = path.join(ROOT, relPath);
+  let src;
+  try {
+    src = readFileSync(file, 'utf8');
+  } catch {
+    fail(
+      'billable-callsite-missing',
+      file,
+      1,
+      `${relPath} not found — Billable-unit call-site check expects it to exist`
+    );
+    continue;
+  }
+  if (!BILLABLE_CALL_RE.test(src)) {
+    fail(
+      'billable-callsite-missing',
+      file,
+      1,
+      `${relPath} must call recordSuccessfulBillable — 200 lookup/search responses are Billable units`
+    );
+  }
+}
+
+// ── Rule: geocode routes in worker.ts stay unbilled ───────────────────────────
+// /api/geocode, /api/reverse and /api/normalize-address are intentionally NOT Billable units
+// (open pricing decision). If billing appears inside those route blocks, someone made that
+// product call — move this rule, don't delete it silently.
+{
+  const workerFile = path.join(ROOT, 'src/worker.ts');
+  const workerLines = readFileSync(workerFile, 'utf8').split('\n');
+  const GEOCODE_ROUTES = ["'/api/geocode'", "'/api/reverse'", "'/api/normalize-address'"];
+  const ROUTE_BLOCK_WINDOW = 15; // geocode route blocks are a handful of lines each
+  for (const route of GEOCODE_ROUTES) {
+    const start = workerLines.findIndex(
+      (line) => line.includes(`pathname === ${route}`) && !line.includes('demoPath')
+    );
+    if (start === -1) {
+      fail(
+        'geocode-route-missing',
+        workerFile,
+        1,
+        `Expected a ${route} route in src/worker.ts — Billable-unit coverage check cannot verify it`
+      );
+      continue;
+    }
+    const block = workerLines.slice(start, start + ROUTE_BLOCK_WINDOW);
+    const hit = block.findIndex((line) => BILLABLE_CALL_RE.test(line));
+    if (hit !== -1) {
+      fail(
+        'geocode-route-billed',
+        workerFile,
+        start + hit + 1,
+        `${route} must not call recordSuccessfulBillable — geocode routes are unbilled pending a pricing decision`
+      );
+    }
+  }
+}
+
 if (violations.length) {
   console.error(`billing-invariants: ${violations.length} violation(s)\n`);
   for (const v of violations) {
@@ -185,4 +249,4 @@ if (violations.length) {
   process.exit(1);
 }
 
-console.log('billing-invariants: ok (void-stripe-meter, key-status, price/allowance literals)');
+console.log('billing-invariants: ok (void-stripe-meter, key-status, price/allowance literals, billable call sites)');

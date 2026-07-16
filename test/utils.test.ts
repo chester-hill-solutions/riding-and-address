@@ -326,8 +326,15 @@ describe('validateAndSanitizeQuery include_province', () => {
 });
 
 describe('checkBasicAuth', () => {
-  it('allows everything when BASIC_AUTH is unset', () => {
-    expect(checkBasicAuth(authRequest({}), {} as never)).toBe(true);
+  it('fails closed when BASIC_AUTH is unset', () => {
+    // "Nobody configured a secret" must mean locked, not open: an unset secret on a public
+    // deployment would otherwise expose every basic-auth-gated route.
+    expect(checkBasicAuth(authRequest({}), {} as never)).toBe(false);
+  });
+
+  it('fails closed when BASIC_AUTH is unset even with credentials presented', () => {
+    const request = authRequest({ Authorization: `Basic ${btoa('admin:secret')}` });
+    expect(checkBasicAuth(request, {} as never)).toBe(false);
   });
 
   it('accepts valid credentials', () => {
@@ -358,6 +365,17 @@ describe('checkBasicAuth', () => {
 });
 
 describe('checkAdminAuth', () => {
+  it('fails closed when BASIC_AUTH is unset', () => {
+    // Protects /metrics, /webhooks, /api/database/*, /admin/circuit-breaker/reset,
+    // /api/cache/warm and queue endpoints on deployments that never set the secret.
+    expect(checkAdminAuth(authRequest({}), {} as never)).toBe(false);
+  });
+
+  it('fails closed when BASIC_AUTH is unset even with credentials presented', () => {
+    const request = authRequest({ Authorization: `Basic ${btoa('admin:secret')}` });
+    expect(checkAdminAuth(request, {} as never)).toBe(false);
+  });
+
   it('rejects BYOK header for admin routes', () => {
     const request = authRequest({ 'X-Google-API-Key': 'test-key' });
     expect(checkAdminAuth(request, { BASIC_AUTH: 'admin:secret' } as never)).toBe(false);

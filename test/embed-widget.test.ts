@@ -393,6 +393,128 @@ describe('search behaviour', () => {
     expect(host.shadowRoot).toBeTruthy();
     expect(host.querySelector('.panel')).toBeNull();
   });
+
+  it('escapes an addressCount smuggling markup, like every other field', async () => {
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    mockFetch({ suggestions: [containerSuggestion({ addressCount: '<img src=x onerror=alert(1)>' })] });
+    await loadWidget().attach({ input: '#a' })!.search('main st');
+
+    const panel = document.querySelector('[data-riding-lookup]')!.shadowRoot!.querySelector('.panel')!;
+    expect(panel.querySelector('img')).toBeNull();
+    expect(panel.querySelector('.count')!.textContent).toContain('<img');
+  });
+});
+
+describe('empty state', () => {
+  it('shows "No matching addresses" instead of closing when a valid query has no results', async () => {
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    mockFetch({ suggestions: [] });
+    const instance = loadWidget().attach({ input: '#a' })!;
+
+    await instance.search('main st');
+
+    const root = document.querySelector('[data-riding-lookup]')!.shadowRoot!;
+    expect(root.querySelector('.panel')!.getAttribute('data-open')).toBe('true');
+    expect(root.querySelector('.empty')!.textContent).toBe('No matching addresses');
+    expect(root.querySelector('.status')!.textContent).toBe('No results');
+    expect(instance.input.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('still closes silently below the minimum length, where nothing was searched', async () => {
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    mockFetch({ suggestions: [] });
+    const instance = loadWidget().attach({ input: '#a' })!;
+
+    await instance.search('main st'); // opens the empty state
+    await instance.search('ma'); // below minLength: not a "no results" situation
+
+    const panel = document.querySelector('[data-riding-lookup]')!.shadowRoot!.querySelector('.panel')!;
+    expect(panel.getAttribute('data-open')).toBe('false');
+    expect(panel.querySelector('.empty')).toBeNull();
+  });
+});
+
+describe('loading state', () => {
+  it('shows the searching indicator only once the response is slow, and clears it on resolve', async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    let resolveFetch!: (value: unknown) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise((resolve) => { resolveFetch = resolve; })));
+    const instance = loadWidget().attach({ input: '#a' })!;
+
+    const pending = instance.search('main st');
+    const panel = document.querySelector('[data-riding-lookup]')!.shadowRoot!.querySelector('.panel')!;
+    expect(panel.hasAttribute('data-loading')).toBe(false);
+
+    vi.advanceTimersByTime(250);
+    expect(panel.getAttribute('data-loading')).toBe('true');
+    // Opened from closed, so the indicator is actually visible.
+    expect(panel.getAttribute('data-open')).toBe('true');
+
+    resolveFetch({ ok: true, status: 200, json: async () => ({ suggestions: [containerSuggestion()] }) });
+    await pending;
+    expect(panel.hasAttribute('data-loading')).toBe(false);
+    expect(panel.getAttribute('data-open')).toBe('true');
+    vi.useRealTimers();
+  });
+
+  it('never flashes the indicator for a fast response', async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    mockFetch({ suggestions: [containerSuggestion()] });
+    const instance = loadWidget().attach({ input: '#a' })!;
+
+    await instance.search('main st');
+    vi.advanceTimersByTime(1000);
+
+    const panel = document.querySelector('[data-riding-lookup]')!.shadowRoot!.querySelector('.panel')!;
+    expect(panel.hasAttribute('data-loading')).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('clears the indicator when the search fails', async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    let rejectFetch!: (reason: unknown) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise((_resolve, reject) => { rejectFetch = reject; })));
+    const instance = loadWidget().attach({ input: '#a' })!;
+
+    const pending = instance.search('main st');
+    vi.advanceTimersByTime(250);
+    const panel = document.querySelector('[data-riding-lookup]')!.shadowRoot!.querySelector('.panel')!;
+    expect(panel.getAttribute('data-loading')).toBe('true');
+
+    rejectFetch(new Error('network down'));
+    await pending;
+    expect(panel.hasAttribute('data-loading')).toBe(false);
+    expect(panel.querySelector('.error')).toBeTruthy();
+    vi.useRealTimers();
+  });
+});
+
+describe('theming', () => {
+  it('ships dark styles gated on prefers-color-scheme, overridable per host', () => {
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    loadWidget().attach({ input: '#a' });
+
+    const css = document.querySelector('[data-riding-lookup]')!.shadowRoot!.querySelector('style')!.textContent!;
+    expect(css).toContain('@media (prefers-color-scheme:dark)');
+    // The media query yields to an explicit light pin; an explicit dark pin wins over a light OS.
+    expect(css).toContain(':host(:not([data-theme="light"]))');
+    expect(css).toContain(':host([data-theme="dark"])');
+  });
+
+  it('pins the palette when the theme option is set', () => {
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    loadWidget().attach({ input: '#a', theme: 'dark' });
+    expect(document.querySelector('[data-riding-lookup]')!.getAttribute('data-theme')).toBe('dark');
+  });
+
+  it('ignores an unknown theme value and follows the OS preference', () => {
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    loadWidget().attach({ input: '#a', theme: 'blue' });
+    expect(document.querySelector('[data-riding-lookup]')!.hasAttribute('data-theme')).toBe(false);
+  });
 });
 
 describe('selection', () => {
@@ -562,7 +684,7 @@ describe('selection', () => {
 });
 
 describe('failure handling', () => {
-  it('emits an error event and clears the list when search fails', async () => {
+  it('emits an error event and renders an inline failure row when search fails', async () => {
     document.body.innerHTML = `<form><input id="a" name="address"></form>`;
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })));
     const instance = loadWidget().attach({ input: '#a' })!;
@@ -573,7 +695,30 @@ describe('failure handling', () => {
 
     expect(results).toEqual([]);
     expect(errors).toHaveLength(1);
-    expect(instance.input.getAttribute('aria-expanded')).toBe('false');
+    // The failure is shown inline, not just emitted: a silent close reads as "no results".
+    const root = document.querySelector('[data-riding-lookup]')!.shadowRoot!;
+    expect(root.querySelector('.panel')!.getAttribute('data-open')).toBe('true');
+    expect(root.querySelector('.error')!.textContent).toContain('Search unavailable');
+    expect(root.querySelector('.status')!.textContent).toBe('Search unavailable');
+    expect(instance.input.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('replaces the failure row with results once a later search succeeds', async () => {
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    let fail = true;
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      if (fail) return { ok: false, status: 503, json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => ({ suggestions: [containerSuggestion()] }) };
+    }));
+    const instance = loadWidget().attach({ input: '#a' })!;
+
+    await instance.search('main st');
+    fail = false;
+    await instance.search('main st e');
+
+    const root = document.querySelector('[data-riding-lookup]')!.shadowRoot!;
+    expect(root.querySelector('.error')).toBeNull();
+    expect(root.querySelector('.item')).toBeTruthy();
   });
 
   it('does not throw when the riding lookup fails after a good search', async () => {
@@ -667,6 +812,36 @@ describe('accessibility', () => {
     const listId = instance.input.getAttribute('aria-controls');
     const host = document.querySelector('[data-riding-lookup]')!;
     expect(host.shadowRoot!.getElementById(listId!)).toBeTruthy();
+  });
+
+  it('labels the listbox for screen readers', () => {
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    loadWidget().attach({ input: '#a' });
+    const panel = document.querySelector('[data-riding-lookup]')!.shadowRoot!.querySelector('.panel')!;
+    expect(panel.getAttribute('aria-label')).toBe('Address suggestions');
+  });
+
+  it('announces the result count through a polite live region', async () => {
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    mockFetch({ suggestions: [containerSuggestion(), leafSuggestion()] });
+    const instance = loadWidget().attach({ input: '#a' })!;
+
+    const status = document.querySelector('[data-riding-lookup]')!.shadowRoot!.querySelector('.status')!;
+    expect(status.getAttribute('aria-live')).toBe('polite');
+    expect(status.getAttribute('role')).toBe('status');
+
+    await instance.search('main');
+    expect(status.textContent).toBe('2 suggestions');
+  });
+
+  it('uses the singular for exactly one suggestion', async () => {
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    mockFetch({ suggestions: [leafSuggestion()] });
+    const instance = loadWidget().attach({ input: '#a' })!;
+
+    await instance.search('250 main');
+    const status = document.querySelector('[data-riding-lookup]')!.shadowRoot!.querySelector('.status')!;
+    expect(status.textContent).toBe('1 suggestion');
   });
 
   it('moves the active option with the arrow keys and reflects it in aria-activedescendant', async () => {

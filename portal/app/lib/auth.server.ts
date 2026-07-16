@@ -5,23 +5,35 @@ import { getDb } from '~/lib/db.server';
 import { env } from '~/lib/env.server';
 import { authSchema } from '~/db/schema';
 
-let authInstance: ReturnType<typeof createBetterAuth> | null = null;
-
-export function getAuth() {
+function buildAuth() {
   const { authSecret, baseUrl } = env();
   if (!authSecret) throw new Error('AUTH_SECRET is required');
 
+  return createBetterAuth({
+    secret: authSecret,
+    baseURL: baseUrl,
+    trustedOrigins: [baseUrl],
+    database: drizzleAdapter(getDb(), {
+      provider: 'pg',
+      schema: authSchema,
+    }),
+    emailAndPassword: { enabled: true },
+    advanced: {
+      database: {
+        // The CHS auth schema uses uuid primary keys; better-auth's default
+        // nanoid-style ids are rejected by Postgres ("invalid input syntax
+        // for type uuid").
+        generateId: () => crypto.randomUUID(),
+      },
+    },
+  });
+}
+
+let authInstance: ReturnType<typeof buildAuth> | null = null;
+
+export function getAuth() {
   if (!authInstance) {
-    authInstance = createBetterAuth({
-      secret: authSecret,
-      baseURL: baseUrl,
-      trustedOrigins: [baseUrl],
-      database: drizzleAdapter(getDb(), {
-        provider: 'pg',
-        schema: authSchema,
-      }),
-      emailAndPassword: { enabled: true },
-    }) as ReturnType<typeof createBetterAuth>;
+    authInstance = buildAuth();
   }
   return authInstance;
 }

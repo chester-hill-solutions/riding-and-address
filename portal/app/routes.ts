@@ -5,6 +5,7 @@ export default [
   route('login', 'routes/login.tsx'),
   route('signup', 'routes/signup.tsx'),
   route('api/auth/*', 'routes/api.auth.$.ts'),
+  route('api/stripe/webhook', 'routes/api.stripe-webhook.ts'),
   route('app', 'routes/app.tsx', [
     index('routes/app._index.tsx'),
     route('keys', 'routes/app.keys.tsx'),

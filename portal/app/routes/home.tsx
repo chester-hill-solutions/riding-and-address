@@ -1,4 +1,16 @@
 import { Link } from 'react-router';
+import type { Route } from './+types/home';
+
+export function meta(): Route.MetaDescriptors {
+  return [
+    { title: 'Riding Lookup portal' },
+    {
+      name: 'description',
+      content:
+        'Customer portal for the Riding Lookup API: mint Server and Browser keys, watch monthly usage, and manage fuse settings.',
+    },
+  ];
+}
 
 export default function Home() {
   return (

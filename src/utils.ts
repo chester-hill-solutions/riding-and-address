@@ -594,6 +594,21 @@ export function badRequest(message: string, status = 400, code?: string, correla
   });
 }
 
+/**
+ * 5xx response that does not leak internals. The real error goes to the log, keyed by correlation
+ * ID so it can be found; the client gets a generic message in the exact same ErrorResponse shape
+ * as badRequest(). 4xx validation messages are intentional and should keep using badRequest.
+ */
+export function internalErrorResponse(
+  error: unknown,
+  context: string,
+  correlationId?: string,
+  code = 'INTERNAL_ERROR'
+): Response {
+  console.error(`[${correlationId ?? 'no-correlation-id'}] ${context}:`, error);
+  return badRequest('Internal error', 500, code, correlationId);
+}
+
 export function unauthorizedResponse(correlationId?: string): Response {
   const errorResponse: ErrorResponse = {
     error: "Unauthorized",
@@ -645,7 +660,7 @@ function verifyBasicAuthCredentials(request: Request, env: Env): boolean {
 }
 
 /** Compare without an early exit, so response time does not leak how much of the secret matched. */
-function timingSafeEqual(a: string, b: string): boolean {
+export function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i++) {
@@ -655,24 +670,19 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 /**
- * Checks if the request is authorized for lookup/geocoding routes.
- *
- * Security Model:
- * - If BASIC_AUTH is not configured, authentication is skipped (all requests allowed)
- * - If X-Google-API-Key header is provided, basic auth is bypassed (BYOK - Bring Your Own Key)
- * - Otherwise, HTTP Basic Authentication is required using the configured BASIC_AUTH secret
- */
-/**
  * Basic auth for user-level routes.
  *
- * `X-Google-API-Key` used to grant access outright, by presence alone and with any value at all
- * (`curl -H 'X-Google-API-Key: garbage'` was a complete bypass on every protected route). The
- * header's real job is BYOK: it supplies the caller's own Google key for geocoding. Bringing a
- * geocoding key is not the same as being authorized to use this service, so it no longer
- * authenticates anything.
+ * Security Model:
+ * - Fails CLOSED: if BASIC_AUTH is not configured, nothing is authorized. For local dev, set
+ *   BASIC_AUTH in .dev.vars (wrangler dev picks it up); in prod: wrangler secret put BASIC_AUTH.
+ * - `X-Google-API-Key` used to grant access outright, by presence alone and with any value at all
+ *   (`curl -H 'X-Google-API-Key: garbage'` was a complete bypass on every protected route). The
+ *   header's real job is BYOK: it supplies the caller's own Google key for geocoding. Bringing a
+ *   geocoding key is not the same as being authorized to use this service, so it no longer
+ *   authenticates anything.
  */
 export function checkBasicAuth(request: Request, env: Env): boolean {
-  if (!env.BASIC_AUTH) return true;
+  if (!env.BASIC_AUTH) return false;
   return verifyBasicAuthCredentials(request, env);
 }
 
@@ -695,9 +705,13 @@ export function hasValidBasicAuth(request: Request, env: Env): boolean {
 /**
  * Checks if the request is authorized for admin/diagnostic routes.
  * BYOK bypass is intentionally not allowed here.
+ *
+ * Fails CLOSED: when BASIC_AUTH is unset, admin routes (/metrics, /webhooks, /api/database/*,
+ * /admin/circuit-breaker/reset, /api/cache/warm, queue endpoints) are locked, not open. An
+ * unconfigured secret must never expose operator surfaces on a public deployment.
  */
 export function checkAdminAuth(request: Request, env: Env): boolean {
-  if (!env.BASIC_AUTH) return true;
+  if (!env.BASIC_AUTH) return false;
   return verifyBasicAuthCredentials(request, env);
 }
 

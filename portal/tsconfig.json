@@ -9,7 +9,14 @@
     "jsx": "react-jsx",
     "rootDirs": [".", "./.react-router/types"],
     "baseUrl": ".",
-    "paths": { "~/*": ["./app/*"] },
+    "paths": {
+      "~/*": ["./app/*"],
+      // Force a single drizzle-orm type identity: the CHS file: packages would
+      // otherwise resolve drizzle-orm from their own workspace node_modules,
+      // producing structurally-identical but nominally-distinct types.
+      "drizzle-orm": ["./node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["./node_modules/drizzle-orm/*"]
+    },
     "esModuleInterop": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,

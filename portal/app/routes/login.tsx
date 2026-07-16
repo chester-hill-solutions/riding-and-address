@@ -1,6 +1,16 @@
-import { Form, Link, redirect, useActionData } from 'react-router';
+import { Form, Link, redirect } from 'react-router';
 import type { Route } from './+types/login';
 import { getAuth } from '~/lib/auth.server';
+import { Panel } from '~/components/Panel';
+import { FormFeedback } from '~/components/FormFeedback';
+import { SubmitButton } from '~/components/SubmitButton';
+
+export function meta(): Route.MetaDescriptors {
+  return [
+    { title: 'Log in · Riding Lookup portal' },
+    { name: 'description', content: 'Sign in to manage keys, usage, and fuse settings.' },
+  ];
+}
 
 export async function action({ request }: Route.ActionArgs) {
   const form = await request.formData();
@@ -22,8 +32,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 }
 
-export default function Login() {
-  const data = useActionData<typeof action>();
+export default function Login({ actionData }: Route.ComponentProps) {
   return (
     <main className="shell">
       <nav className="nav">
@@ -31,20 +40,25 @@ export default function Login() {
           Riding Lookup
         </Link>
       </nav>
-      <section className="panel">
-        <h1>Log in</h1>
-        {data && 'error' in data && data.error ? <p className="error">{data.error}</p> : null}
+      <Panel title="Log in">
+        <FormFeedback error={actionData?.error} />
         <Form method="post">
           <label htmlFor="email">Email</label>
           <input id="email" name="email" type="email" required autoComplete="email" />
           <label htmlFor="password">Password</label>
-          <input id="password" name="password" type="password" required autoComplete="current-password" />
-          <button type="submit">Continue</button>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            required
+            autoComplete="current-password"
+          />
+          <SubmitButton pendingText="Signing in…">Continue</SubmitButton>
         </Form>
         <p className="muted">
           No account? <Link to="/signup">Sign up</Link>
         </p>
-      </section>
+      </Panel>
     </main>
   );
 }

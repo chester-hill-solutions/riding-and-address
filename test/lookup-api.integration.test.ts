@@ -94,10 +94,15 @@ describe('lookup API integration (PR manual test plan)', () => {
   });
 
   it('POST /batch supports include_province and return fields', async () => {
-    const env = createLookupTestEnv();
+    // /batch falls back to operator BASIC_AUTH when API keys are off; auth now fails closed,
+    // so the test must present real credentials instead of relying on an unset secret.
+    const env = { ...createLookupTestEnv(), BASIC_AUTH: 'admin:secret' };
     const response = await fetchLookup(env, '/batch', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${btoa('admin:secret')}`,
+      },
       body: JSON.stringify({
         requests: [
           {

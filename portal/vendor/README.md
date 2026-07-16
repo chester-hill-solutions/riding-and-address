@@ -1,0 +1,21 @@
+# Vendored `@chester-hill-solutions` packages
+
+These packages are vendored so the portal installs in CI and Railway without a sibling
+`chester-hill-solutions` checkout or GitHub Packages `write:packages` publish.
+
+Source of truth remains the CHS monorepo. To refresh after upstream changes:
+
+```bash
+# from ridingLookup/
+for pkg in auth auth-postgres auth-react-router; do
+  (cd ../chester-hill-solutions/packages/$pkg && npx tsc)
+  rm -rf portal/vendor/@chester-hill-solutions/$pkg
+  mkdir -p portal/vendor/@chester-hill-solutions/$pkg
+  cp ../chester-hill-solutions/packages/$pkg/package.json portal/vendor/@chester-hill-solutions/$pkg/
+  cp -R ../chester-hill-solutions/packages/$pkg/dist portal/vendor/@chester-hill-solutions/$pkg/
+done
+# then rewrite package.json deps to file:../auth as needed and npm install in portal/
+```
+
+Prefer publishing to GitHub Packages (see `portal/.npmrc`) when `write:packages` is available,
+then switch `portal/package.json` to semver ranges and remove this vendor tree.

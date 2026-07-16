@@ -195,6 +195,19 @@ export async function handleSearchRoute(
     );
   }
 
+  // Post-auth CORS: when a browser key's origin allowlist just matched this Origin, echo the
+  // origin (with Vary) instead of the env-level wildcard, so browsers and shared caches scope
+  // the response to the origin that was actually authorized. Never adds Allow-Credentials —
+  // that stays reserved for origins matched against ALLOWED_ORIGINS in getCorsHeaders.
+  const corsHeaders = (): Record<string, string> => {
+    const headers = getCorsHeaders(origin);
+    if (auth.key && origin) {
+      headers['Access-Control-Allow-Origin'] = origin;
+      headers['Vary'] = 'Origin';
+    }
+    return headers;
+  };
+
   if (auth.key) {
     const usage = await consumeDailyQuota(env, auth.key.id, auth.key.dailyLimit);
     if (!usage.allowed) {
@@ -210,7 +223,7 @@ export async function handleSearchRoute(
           headers: {
             'content-type': 'application/json; charset=UTF-8',
             'Retry-After': String(secondsUntilUtcMidnight()),
-            ...getCorsHeaders(origin),
+            ...corsHeaders(),
           },
         }
       );
@@ -221,7 +234,7 @@ export async function handleSearchRoute(
   try {
     params = parseSuggestQuery(url, env, config.limit, config.maxLimit);
   } catch (error) {
-    return suggestErrorResponse(error, correlationId, getCorsHeaders(origin));
+    return suggestErrorResponse(error, correlationId, corsHeaders());
   }
 
   const respond = async (
@@ -245,7 +258,7 @@ export async function handleSearchRoute(
           status: billed.status,
           headers: {
             'content-type': 'application/json; charset=UTF-8',
-            ...getCorsHeaders(origin),
+            ...corsHeaders(),
           },
         });
       }
@@ -273,7 +286,7 @@ export async function handleSearchRoute(
           ? `private, max-age=${maxAge}`
           : `public, max-age=${maxAge}, s-maxage=${maxAge * 5}`,
         'X-Cache-Status': cacheStatus,
-        ...getCorsHeaders(origin),
+        ...corsHeaders(),
       },
     });
   };
@@ -316,7 +329,7 @@ export async function handleSearchRoute(
   } catch (error) {
     incrementMetric('suggestErrors');
     recordTiming('totalSuggestTime', Date.now() - startTime);
-    return suggestErrorResponse(error, correlationId, getCorsHeaders(origin));
+    return suggestErrorResponse(error, correlationId, corsHeaders());
   }
 }
 

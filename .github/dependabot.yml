@@ -9,6 +9,15 @@ updates:
         dependency-type: development
         patterns:
           - "*"
+  - package-ecosystem: npm
+    directory: "/portal"
+    schedule:
+      interval: weekly
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        patterns:
+          - "*"
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

@@ -5,6 +5,13 @@ import { ServerRouter } from 'react-router';
 import { isbot } from 'isbot';
 import type { RenderToPipeableStreamOptions } from 'react-dom/server';
 import { renderToPipeableStream } from 'react-dom/server';
+import { requireEnv } from '~/lib/env.server';
+
+// Fail fast at boot when production is missing required configuration
+// (database, auth secret, base URL, Worker projection, email).
+if (process.env.NODE_ENV === 'production') {
+  requireEnv();
+}
 
 export const streamTimeout = 5000;
 

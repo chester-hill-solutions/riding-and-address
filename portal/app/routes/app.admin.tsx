@@ -1,10 +1,20 @@
-import { Form, useLoaderData } from 'react-router';
+import { Form } from 'react-router';
 import type { Route } from './+types/app.admin';
 import { isFounder, requireSessionUserId } from '~/lib/auth.server';
 import { getDb } from '~/lib/db.server';
 import { customerBilling } from '~/db/schema';
 import { eq } from 'drizzle-orm';
 import { upsertCustomerProjection } from '~/lib/projection.server';
+import { Panel } from '~/components/Panel';
+import { FormFeedback } from '~/components/FormFeedback';
+import { SubmitButton } from '~/components/SubmitButton';
+
+export function meta(): Route.MetaDescriptors {
+  return [
+    { title: 'Founder admin · Riding Lookup portal' },
+    { name: 'description', content: 'Flip Enterprise batch access for Customers.' },
+  ];
+}
 
 export async function loader({ request }: Route.LoaderArgs) {
   const userId = await requireSessionUserId(request);
@@ -30,37 +40,50 @@ export async function action({ request }: Route.ActionArgs) {
   const billing = rows[0];
   if (!billing) return { error: 'Customer not found' };
 
-  await getDb()
-    .update(customerBilling)
-    .set({ batchEnabled, plan: batchEnabled ? 'enterprise' : billing.plan, updatedAt: new Date() })
-    .where(eq(customerBilling.customerId, customerId));
+  try {
+    await getDb()
+      .update(customerBilling)
+      .set({
+        batchEnabled,
+        plan: batchEnabled ? 'enterprise' : billing.plan,
+        updatedAt: new Date(),
+      })
+      .where(eq(customerBilling.customerId, customerId));
 
-  await upsertCustomerProjection({
-    id: billing.customerId,
-    plan: batchEnabled ? 'enterprise' : billing.plan,
-    fuseLimit: billing.fuseLimit,
-    fuseSoftWarn: billing.fuseSoftWarn,
-    batchEnabled,
-    stripeCustomerId: billing.stripeCustomerId || undefined,
-  });
+    await upsertCustomerProjection({
+      id: billing.customerId,
+      plan: batchEnabled ? 'enterprise' : billing.plan,
+      fuseLimit: billing.fuseLimit,
+      fuseSoftWarn: billing.fuseSoftWarn,
+      batchEnabled,
+      stripeCustomerId: billing.stripeCustomerId || undefined,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not update the Customer' };
+  }
 
-  return { ok: true };
+  return { ok: true as const, customerId };
 }
 
-export default function AdminPage() {
-  const data = useLoaderData<typeof loader>();
-  if (!data.allowed) {
+export default function AdminPage({ loaderData, actionData }: Route.ComponentProps) {
+  if (!loaderData.allowed) {
     return (
-      <section className="panel">
-        <h1>Founder admin</h1>
+      <Panel title="Founder admin">
         <p className="muted">Your user is not listed in FOUNDER_USER_IDS.</p>
-      </section>
+      </Panel>
     );
   }
   return (
-    <section className="panel">
-      <h1>Founder admin</h1>
+    <Panel title="Founder admin">
       <p className="muted">Flip Enterprise batchEnabled after a sales contract.</p>
+      <FormFeedback
+        error={actionData && 'error' in actionData ? actionData.error : null}
+        success={
+          actionData && 'ok' in actionData && actionData.ok
+            ? `Saved ${actionData.customerId}.`
+            : null
+        }
+      />
       <table>
         <thead>
           <tr>
@@ -71,7 +94,7 @@ export default function AdminPage() {
           </tr>
         </thead>
         <tbody>
-          {data.customers.map((c) => (
+          {loaderData.customers.map((c) => (
             <tr key={c.customerId}>
               <td>
                 <code>{c.customerId}</code>
@@ -85,13 +108,13 @@ export default function AdminPage() {
                     <input type="checkbox" name="batchEnabled" defaultChecked={c.batchEnabled} />{' '}
                     batchEnabled
                   </label>
-                  <button type="submit">Save</button>
+                  <SubmitButton pendingText="Saving…">Save</SubmitButton>
                 </Form>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-    </section>
+    </Panel>
   );
 }

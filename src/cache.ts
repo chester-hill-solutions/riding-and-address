@@ -222,8 +222,6 @@ export async function warmCacheForLocation(
         const cacheKey = generateLookupCacheKey({ lat, lon }, dataset.pathname);
         const datasetName = dataset.r2Key.replace('.geojson', '');
         await setCachedLookupResult(env, cacheKey, result, datasetName, { lon, lat });
-        
-        console.log(`Cache warmed for ${locationName} on ${dataset.pathname}`);
       } catch (error) {
         console.warn(`Failed to warm cache for ${locationName} on ${dataset.pathname}:`, error);
       }
@@ -307,8 +305,6 @@ export async function performCacheWarming(
   cacheWarmingState.failureCount = 0;
 
   try {
-    console.log("Starting cache warming process...");
-
     // Calculate total batches
     const totalLocations = CACHE_WARMING_CONFIG.POPULAR_LOCATIONS.length + CACHE_WARMING_CONFIG.POPULAR_POSTAL_CODES.length;
     cacheWarmingState.totalBatches = Math.ceil(totalLocations / CACHE_WARMING_CONFIG.BATCH_SIZE);
@@ -317,8 +313,6 @@ export async function performCacheWarming(
     for (let i = 0; i < CACHE_WARMING_CONFIG.POPULAR_LOCATIONS.length; i += CACHE_WARMING_CONFIG.BATCH_SIZE) {
       const batch = CACHE_WARMING_CONFIG.POPULAR_LOCATIONS.slice(i, i + CACHE_WARMING_CONFIG.BATCH_SIZE);
       cacheWarmingState.currentBatch++;
-
-      console.log(`Warming batch ${cacheWarmingState.currentBatch}/${cacheWarmingState.totalBatches} (locations)`);
 
       const promises = batch.map(async (location) => {
         const success = await warmCacheForLocation(env, location.lat, location.lon, location.name, loadGeo, lookupRiding);
@@ -341,8 +335,6 @@ export async function performCacheWarming(
       const batch = CACHE_WARMING_CONFIG.POPULAR_POSTAL_CODES.slice(i, i + CACHE_WARMING_CONFIG.BATCH_SIZE);
       cacheWarmingState.currentBatch++;
 
-      console.log(`Warming batch ${cacheWarmingState.currentBatch}/${cacheWarmingState.totalBatches} (postal codes)`);
-
       const promises = batch.map(async (postalCode) => {
         const success = await warmCacheForPostalCode(env, postalCode, loadGeo, lookupRiding);
         if (success) {
@@ -361,8 +353,7 @@ export async function performCacheWarming(
 
     cacheWarmingState.lastWarmed = now;
     cacheWarmingState.nextWarmingTime = now + CACHE_WARMING_CONFIG.WARMING_INTERVAL;
-
-    console.log(`Cache warming completed. Success: ${cacheWarmingState.successCount}, Failures: ${cacheWarmingState.failureCount}`);
+    // Outcome counts are surfaced via getCacheWarmingStatus() and the [Cron] completion log.
   } catch (error) {
     console.error("Cache warming process failed:", error);
     cacheWarmingState.lastError = error instanceof Error ? error.message : 'Unknown error';

@@ -1,42 +1,23 @@
-import { Form, Link, Outlet, redirect } from 'react-router';
+import { Form, Link, Outlet } from 'react-router';
 import type { Route } from './+types/app';
-import { requireSessionUserId } from '~/lib/auth.server';
-import { ensureCustomerForUser, getBilling } from '~/lib/customer.server';
-import { eq } from 'drizzle-orm';
-import { getDb } from '~/lib/db.server';
-import { workspaceMembers } from '~/db/schema';
+import { requireCustomer } from '~/lib/customer.server';
+import { isFounder } from '~/lib/auth.server';
+import { SubmitButton } from '~/components/SubmitButton';
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const userId = await requireSessionUserId(request);
-
-  const memberships = await getDb()
-    .select()
-    .from(workspaceMembers)
-    .where(eq(workspaceMembers.userId, userId))
-    .limit(1);
-
-  let billing = memberships[0]
-    ? await getBilling(memberships[0].workspaceId)
-    : null;
-
-  if (!billing) {
-    billing = await ensureCustomerForUser(userId, 'My organization');
-  }
-  if (!billing) {
-    throw redirect('/signup');
-  }
-
+  const { userId, billing } = await requireCustomer(request);
   return {
     userId,
     workspaceId: billing.workspaceId,
     customerId: billing.customerId,
     plan: billing.plan,
     batchEnabled: billing.batchEnabled,
+    showAdmin: isFounder(userId),
   };
 }
 
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
-  const { customerId, plan } = loaderData;
+  const { customerId, plan, showAdmin } = loaderData;
   return (
     <main className="shell">
       <nav className="nav">
@@ -48,11 +29,11 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
         <Link to="/app/billing">Billing</Link>
         <Link to="/app/invites">Invites</Link>
         <Link to="/app/settings">Fuse</Link>
-        <Link to="/app/admin">Admin</Link>
+        {showAdmin ? <Link to="/app/admin">Admin</Link> : null}
         <Form method="post" action="/api/auth/sign-out">
-          <button type="submit" className="secondary">
+          <SubmitButton className="secondary" pendingText="Signing out…">
             Sign out
-          </button>
+          </SubmitButton>
         </Form>
       </nav>
       <p className="muted">

@@ -94,4 +94,41 @@ describe('recordSuccessfulBillable', () => {
     expect(result.allowed).toBe(true);
     expect(fetchMock).toHaveBeenCalled();
   });
+
+  it('fail-closes hard fuse when monthly DO is missing', async () => {
+    const env = { FREE_MONTHLY_ALLOWANCE: '1000' } as unknown as Env;
+    const customer: CustomerRecord = {
+      id: 'cust_acme',
+      plan: 'free',
+      fuseLimit: 1000,
+      fuseSoftWarn: false,
+    };
+    const result = await recordSuccessfulBillable(env, { key: KEY, customer });
+    expect(result.allowed).toBe(false);
+    expect(result.status).toBe(429);
+    expect(result.body?.code).toBe('FUSE_EXCEEDED');
+  });
+
+  it('fail-closes hard fuse when monthly DO throws', async () => {
+    const env = {
+      FREE_MONTHLY_ALLOWANCE: '1000',
+      API_KEY_USAGE: {
+        idFromName: () => 'id',
+        get: () => ({
+          fetch: async () => {
+            throw new Error('DO unavailable');
+          },
+        }),
+      },
+    } as unknown as Env;
+    const customer: CustomerRecord = {
+      id: 'cust_acme',
+      plan: 'free',
+      fuseLimit: 1000,
+      fuseSoftWarn: false,
+    };
+    const result = await recordSuccessfulBillable(env, { key: KEY, customer });
+    expect(result.allowed).toBe(false);
+    expect(result.status).toBe(429);
+  });
 });

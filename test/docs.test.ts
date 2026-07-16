@@ -122,6 +122,13 @@ describe('GET /api/search is documented', () => {
     expect(JSON.stringify(responses)).toContain('SUGGEST_INDEX_MISSING');
   });
 
+  it('accepts either basic auth or a browser API key', () => {
+    // The route itself takes EITHER: server-to-server callers use basic auth, the embed widget
+    // presents a public pk_ key. Declaring only basicAuth told browser integrators they could not
+    // call it at all.
+    expect(searchOp().security).toEqual([{ basicAuth: [] }, { apiKey: [] }]);
+  });
+
   it('tells integrators that riding is resolved separately', () => {
     // The single most important thing to convey: suggestions carry no riding.
     const description = String((searchOp() as { description?: string }).description);
@@ -131,6 +138,44 @@ describe('GET /api/search is documented', () => {
 
   it('is listed on the landing page', () => {
     expect(createLandingPage(BASE)).toContain('/api/search');
+  });
+});
+
+describe('keyless demo tier', () => {
+  const DEMO_PATHS = [
+    '/api/demo/federal',
+    '/api/demo/combined',
+    '/api/demo/geocode',
+    '/api/demo/reverse',
+    '/api/demo/normalize-address',
+  ];
+
+  it('documents every demo mirror with no security requirement', () => {
+    const s = spec();
+    for (const path of DEMO_PATHS) {
+      const op = s.paths[path]?.get;
+      expect(op, `${path} is undocumented`).toBeDefined();
+      // Keyless is the point of the tier: any security requirement here would be a lie.
+      expect(op.security, `${path} must not require auth`).toBeUndefined();
+      expect(op.tags).toContain('Demo');
+      expect(Object.keys(op.responses ?? {}), `${path} must document the demo rate limit`).toContain('429');
+    }
+  });
+
+  it('explains the per-IP rate limit and that demo calls are not billable', () => {
+    const description = String(
+      (spec().paths['/api/demo/federal'].get as { description?: string }).description
+    );
+    expect(description).toMatch(/rate.?limit/i);
+    expect(description).toMatch(/not billable/i);
+    expect(description).toContain('/api/demo');
+  });
+
+  it('takes the same lookup parameters as the mirrored route', () => {
+    const s = spec();
+    const real = (s.paths['/api/federal'].get.parameters ?? []).map((p) => p.name);
+    const demo = (s.paths['/api/demo/federal'].get.parameters ?? []).map((p) => p.name);
+    expect(demo).toEqual(real);
   });
 });
 

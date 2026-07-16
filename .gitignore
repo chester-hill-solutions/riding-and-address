@@ -1,5 +1,8 @@
 .dev.vars
 .env
+
+# Dead build output: wrangler builds from src/worker.ts, nothing serves dist/
+dist/
 .wrangler
 .oda-import
 .keys

@@ -237,6 +237,22 @@ describe('browser key gate on /api/search', () => {
           return keys[name.replace(/^key:/, '')] ?? null;
         },
       },
+      // Hard monthly fuse fail-closes without the DO; tests that expect 200 need a permissive stub.
+      API_KEY_USAGE: env.API_KEY_USAGE ?? {
+        idFromName: () => 'id',
+        get: () => ({
+          fetch: async () =>
+            new Response(
+              JSON.stringify({
+                allowed: true,
+                count: 1,
+                limit: 1000,
+                day: '2026-07-16',
+                month: '2026-07',
+              })
+            ),
+        }),
+      },
     } as unknown as Env;
   }
 

@@ -26,15 +26,11 @@
       "id": "3b23842cd96b40369311f52298a987cf"
     },
     // Customer keys + customer:{id} projection. While unbound, key gates stay off (legacy open API).
-    // Enable for chargeable prod/staging:
-    //   wrangler kv namespace create API_KEYS
-    //   wrangler kv namespace create API_KEYS --env staging
-    //   (paste ids below / under env.staging, redeploy)
-    //   npm run keys -- customer create --id cust_demo --plan free --remote
-    //   npm run keys -- create-server --customer cust_demo --remote
+    // Namespace created 2026-07-16. Leave commented for soft free API; uncomment + redeploy
+    // for metered free tier / commercial launch (then seed customers via `npm run keys`).
     // {
     //   "binding": "API_KEYS",
-    //   "id": "PASTE_KV_NAMESPACE_ID_HERE"
+    //   "id": "2d0152b0958c48fab4a98b3046e0c08e"
     // }
   ],
 
@@ -77,7 +73,11 @@
     // Optional: set fallback geocoding provider. Supported: "nominatim" (default), "mapbox", or "google"
     // For Mapbox, set MAPBOX_TOKEN as a secret: wrangler secret put MAPBOX_TOKEN
     // For Google, set GOOGLE_MAPS_KEY as a secret: wrangler secret put GOOGLE_MAPS_KEY
-    // Basic auth credentials in format "username:password" (base64 encoded)
+    // BASIC_AUTH (operator secret, "username:password") MUST be set: admin/diagnostic routes
+    // (/metrics, /webhooks, /api/database/*, /admin/circuit-breaker/reset, /api/cache/warm,
+    // queue endpoints) fail CLOSED and return 401 when it is unset.
+    //   prod/staging: wrangler secret put BASIC_AUTH
+    //   local dev:    add BASIC_AUTH=user:pass to .dev.vars (picked up by wrangler dev)
     // Batch processing configuration
     "BATCH_SIZE": 50,
     "BATCH_TIMEOUT": 30000,
@@ -138,29 +138,29 @@
       "kv_namespaces": [
         {
           "binding": "GEOCODING_CACHE",
-          "id": "PASTE_STAGING_GEOCODING_CACHE_ID"
+          "id": "420ccb1d5ffa4ee1806f15c28785b006"
         },
         {
           "binding": "LOOKUP_CACHE",
-          "id": "PASTE_STAGING_LOOKUP_CACHE_ID"
+          "id": "eaa5ed634c30410f8f0b7d680de7ad31"
         },
         {
           "binding": "WEBHOOKS",
-          "id": "PASTE_STAGING_WEBHOOKS_ID"
+          "id": "1e6ef0958b124067a0f453ea451c8667"
         }
-        // Uncomment when ready:
-        // { "binding": "API_KEYS", "id": "PASTE_STAGING_API_KEYS_ID" }
+        // Namespace created 2026-07-16. Uncomment with prod when enabling key gates:
+        // { "binding": "API_KEYS", "id": "363048976bc74248b091f69510a1b759" }
       ],
       "d1_databases": [
         {
           "binding": "ODA_DB",
           "database_name": "oda-addresses-staging",
-          "database_id": "PASTE_STAGING_ODA_DB_ID"
+          "database_id": "ddc57d33-273b-41d0-b4f9-cd7545110be9"
         },
         {
           "binding": "RIDING_DB",
           "database_name": "riding-lookup-db-staging",
-          "database_id": "PASTE_STAGING_RIDING_DB_ID"
+          "database_id": "b78db82b-2ee3-40f0-a52a-15f93706790d"
         }
       ],
       "durable_objects": {

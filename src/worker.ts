@@ -29,8 +29,9 @@ import {
   ridingNameFromProperties,
   checkAdminAuth,
   hasValidBasicAuth,
-  badRequest, 
-  unauthorizedResponse, 
+  badRequest,
+  internalErrorResponse,
+  unauthorizedResponse,
   rateLimitExceededResponse,
   checkRateLimit,
   getClientId,
@@ -46,6 +47,7 @@ import {
   queryRidingFromDatabase,
   initializeSpatialDatabase,
   getAllFeaturesFromDatabase,
+  getSpatialDatabaseStats,
   syncGeoJSONToDatabase,
   getSpatialDbConfig
 } from './spatial';
@@ -332,14 +334,15 @@ export default {
       const pathname = url.pathname;
       
       const getCorsHeaders = (origin?: string | null): Record<string, string> => {
-        const allowedOrigin = resolveCorsOrigin(env, origin);
+        const cors = resolveCorsOrigin(env, origin);
         return {
-          'Access-Control-Allow-Origin': allowedOrigin,
+          'Access-Control-Allow-Origin': cors.allowOrigin,
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
           'Access-Control-Allow-Headers':
             'Content-Type, Authorization, X-Api-Key, X-Google-API-Key, X-Correlation-ID, X-Request-ID',
           'Access-Control-Max-Age': '86400',
-          ...(allowedOrigin !== '*' ? { 'Access-Control-Allow-Credentials': 'true' } : {}),
+          // Credentials only for an origin explicitly matched against the configured allowlist.
+          ...(cors.allowCredentials ? { 'Access-Control-Allow-Credentials': 'true' } : {}),
           'X-Correlation-ID': correlationId,
           ...securityHeaders(),
         };
@@ -566,10 +569,7 @@ export default {
               }
             });
           } catch (error) {
-            return badRequest(
-              error instanceof Error ? error.message : "Database initialization failed",
-              500
-            );
+            return internalErrorResponse(error, 'Database initialization failed', correlationId);
           }
         }
         
@@ -594,10 +594,7 @@ export default {
               }
             });
           } catch (error) {
-            return badRequest(
-              error instanceof Error ? error.message : "Database sync failed",
-              500
-            );
+            return internalErrorResponse(error, 'Database sync failed', correlationId);
           }
         }
         
@@ -607,24 +604,20 @@ export default {
           }
           
           try {
-            // This would need to be implemented to get actual database stats
-            const dbConfig = getSpatialDbConfig(env);
+            const stats = await getSpatialDatabaseStats(env);
             return new Response(JSON.stringify({
-              enabled: dbConfig.ENABLED,
-              features: 0, // Would need actual count
-              lastSync: null, // Would need actual timestamp
-              status: dbConfig.ENABLED ? "active" : "disabled"
+              enabled: stats !== null,
+              status: stats !== null ? "active" : "disabled",
+              // Real D1 counts only — no placeholder fields when the database is disabled.
+              ...(stats !== null ? { features: stats.features, lastSync: stats.lastSync } : {})
             }), {
-              headers: { 
+              headers: {
                 "content-type": "application/json; charset=UTF-8",
                 'Access-Control-Allow-Origin': '*'
               }
             });
           } catch (error) {
-            return badRequest(
-              error instanceof Error ? error.message : "Failed to get database stats",
-              500
-            );
+            return internalErrorResponse(error, 'Failed to get database stats', correlationId);
           }
         }
         
@@ -646,10 +639,7 @@ export default {
               }
             });
           } catch (error) {
-            return badRequest(
-              error instanceof Error ? error.message : "Database query failed",
-              500
-            );
+            return internalErrorResponse(error, 'Database query failed', correlationId);
           }
         }
         
@@ -675,10 +665,7 @@ export default {
               }
             });
           } catch (error) {
-            return badRequest(
-              error instanceof Error ? error.message : "Boundaries lookup failed",
-              500
-            );
+            return internalErrorResponse(error, 'Boundaries lookup failed', correlationId);
           }
         }
         
@@ -701,10 +688,7 @@ export default {
               return badRequest('Spatial database not enabled', 503);
             }
           } catch (error) {
-            return badRequest(
-              error instanceof Error ? error.message : "Failed to get boundaries",
-              500
-            );
+            return internalErrorResponse(error, 'Failed to get boundaries', correlationId);
           }
         }
         
@@ -762,9 +746,9 @@ export default {
             for (const location of locations) {
               if (location.lat && location.lon) {
                 await loadGeo(env, 'federalridings-2024.geojson');
-              } else if (location.postal) {
-                console.log(`Cache warming for postal code: ${location.postal}`);
               }
+              // Postal-only entries have never warmed anything here; geocoding them first
+              // would be required, and that work belongs to performCacheWarming.
             }
             
             return new Response(JSON.stringify({
@@ -778,10 +762,7 @@ export default {
               }
             });
           } catch (error) {
-            return badRequest(
-              error instanceof Error ? error.message : "Cache warming failed",
-              500
-            );
+            return internalErrorResponse(error, 'Cache warming failed', correlationId);
           }
         } else {
           return badRequest("Method not allowed", 405);
@@ -840,10 +821,7 @@ export default {
               }
             });
           } catch (error) {
-            return badRequest(
-              error instanceof Error ? error.message : "Failed to create webhook",
-              500
-            );
+            return internalErrorResponse(error, 'Failed to create webhook', correlationId);
           }
         }
         
@@ -986,10 +964,7 @@ export default {
               }
             });
           } catch (error) {
-            return badRequest(
-              error instanceof Error ? error.message : "Batch processing failed",
-              500
-            );
+            return internalErrorResponse(error, 'Batch processing failed', correlationId);
           }
         }
         
@@ -1004,10 +979,7 @@ export default {
               }
             });
           } catch (error) {
-            return badRequest(
-              error instanceof Error ? error.message : "Failed to get batch status",
-              500
-            );
+            return internalErrorResponse(error, 'Failed to get batch status', correlationId);
           }
         }
       }
@@ -1053,10 +1025,7 @@ export default {
             }
           });
         } catch (error) {
-          return badRequest(
-            error instanceof Error ? error.message : "Failed to submit batch to queue",
-            500
-          );
+          return internalErrorResponse(error, 'Failed to submit batch to queue', correlationId);
         }
       }
       
@@ -1085,10 +1054,7 @@ export default {
             }
           });
         } catch (error) {
-          return badRequest(
-            error instanceof Error ? error.message : "Failed to get batch status",
-            500
-          );
+          return internalErrorResponse(error, 'Failed to get batch status', correlationId);
         }
       }
       
@@ -1113,10 +1079,7 @@ export default {
             }
           });
         } catch (error) {
-          return badRequest(
-            error instanceof Error ? error.message : "Failed to process queue jobs",
-            500
-          );
+          return internalErrorResponse(error, 'Failed to process queue jobs', correlationId);
         }
       }
       
@@ -1154,10 +1117,7 @@ export default {
             }
           });
         } catch (error) {
-          return badRequest(
-            error instanceof Error ? error.message : "Failed to get queue stats",
-            500
-          );
+          return internalErrorResponse(error, 'Failed to get queue stats', correlationId);
         }
       }
       
@@ -1177,10 +1137,7 @@ export default {
             }
           });
         } catch (error) {
-          return badRequest(
-            error instanceof Error ? error.message : "Queue processing failed",
-            500
-          );
+          return internalErrorResponse(error, 'Queue processing failed', correlationId);
         }
       }
       
@@ -1193,10 +1150,7 @@ export default {
           try {
             return await handleOdaInit(env);
           } catch (error) {
-            return badRequest(
-              error instanceof Error ? error.message : 'ODA initialization failed',
-              500
-            );
+            return internalErrorResponse(error, 'ODA initialization failed', correlationId);
           }
         }
 
@@ -1207,10 +1161,7 @@ export default {
           try {
             return await handleOdaStats(env);
           } catch (error) {
-            return badRequest(
-              error instanceof Error ? error.message : 'Failed to get ODA stats',
-              500
-            );
+            return internalErrorResponse(error, 'Failed to get ODA stats', correlationId);
           }
         }
       }
@@ -1260,8 +1211,13 @@ export default {
         );
       }
 
-      // ODA geolocation endpoints
+      // ODA geolocation endpoints. Rate-limited like the /api catch-all below, but intentionally
+      // NOT billed: only 200 lookup/search responses are Billable units today; whether geocode
+      // responses become billable is an open pricing decision.
       if (pathname === '/api/geocode' && request.method === 'GET') {
+        if (!checkRateLimit(env, getClientId(request))) {
+          return rateLimitExceededResponse(correlationId);
+        }
         const auth = await authorizeLookupRequest(env, request, hasValidBasicAuth(request, env));
         if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
         const response = await handleGeocodeRoute(request, env);
@@ -1269,12 +1225,18 @@ export default {
       }
 
       if (pathname === '/api/reverse' && request.method === 'GET') {
+        if (!checkRateLimit(env, getClientId(request))) {
+          return rateLimitExceededResponse(correlationId);
+        }
         const auth = await authorizeLookupRequest(env, request, hasValidBasicAuth(request, env));
         if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
         return handleReverseRoute(request, env);
       }
 
       if (pathname === '/api/normalize-address' && request.method === 'GET') {
+        if (!checkRateLimit(env, getClientId(request))) {
+          return rateLimitExceededResponse(correlationId);
+        }
         const auth = await authorizeLookupRequest(env, request, hasValidBasicAuth(request, env));
         if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
         return handleNormalizeAddressRoute(request, env);
@@ -1326,8 +1288,9 @@ export default {
     } catch (err: unknown) {
       incrementMetric('errorCount');
       recordTiming('totalLookupTime', Date.now() - startTime);
-      console.error(`[${correlationId}] Unexpected error:`, err);
-      return badRequest(err instanceof Error ? err.message : "Unexpected error", 400, "UNEXPECTED_ERROR", correlationId);
+      // Generic body: internal error messages (stack context, binding names, R2 keys) must not
+      // reach clients. The real error is logged with the correlation ID for tracing.
+      return internalErrorResponse(err, 'Unexpected error', correlationId, 'UNEXPECTED_ERROR');
     }
   },
   

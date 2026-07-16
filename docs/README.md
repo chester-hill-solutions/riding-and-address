@@ -18,6 +18,7 @@ Guides for operating, extending, and integrating with the Riding Lookup API.
 
 | Guide | Description |
 |-------|-------------|
+| [Go-live checklist](ops/go-live-checklist.md) | Infra/config steps before production (Worker, Stripe, portal, CI) |
 | [Hosting decision](hosting.md) | Cloudflare Workers vs GCP migration notes |
 | [Performance](performance.md) | Latency benchmarks, caching, and issue #8 optimizations |
 | [OpenNorth comparison](comparison-opennorth.md) | Speed and robustness vs Represent API (complement for reps) |
