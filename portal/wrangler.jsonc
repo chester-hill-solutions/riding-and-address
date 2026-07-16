@@ -31,14 +31,14 @@
     {
       "binding": "WEBHOOKS",
       "id": "3b23842cd96b40369311f52298a987cf"
+    },
+    // Customer keys + customer:{id} projection. Bound 2026-07-16 so the portal try-it widget's
+    // Browser key works on /api/search (BASIC_AUTH already locked the legacy API, and the demo
+    // widget resolves ridings via keyless /api/demo/*). Seed customers via `bun run keys`.
+    {
+      "binding": "API_KEYS",
+      "id": "2d0152b0958c48fab4a98b3046e0c08e"
     }
-    // Customer keys + customer:{id} projection. While unbound, key gates stay off (legacy open API).
-    // Namespace created 2026-07-16. Leave commented for soft free API; uncomment + redeploy
-    // for metered free tier / commercial launch (then seed customers via `npm run keys`).
-    // {
-    //   "binding": "API_KEYS",
-    //   "id": "2d0152b0958c48fab4a98b3046e0c08e"
-    // }
   ],
 
   "d1_databases": [
@@ -136,7 +136,10 @@
     "PUBLIC_API_BASE_URL": "https://riding-lookup.chester-hill-solutions.workers.dev",
     "PAID_CHECKOUT_ENABLED": "false",
     "EMAIL_FROM": "CanCoder <noreply@example.com>",
-    "FOUNDER_USER_IDS": ""
+    "FOUNDER_USER_IDS": "",
+    // Public pk_* for the marketing try-it embed (origin-allowlisted to this Worker's own
+    // origin, 5k/day). Safe as a plain var: browser keys are public identifiers by design.
+    "DEMO_BROWSER_API_KEY": "pk_live_5269b90b8a5b6c9c3ae5645a593e1029b60fcfbe396f1019"
     // ALLOWED_ORIGINS: set via wrangler secret/vars to portal + embed origins when tightening CORS
     // PROJECTION_ADMIN_SECRET / STRIPE_*: wrangler secret put …
   },
