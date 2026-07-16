@@ -113,6 +113,24 @@ curl https://your-worker.workers.dev/api/oda/stats -H "Authorization: Basic ..."
 **Prerequisite:** the centroid tables must be populated. If a province reports 0 suggestions, run
 `npm run import:oda:centroids` (or `--centroids-only`) first.
 
+### Staleness
+
+The index is **derived** from `oda_street_ranges`, so any import or centroid rebuild silently
+invalidates it — `/api/search` keeps serving streets that no longer exist, and nothing errors.
+Two safety nets:
+
+- `scripts/import-oda.ts` warns at the point of change, naming the exact rebuild command.
+- `GET /api/oda/stats` reports `streetSuggestStaleProvinces`: any province whose street count no
+  longer matches its indexed count.
+
+```bash
+curl .../api/oda/stats | jq .streetSuggestStaleProvinces
+# ["ON"]  -> npm run build:oda:suggest -- --provinces ON --remote --skip-schema
+```
+
+The check compares counts, so it cannot catch an edit that leaves the count identical — which is
+why the import script also warns directly. Rebuilds are idempotent and per-province.
+
 The build is idempotent per province — it clears and reinserts that province, so re-running is
 safe. Rollout is reversible at every step: building the index changes nothing while
 `ODA_SUGGEST_ENABLED` is `false`, and turning the flag back off restores the previous behaviour

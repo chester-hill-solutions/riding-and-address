@@ -168,6 +168,26 @@ describe('getOdaStats with the suggest tables absent', () => {
   });
 });
 
+describe('suggest staleness reporting', () => {
+  it('reports no stale provinces when the suggest tables are absent', async () => {
+    // Same trap as the count: this query must not take the whole stats response down while the
+    // index does not exist yet.
+    const { db } = createStubD1({
+      existing: ALL_ODA_TABLES,
+      provinceRows: [{ province: 'ON', count: 6_000_000 }],
+    });
+
+    const stats = await getOdaStats({ ODA_DB: db } as unknown as Env);
+    expect(stats.streetSuggestStaleProvinces).toEqual([]);
+    expect(stats.provinces.ON.addressCount).toBe(6_000_000);
+  });
+
+  it('reports staleness as an empty array, never undefined', async () => {
+    const stats = await getOdaStats({} as Env);
+    expect(Array.isArray(stats.streetSuggestStaleProvinces)).toBe(true);
+  });
+});
+
 describe('deleteProvinceData with the suggest tables absent', () => {
   it('still clears the four existing tables and does not throw', async () => {
     // A DELETE against a missing table inside the existing batch would take the whole admin

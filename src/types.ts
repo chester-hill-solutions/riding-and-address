@@ -520,6 +520,13 @@ export interface Metrics {
   spatialIndexMisses: number;
   totalSpatialIndexTime: number;
   lookupRequests: number;
+  suggestRequests: number;
+  suggestCacheHits: number;
+  suggestCacheMisses: number;
+  suggestErrors: number;
+  suggestEmptyResults: number;
+  suggestKeyDenials: number;
+  totalSuggestTime: number;
   lookupCacheHits: number;
   lookupCacheMisses: number;
   lookupErrors: number;

@@ -497,6 +497,31 @@ so it can run whether or not the geocoding cascade is on.
 | `ODA_SUGGEST_CANDIDATE_WINDOW` | `50` | Rows pulled from the index before scoring |
 | `ODA_SUGGEST_CACHE_TTL` | `3600` | KV cache TTL in seconds |
 
+## Observability
+
+`/api/search` reports into `GET /metrics` alongside every other endpoint:
+
+| Metric | Meaning |
+|--------|---------|
+| `suggestRequests` | Total requests |
+| `suggestCacheHits` / `suggestCacheMisses` | KV cache effectiveness |
+| `suggestEmptyResults` | Queries over the min length that matched nothing |
+| `suggestErrors` | Failures (e.g. the index not built) |
+| `suggestKeyDenials` | Rejected keys, origins, or exhausted daily caps |
+| `totalSuggestTime` | Cumulative time, for an average |
+
+**`suggestEmptyResults` is the one to watch.** An empty result is a perfectly good `200`, so a
+missing or stale index looks completely healthy from status codes alone — a rising empty rate is
+the only signal that the data is wrong rather than the query.
+
+Measure latency against a deployed worker with:
+
+```bash
+BENCHMARK_BASE_URL=https://your-worker.workers.dev npm run benchmark:lookup -- --suggest
+```
+
+It asserts a p95 budget (default 100ms) and exits non-zero if any scenario misses.
+
 ## Admin endpoints
 
 | Route | Method | Auth | Description |

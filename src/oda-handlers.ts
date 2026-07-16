@@ -17,6 +17,7 @@ import {
 } from './cache';
 import { normalizeProvince } from './oda-normalize';
 import { parseQuery, badRequest, getCorrelationId, hasValidBasicAuth } from './utils';
+import { incrementMetric, recordTiming } from './metrics';
 import { normalizeAddressWithGoogle } from './geocoding';
 import { GoogleAddressComponents, CanadaPostStyleAddress } from './types';
 
@@ -168,15 +169,19 @@ export async function handleSearchRoute(
   getCorsHeaders: (origin?: string | null) => Record<string, string>,
   ctx?: ExecutionContext
 ): Promise<Response> {
+  const startTime = Date.now();
   const origin = request.headers.get('Origin');
   const config = getOdaSuggestConfig(env);
   const url = new URL(request.url);
+
+  incrementMetric('suggestRequests');
 
   // Either credential: a server-held BASIC_AUTH secret (valid from any origin), or a public
   // browser key bound to an origin allowlist. Skipped entirely when neither is configured.
   const serverCredential = hasValidBasicAuth(request, env);
   const auth = await authorizeSearchRequest(env, request, serverCredential);
   if (!auth.ok) {
+    incrementMetric('suggestKeyDenials');
     // No CORS headers on a denial: the origin is by definition not allowed, so echoing it back
     // would let the page read the error and would undercut the check we just failed.
     return new Response(
@@ -191,6 +196,7 @@ export async function handleSearchRoute(
   if (auth.key) {
     const usage = await consumeDailyQuota(env, auth.key.id, auth.key.dailyLimit);
     if (!usage.allowed) {
+      incrementMetric('suggestKeyDenials');
       return new Response(
         JSON.stringify({
           error: `Daily limit of ${usage.limit} requests reached for this key. It resets at 00:00 UTC.`,
@@ -253,8 +259,11 @@ export async function handleSearchRoute(
   const cacheKey = generateSuggestCacheKey(params);
   const cached = await getCachedSuggestions(env, cacheKey, config.cacheTtlSeconds);
   if (cached) {
+    incrementMetric('suggestCacheHits');
+    recordTiming('totalSuggestTime', Date.now() - startTime);
     return respond(cached.suggestions, cached.provinces, 'HIT', 60, cached.nextCursor);
   }
+  incrementMetric('suggestCacheMisses');
 
   try {
     const result = await searchSuggestions(env, params);
@@ -275,8 +284,16 @@ export async function handleSearchRoute(
       else await fill;
     }
 
+    // Empty results are the signal that matters most here: a rising rate means the index is
+    // missing data or the query shape is wrong, and it is invisible from status codes alone
+    // (an empty result is a perfectly good 200).
+    if (!isShortQuery && result.suggestions.length === 0) incrementMetric('suggestEmptyResults');
+
+    recordTiming('totalSuggestTime', Date.now() - startTime);
     return respond(result.suggestions, result.provinces, 'MISS', isShortQuery ? 86400 : 60, result.nextCursor);
   } catch (error) {
+    incrementMetric('suggestErrors');
+    recordTiming('totalSuggestTime', Date.now() - startTime);
     return suggestErrorResponse(error, correlationId, getCorsHeaders(origin));
   }
 }

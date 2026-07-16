@@ -9,6 +9,12 @@ export interface OdaStats {
   streetRanges: number;
   /** 0 when the suggest tables have not been built yet. */
   streetSuggest: number;
+  /**
+   * Provinces whose autocomplete index no longer matches oda_street_ranges, i.e. imported or
+   * re-centroided since the index was built. /api/search would serve stale streets for these with
+   * no error to notice, so it is surfaced rather than left silent.
+   */
+  streetSuggestStaleProvinces: string[];
   imports: Array<{
     province: string;
     sourceVersion: string;
@@ -200,13 +206,14 @@ export async function initializeOdaDatabase(env: Env): Promise<boolean> {
 
 export async function getOdaStats(env: Env): Promise<OdaStats> {
   if (!env.ODA_DB) {
-    return { enabled: false, provinces: {}, postalCentroids: 0, cityCentroids: 0, streetRanges: 0, streetSuggest: 0, imports: [] };
+    return { enabled: false, provinces: {}, postalCentroids: 0, cityCentroids: 0, streetRanges: 0, streetSuggest: 0, streetSuggestStaleProvinces: [], imports: [] };
   }
 
   // Counted separately, and never inside the try block below: the suggest tables may not be built
   // yet, and this block's catch returns an empty stats object — a throw here would report zero
   // addresses for every province.
   const streetSuggest = await countStreetSuggest(env.ODA_DB);
+  const streetSuggestStaleProvinces = await findStaleSuggestProvinces(env.ODA_DB);
 
   try {
     const provinceCounts = await env.ODA_DB.prepare(`
@@ -242,6 +249,7 @@ export async function getOdaStats(env: Env): Promise<OdaStats> {
       cityCentroids: (cityResult?.count as number) || 0,
       streetRanges: (streetResult?.count as number) || 0,
       streetSuggest,
+      streetSuggestStaleProvinces,
       imports: (imports.results || []).map((row) => ({
         province: row.province as string,
         sourceVersion: row.source_version as string,
@@ -252,7 +260,7 @@ export async function getOdaStats(env: Env): Promise<OdaStats> {
     };
   } catch (error) {
     console.error('Failed to get ODA stats:', error);
-    return { enabled: true, provinces: {}, postalCentroids: 0, cityCentroids: 0, streetRanges: 0, streetSuggest, imports: [] };
+    return { enabled: true, provinces: {}, postalCentroids: 0, cityCentroids: 0, streetRanges: 0, streetSuggest, streetSuggestStaleProvinces, imports: [] };
   }
 }
 
@@ -264,6 +272,32 @@ async function countStreetSuggest(db: D1Database): Promise<number> {
   } catch (error) {
     console.error('Failed to count oda_street_suggest:', error);
     return 0;
+  }
+}
+
+/**
+ * A province is stale when its street count differs from its indexed count. Cheap (two grouped
+ * counts over small tables) and catches the case that matters: a re-import that added or removed
+ * streets without a rebuild. It cannot catch an edit that leaves the count identical, which is
+ * why the import script also warns at the point of change.
+ */
+async function findStaleSuggestProvinces(db: D1Database): Promise<string[]> {
+  if (!(await tableExists(db, 'oda_street_suggest'))) return [];
+  try {
+    const result = await db
+      .prepare(
+        `SELECT r.province AS province
+         FROM (SELECT province, COUNT(*) c FROM oda_street_ranges GROUP BY province) r
+         JOIN (SELECT province, COUNT(*) c FROM oda_street_suggest GROUP BY province) s
+           ON s.province = r.province
+         WHERE r.c <> s.c
+         ORDER BY r.province`
+      )
+      .all<{ province: string }>();
+    return (result.results || []).map((row) => row.province);
+  } catch (error) {
+    console.error('Failed to check suggest staleness:', error);
+    return [];
   }
 }
 
