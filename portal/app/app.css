@@ -273,7 +273,6 @@ button:hover:not(:disabled) {
 .hero-marketing__inner {
   position: relative;
   z-index: 1;
-  max-width: 760px;
 }
 
 .hero-marketing h1 {
