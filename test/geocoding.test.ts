@@ -274,30 +274,29 @@ describe('geocodeIfNeeded with ODA enabled', () => {
 
   it('uses ODA and does not call external providers', async () => {
     let callIndex = 0;
+    // The exact-match query ranks every candidate city spelling, so it reads via all().
+    const exactRow = {
+      id: 1,
+      province: 'ON',
+      civic_number: '123',
+      street_name: 'MAIN',
+      street_type: 'ST',
+      street_direction: '',
+      unit: '',
+      postal_code: 'M5V 2T6',
+      city: 'Toronto',
+      lat: 43.6532,
+      lon: -79.3832,
+      full_address: '123 Main St',
+      search_key: '123|MAIN|ST||TORONTO|ON',
+    };
     const db = {
       prepare: vi.fn(() => {
         callIndex++;
         return {
           bind: vi.fn(() => ({
-            first: vi.fn(async () =>
-              callIndex === 1
-                ? {
-                    id: 1,
-                    province: 'ON',
-                    civic_number: '123',
-                    street_name: 'MAIN',
-                    street_type: 'ST',
-                    street_direction: '',
-                    unit: '',
-                    postal_code: 'M5V 2T6',
-                    city: 'Toronto',
-                    lat: 43.6532,
-                    lon: -79.3832,
-                    full_address: '123 Main St',
-                  }
-                : null
-            ),
-            all: vi.fn(async () => ({ results: [] })),
+            first: vi.fn(async () => (callIndex === 1 ? exactRow : null)),
+            all: vi.fn(async () => ({ results: callIndex === 1 ? [exactRow] : [] })),
           })),
         };
       }),

@@ -21,6 +21,7 @@ import {
   normalizeUnit,
   parseAddressQuery,
 } from './oda-normalize';
+import { expandCityCandidates } from './oda-city-aliases';
 import { expandStreetAddress } from './geocode-region';
 import { formatFromOdaRow } from './canada-post-format';
 import {
@@ -207,47 +208,96 @@ async function odaQueryAll(env: Env, sql: string, params: unknown[]): Promise<un
   return result.results || [];
 }
 
+/**
+ * Ceiling on candidate search keys per query.
+ *
+ * City aliases and street-tail readings multiply: Toronto alone expands to 14 spellings,
+ * and an address like "399 The West Mall" yields 6 readings. D1 rejects a statement with
+ * too many bound variables ("too many SQL variables"), so the product has to be capped
+ * rather than left to grow. Keys are ordered most-literal first, so truncation drops the
+ * least likely candidates.
+ */
+const MAX_EXACT_SEARCH_KEYS = 60;
+
+/** Rows fetched before ranking. Exact-key hits are rare, so this is ample. */
+const EXACT_FETCH_LIMIT = 50;
+
+/**
+ * Resolve an exact address, trying every ODA spelling of the city and each reading of
+ * the street tail.
+ *
+ * `searchKeys` is ordered most-literal first, and `literalCityKeys` marks those built
+ * from the caller's own city. A literal-city match wins outright. Otherwise the aliases
+ * are considered, and a match spanning more than one municipality is reported as
+ * ambiguous rather than resolved arbitrarily: ~1,754 civic+street combinations exist in
+ * more than one of Toronto's former municipalities, and picking one at random would
+ * return a plausible but wrong coordinate — and therefore, potentially, the wrong riding.
+ *
+ * Ranking happens here rather than in SQL: an `ORDER BY CASE search_key ...` would double
+ * the bound parameters for ordering that costs nothing in JS.
+ */
 async function findExactMatch(
   env: Env,
-  searchKey: string,
+  searchKeys: string[],
+  literalCityKeys: Set<string>,
   provinces: string[],
-  unit?: string
+  unit: string | undefined
 ): Promise<OdaAddressRow | null> {
-  if (!env.ODA_DB || !searchKey.replace(/\|/g, '').trim()) return null;
+  const allKeys = searchKeys.filter((key) => key.replace(/\|/g, '').trim());
+  if (!env.ODA_DB || allKeys.length === 0) return null;
 
-  const placeholders = provinces.map(() => '?').join(',');
-  const normalizedUnit = normalizeUnit(unit);
-
-  if (normalizedUnit) {
-    const withUnit = await odaQueryFirst(
-      env,
-      `
-      SELECT id, province, civic_number, street_name, street_type, street_direction,
-             unit, postal_code, city, lat, lon, full_address
-      FROM oda_addresses
-      WHERE search_key = ? AND province IN (${placeholders}) AND unit = ?
-      LIMIT 1
-    `,
-      [searchKey, ...provinces, normalizedUnit]
+  const usableKeys = allKeys.slice(0, MAX_EXACT_SEARCH_KEYS);
+  if (allKeys.length > usableKeys.length) {
+    console.warn(
+      `[ODA] ${allKeys.length} candidate keys exceeded the ${MAX_EXACT_SEARCH_KEYS} cap; dropped ${allKeys.length - usableKeys.length} least-literal candidates`
     );
-    if (withUnit) return withUnit as OdaAddressRow;
-    return null;
   }
 
-  const result = await odaQueryFirst(
+  const provincePlaceholders = provinces.map(() => '?').join(',');
+  const searchKeyPlaceholders = usableKeys.map(() => '?').join(',');
+  const normalizedUnit = normalizeUnit(unit);
+  const unitFilter = normalizedUnit ? 'AND unit = ?' : '';
+  const unitParams = normalizedUnit ? [normalizedUnit] : [];
+
+  const matched = (await odaQueryAll(
     env,
     `
     SELECT id, province, civic_number, street_name, street_type, street_direction,
-           unit, postal_code, city, lat, lon, full_address
+           unit, postal_code, city, lat, lon, full_address, search_key
     FROM oda_addresses
-    WHERE search_key = ? AND province IN (${placeholders})
-    ORDER BY CASE WHEN unit = '' OR unit IS NULL THEN 0 ELSE 1 END
-    LIMIT 1
+    WHERE search_key IN (${searchKeyPlaceholders}) AND province IN (${provincePlaceholders}) ${unitFilter}
+    LIMIT ${EXACT_FETCH_LIMIT}
   `,
-    [searchKey, ...provinces]
-  );
+    [...usableKeys, ...provinces, ...unitParams]
+  )) as (OdaAddressRow & { search_key: string })[];
 
-  return (result as OdaAddressRow | null) ?? null;
+  const rank = new Map(usableKeys.map((key, index) => [key, index]));
+  const rows = [...matched].sort((a, b) => {
+    const byKey =
+      (rank.get(a.search_key) ?? usableKeys.length) - (rank.get(b.search_key) ?? usableKeys.length);
+    if (byKey !== 0) return byKey;
+    // Prefer the base address over one of its units.
+    return (!a.unit ? 0 : 1) - (!b.unit ? 0 : 1);
+  });
+
+  if (rows.length === 0) return null;
+
+  // The caller's own city matched: no alias ambiguity is possible.
+  if (literalCityKeys.has(rows[0].search_key)) return rows[0];
+
+  // Only aliases matched. Distinct municipalities here mean genuinely different
+  // places, so refuse rather than guess. Callers treat this as a miss and fall back
+  // to a free external geocoder.
+  const distinctCities = new Set(rows.map((row) => row.city));
+  if (distinctCities.size > 1) {
+    throw new OdaGeocodeError(
+      `Address matches ${distinctCities.size} municipalities (${[...distinctCities].join(', ')}); specify the municipality to disambiguate`,
+      'AMBIGUOUS_LOCATION',
+      422
+    );
+  }
+
+  return rows[0];
 }
 
 async function findPostalCentroid(
@@ -279,11 +329,21 @@ async function findStreetInterpolated(
 ): Promise<OdaAddressRow | null> {
   if (!env.ODA_DB || !parsed.city || !parsed.streetName) return null;
 
-  const cityKey = buildCityKey(parsed.city, parsed.province || provinces[0]);
+  const province = parsed.province || provinces[0];
+  // Same alias expansion as the exact path; ordered so the caller's own spelling wins.
+  const cityKeys = expandCityCandidates(parsed.city, province).map((city) =>
+    buildCityKey(city, province)
+  );
+  const cityKeyList = cityKeys.length > 0 ? cityKeys : [buildCityKey(parsed.city, province)];
+  const cityKeyPlaceholders = cityKeyList.map(() => '?').join(',');
+  const cityOrder = `CASE city_key ${cityKeyList.map((_, i) => `WHEN ? THEN ${i}`).join(' ')} ELSE ${cityKeyList.length} END`;
+
   const streetKeys = buildStreetKeyVariants(parsed);
   const streetKeyPlaceholders = streetKeys.map(() => '?').join(',');
   const provincePlaceholders = provinces.map(() => '?').join(',');
-  const { orderBy, orderParams } = streetKeyOrderSql(streetKeys);
+  const streetOrder = streetKeyOrderSql(streetKeys);
+  const orderBy = `${cityOrder}, ${streetOrder.orderBy}`;
+  const orderParams = [...cityKeyList, ...streetOrder.orderParams];
 
   if (parsed.civicParsed?.numeric !== null && parsed.civicParsed?.numeric !== undefined) {
     const civic = parsed.civicParsed.raw;
@@ -296,12 +356,12 @@ async function findStreetInterpolated(
         SELECT id, province, civic_number, street_name, street_type, street_direction,
                unit, postal_code, city, lat, lon, full_address
         FROM oda_addresses
-        WHERE province IN (${provincePlaceholders}) AND city_key = ?
+        WHERE province IN (${provincePlaceholders}) AND city_key IN (${cityKeyPlaceholders})
           AND street_key IN (${streetKeyPlaceholders}) AND civic_number = ? AND unit = ?
         ORDER BY ${orderBy}
         LIMIT 1
       `,
-        [...provinces, cityKey, ...streetKeys, civic, normalizedUnit, ...orderParams]
+        [...provinces, ...cityKeyList, ...streetKeys, civic, normalizedUnit, ...orderParams]
       );
       if (exact) return exact as OdaAddressRow;
       return null;
@@ -313,12 +373,12 @@ async function findStreetInterpolated(
       SELECT id, province, civic_number, street_name, street_type, street_direction,
              unit, postal_code, city, lat, lon, full_address
       FROM oda_addresses
-      WHERE province IN (${provincePlaceholders}) AND city_key = ?
+      WHERE province IN (${provincePlaceholders}) AND city_key IN (${cityKeyPlaceholders})
         AND street_key IN (${streetKeyPlaceholders}) AND civic_number = ?
       ORDER BY ${orderBy}
       LIMIT 1
     `,
-      [...provinces, cityKey, ...streetKeys, civic, ...orderParams]
+      [...provinces, ...cityKeyList, ...streetKeys, civic, ...orderParams]
     );
     if (exact) return exact as OdaAddressRow;
 
@@ -328,12 +388,12 @@ async function findStreetInterpolated(
       SELECT id, province, civic_number, street_name, street_type, street_direction,
              unit, postal_code, city, lat, lon, full_address
       FROM oda_addresses
-      WHERE province IN (${provincePlaceholders}) AND city_key = ?
+      WHERE province IN (${provincePlaceholders}) AND city_key IN (${cityKeyPlaceholders})
         AND street_key IN (${streetKeyPlaceholders})
       ORDER BY ${orderBy}, ABS(CAST(civic_number AS INTEGER) - ?) ASC
       LIMIT 1
     `,
-      [...provinces, cityKey, ...streetKeys, ...orderParams, parsed.civicParsed.numeric]
+      [...provinces, ...cityKeyList, ...streetKeys, ...orderParams, parsed.civicParsed.numeric]
     );
     if (nearest) return nearest as OdaAddressRow;
   }
@@ -342,12 +402,12 @@ async function findStreetInterpolated(
     env,
     `
     SELECT lat, lon, province, street_key FROM oda_street_ranges
-    WHERE province IN (${provincePlaceholders}) AND city_key = ?
+    WHERE province IN (${provincePlaceholders}) AND city_key IN (${cityKeyPlaceholders})
       AND street_key IN (${streetKeyPlaceholders})
     ORDER BY ${orderBy}
     LIMIT 1
   `,
-    [...provinces, cityKey, ...streetKeys, ...orderParams]
+    [...provinces, ...cityKeyList, ...streetKeys, ...orderParams]
   )) as { lat: number; lon: number; province: string; street_key?: string } | null;
 
   if (range) {
@@ -382,15 +442,22 @@ async function findCityCentroid(
   const placeholders = provinces.map(() => '?').join(',');
 
   for (const prov of parsed.province ? [parsed.province] : provinces) {
-    const cityKey = buildCityKey(parsed.city, prov);
+    // A city centroid is a coarse result already, so an alias hit is preferable to a
+    // miss; take candidates in preference order and stop at the first that exists.
+    const cityKeys = expandCityCandidates(parsed.city, prov).map((city) =>
+      buildCityKey(city, prov)
+    );
+    const cityKeyList = cityKeys.length > 0 ? cityKeys : [buildCityKey(parsed.city, prov)];
+    const cityOrder = `CASE city_key ${cityKeyList.map((_, i) => `WHEN ? THEN ${i}`).join(' ')} ELSE ${cityKeyList.length} END`;
     const result = await odaQueryFirst(
       env,
       `
       SELECT province, city, lat, lon FROM oda_city_centroids
-      WHERE province = ? AND city_key = ?
+      WHERE province = ? AND city_key IN (${cityKeyList.map(() => '?').join(',')})
+      ORDER BY ${cityOrder}
       LIMIT 1
     `,
-      [prov, cityKey]
+      [prov, ...cityKeyList, ...cityKeyList]
     );
     if (result) return result as { lat: number; lon: number; province: string; city: string };
   }
@@ -526,16 +593,73 @@ async function geocodeWithOdaInner(
 
   const provinces = resolveProvinces(parsed, config.provinces);
 
-  const searchKey = buildSearchKey({
-    civic: parsed.civic,
-    streetName: parsed.streetName,
-    streetType: parsed.streetType,
-    streetDirection: parsed.streetDirection,
-    city: parsed.city,
-    province: parsed.province || provinces[0],
-  });
+  const province = parsed.province || provinces[0];
 
-  const exact = await findExactMatch(env, searchKey, provinces, parsed.unit);
+  // ODA files many municipalities under a name the caller would never type, so try
+  // every known spelling. The caller's own spelling stays first and wins on a match.
+  const cityCandidates = expandCityCandidates(parsed.city, province);
+  const cities = cityCandidates.length > 0 ? cityCandidates : [parsed.city ?? ''];
+
+  // `parsed` above comes from expandStreetAddress(), which appends "Ave" whenever it
+  // fails to recognise a street type. That rescues "757 Victoria Park" — really Victoria
+  // Park Ave — but corrupts "1 Leeds Ct" into "1 Leeds Ct Ave". Parse the raw address as
+  // well so the heuristic stays one candidate among several rather than a destructive
+  // rewrite.
+  const parsedRaw = qp.address
+    ? parseAddressQuery({ address: qp.address, postal: qp.postal, city: qp.city, state: qp.state })
+    : parsed;
+
+  // A trailing token like PARK or MALL is both a street type and an ordinary part of a
+  // street name, and ODA has rows filed each way ("RAVINE PARK" with no type, vs "WEST"
+  // + type MALL). Try each reading and let the index decide; a wrong one matches nothing.
+  const streetReadings: Array<{
+    streetName?: string;
+    streetType?: string;
+    streetDirection?: string;
+  }> = [];
+  const seenReadings = new Set<string>();
+  const addReading = (streetName?: string, streetType?: string, streetDirection?: string) => {
+    const id = `${streetName ?? ''}|${streetType ?? ''}|${streetDirection ?? ''}`;
+    if (seenReadings.has(id)) return;
+    seenReadings.add(id);
+    streetReadings.push({ streetName, streetType, streetDirection });
+  };
+
+  addReading(parsed.streetName, parsed.streetType, parsed.streetDirection);
+  addReading(parsedRaw.streetName, parsedRaw.streetType, parsedRaw.streetDirection);
+  if (parsedRaw.streetName && parsedRaw.streetType) {
+    addReading(`${parsedRaw.streetName} ${parsedRaw.streetType}`, '', parsedRaw.streetDirection);
+  }
+
+  // ODA drops the leading article: not one Ontario street name begins with "THE",
+  // though callers reasonably type "399 The West Mall" for 399|WEST|MALL.
+  for (const reading of [...streetReadings]) {
+    if (reading.streetName && /^THE\s+/i.test(reading.streetName)) {
+      addReading(
+        reading.streetName.replace(/^THE\s+/i, ''),
+        reading.streetType,
+        reading.streetDirection
+      );
+    }
+  }
+
+  const keyFor = (
+    city: string,
+    reading: { streetName?: string; streetType?: string; streetDirection?: string }
+  ) =>
+    buildSearchKey({
+      civic: parsed.civic,
+      streetName: reading.streetName,
+      streetType: reading.streetType,
+      streetDirection: reading.streetDirection,
+      city,
+      province,
+    });
+
+  const searchKeys = cities.flatMap((city) => streetReadings.map((r) => keyFor(city, r)));
+  const literalCityKeys = new Set(streetReadings.map((r) => keyFor(cities[0], r)));
+
+  const exact = await findExactMatch(env, searchKeys, literalCityKeys, provinces, parsed.unit);
   if (exact) {
     return assertConfidence(
       buildResult(exact, 'exact', config, ['civic', 'street', 'city', 'province']),

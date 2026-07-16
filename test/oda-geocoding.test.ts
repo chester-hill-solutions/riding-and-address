@@ -39,22 +39,27 @@ describe('geocodeWithOda', () => {
   });
 
   it('returns exact match result', async () => {
+    // The exact-match query selects all candidate city spellings and ranks them, so it
+    // reads via all(); search_key must be present for the caller's own spelling to win.
     const db = createMockD1([
       {
-        first: {
-          id: 1,
-          province: 'ON',
-          civic_number: '123',
-          street_name: 'MAIN',
-          street_type: 'ST',
-          street_direction: '',
-          unit: '',
-          postal_code: 'M5V 2T6',
-          city: 'Toronto',
-          lat: 43.6532,
-          lon: -79.3832,
-          full_address: '123 Main St, Toronto ON',
-        },
+        all: [
+          {
+            id: 1,
+            province: 'ON',
+            civic_number: '123',
+            street_name: 'MAIN',
+            street_type: 'ST',
+            street_direction: '',
+            unit: '',
+            postal_code: 'M5V 2T6',
+            city: 'Toronto',
+            lat: 43.6532,
+            lon: -79.3832,
+            full_address: '123 Main St, Toronto ON',
+            search_key: '123|MAIN|ST||TORONTO|ON',
+          },
+        ],
       },
     ]);
 

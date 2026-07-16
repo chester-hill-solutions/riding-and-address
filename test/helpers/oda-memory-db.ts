@@ -152,7 +152,7 @@ export function loadOdaFixtureDb(fixturePath?: string): OdaMemoryDb {
 
 function sqlKind(sql: string): string {
   const s = sql.replace(/\s+/g, ' ').toUpperCase();
-  if (s.includes('SEARCH_KEY =') && s.includes('ODA_ADDRESSES')) return 'exact';
+  if (s.includes('SEARCH_KEY IN') && s.includes('ODA_ADDRESSES')) return 'exact';
   if (s.includes('ODA_POSTAL_CENTROIDS')) return 'postal';
   if (s.includes('STREET_KEY IN') && s.includes('CIVIC_NUMBER =')) return 'street_in_exact';
   if (s.includes('STREET_KEY IN') && s.includes('ORDER BY ABS(CAST(CIVIC_NUMBER')) return 'street_in_nearest';
@@ -171,34 +171,52 @@ function countPlaceholders(fragment: string | undefined): number {
   return (fragment.match(/\?/g) || []).length;
 }
 
+/**
+ * Both city and street are matched with `IN (...)` lists so a query can try every ODA
+ * spelling of a municipality (see src/oda-city-aliases.ts). Params arrive as
+ * [...provinces, ...cityKeys, ...streetKeys, ...rest].
+ */
 function parseStreetInParams(sql: string, params: unknown[]): {
   provinces: string[];
-  cityKey: string;
+  cityKeys: string[];
   streetKeys: string[];
   rest: unknown[];
 } {
   const s = sql.replace(/\s+/g, ' ').toUpperCase();
   const provinceIn = s.match(/PROVINCE IN \(([^)]+)\)/)?.[1];
+  const cityIn = s.match(/CITY_KEY IN \(([^)]+)\)/)?.[1];
   const streetIn = s.match(/STREET_KEY IN \(([^)]+)\)/)?.[1];
   const provinceCount = countPlaceholders(provinceIn);
+  const cityKeyCount = countPlaceholders(cityIn);
   const streetKeyCount = countPlaceholders(streetIn);
-  const provinces = params.slice(0, provinceCount).map(String);
-  const cityKey = String(params[provinceCount]);
-  const streetKeys = params.slice(provinceCount + 1, provinceCount + 1 + streetKeyCount).map(String);
-  const rest = params.slice(provinceCount + 1 + streetKeyCount);
-  return { provinces, cityKey, streetKeys, rest };
+
+  let offset = 0;
+  const provinces = params.slice(offset, (offset += provinceCount)).map(String);
+  const cityKeys = params.slice(offset, (offset += cityKeyCount)).map(String);
+  const streetKeys = params.slice(offset, (offset += streetKeyCount)).map(String);
+  const rest = params.slice(offset);
+  return { provinces, cityKeys, streetKeys, rest };
 }
 
-function pickStreetMatch<T extends { street_key: string }>(
+/**
+ * Emulates `ORDER BY <cityOrder>, <streetOrder>`: the caller's own city spelling
+ * (cityKeys[0]) outranks its aliases, and street-key preference breaks the tie.
+ */
+function pickStreetMatch<T extends { street_key: string; city_key?: string }>(
   rows: T[],
   streetKeys: string[],
-  orderParams: string[]
+  streetOrderParams: string[],
+  cityOrderParams: string[] = []
 ): T | null {
   if (rows.length === 0) return null;
-  const rank = new Map(orderParams.map((key, index) => [key, index]));
+  const streetRank = new Map(streetOrderParams.map((key, index) => [key, index]));
+  const cityRank = new Map(cityOrderParams.map((key, index) => [key, index]));
   return [...rows].sort((a, b) => {
-    const aRank = rank.get(a.street_key) ?? streetKeys.length;
-    const bRank = rank.get(b.street_key) ?? streetKeys.length;
+    const aCity = cityRank.get(a.city_key ?? '') ?? cityOrderParams.length;
+    const bCity = cityRank.get(b.city_key ?? '') ?? cityOrderParams.length;
+    if (aCity !== bCity) return aCity - bCity;
+    const aRank = streetRank.get(a.street_key) ?? streetKeys.length;
+    const bRank = streetRank.get(b.street_key) ?? streetKeys.length;
     return aRank - bRank;
   })[0];
 }
@@ -208,25 +226,27 @@ function executeQuery(db: OdaMemoryDb, sql: string, params: unknown[]): unknown 
 
   switch (kind) {
     case 'exact': {
-      const searchKey = String(params[0]);
-      const hasUnitFilter = sql.toUpperCase().includes('AND UNIT =');
-      const provinces = hasUnitFilter
-        ? params.slice(1, -1).map(String)
-        : params.slice(1).map(String);
-      const unitFilter = hasUnitFilter ? String(params[params.length - 1]) : undefined;
-      const matches = db.addresses.filter(
-        (a) => a.search_key === searchKey && provinces.includes(a.province)
-      );
-      if (unitFilter) {
-        return matches.find((a) => a.unit === unitFilter) ?? null;
-      }
-      return (
-        matches.sort((a, b) => {
-          const aEmpty = !a.unit ? 0 : 1;
-          const bEmpty = !b.unit ? 0 : 1;
-          return aEmpty - bEmpty;
-        })[0] ?? null
-      );
+      // WHERE search_key IN (...) AND province IN (...) [AND unit = ?] LIMIT n
+      // Ranking is the caller's job (done in JS), so no ORDER BY params here.
+      const s = sql.replace(/\s+/g, ' ').toUpperCase();
+      const searchCount = countPlaceholders(s.match(/SEARCH_KEY IN \(([^)]+)\)/)?.[1]);
+      const provinceCount = countPlaceholders(s.match(/PROVINCE IN \(([^)]+)\)/)?.[1]);
+      const hasUnitFilter = s.includes('AND UNIT = ?');
+
+      let offset = 0;
+      const searchKeys = params.slice(offset, (offset += searchCount)).map(String);
+      const provinces = params.slice(offset, (offset += provinceCount)).map(String);
+      const unitFilter = hasUnitFilter ? String(params[offset++]) : undefined;
+      const limit = Number(s.match(/LIMIT (\d+)/)?.[1] ?? '1');
+
+      return db.addresses
+        .filter(
+          (a) =>
+            searchKeys.includes(a.search_key) &&
+            provinces.includes(a.province) &&
+            (!unitFilter || a.unit === unitFilter)
+        )
+        .slice(0, limit);
     }
     case 'postal': {
       const postal = String(params[0]);
@@ -238,33 +258,38 @@ function executeQuery(db: OdaMemoryDb, sql: string, params: unknown[]): unknown 
       return null;
     }
     case 'street_in_exact': {
-      const { provinces, cityKey, streetKeys, rest } = parseStreetInParams(sql, params);
+      const { provinces, cityKeys, streetKeys, rest } = parseStreetInParams(sql, params);
       const hasUnit = sql.toUpperCase().includes('AND UNIT =');
       const civic = String(rest[0]);
       const unitFilter = hasUnit ? String(rest[1]) : undefined;
-      const orderParams = hasUnit ? rest.slice(2).map(String) : rest.slice(1).map(String);
+      // ORDER BY params are [...cityKeys, ...streetKeys].
+      const allOrder = (hasUnit ? rest.slice(2) : rest.slice(1)).map(String);
+      const cityOrder = allOrder.slice(0, cityKeys.length);
+      const streetOrder = allOrder.slice(cityKeys.length);
       const candidates = db.addresses.filter(
         (a) =>
           provinces.includes(a.province) &&
-          a.city_key === cityKey &&
+          cityKeys.includes(a.city_key) &&
           streetKeys.includes(a.street_key) &&
           a.civic_number === civic &&
           (!unitFilter || a.unit === unitFilter)
       );
-      return pickStreetMatch(candidates, streetKeys, orderParams) ?? null;
+      return pickStreetMatch(candidates, streetKeys, streetOrder, cityOrder) ?? null;
     }
     case 'street_in_nearest': {
-      const { provinces, cityKey, streetKeys, rest } = parseStreetInParams(sql, params);
-      const orderParams = rest.slice(0, -1).map(String);
+      const { provinces, cityKeys, streetKeys, rest } = parseStreetInParams(sql, params);
+      const allOrder = rest.slice(0, -1).map(String);
+      const cityOrder = allOrder.slice(0, cityKeys.length);
+      const streetOrder = allOrder.slice(cityKeys.length);
       const civicNumeric = Number(rest[rest.length - 1]);
       const candidates = db.addresses.filter(
         (a) =>
           provinces.includes(a.province) &&
-          a.city_key === cityKey &&
+          cityKeys.includes(a.city_key) &&
           streetKeys.includes(a.street_key)
       );
       if (candidates.length === 0) return null;
-      const bestStreet = pickStreetMatch(candidates, streetKeys, orderParams);
+      const bestStreet = pickStreetMatch(candidates, streetKeys, streetOrder, cityOrder);
       const sameStreet = candidates.filter((a) => a.street_key === bestStreet?.street_key);
       return sameStreet.reduce((best, row) => {
         const bestNum = parseInt(best.civic_number, 10);
@@ -275,18 +300,26 @@ function executeQuery(db: OdaMemoryDb, sql: string, params: unknown[]): unknown 
       });
     }
     case 'street_in_range': {
-      const { provinces, cityKey, streetKeys, rest } = parseStreetInParams(sql, params);
-      const orderParams = rest.map(String);
-      const hits = streetKeys
-        .map((streetKey) => {
+      const { provinces, cityKeys, streetKeys, rest } = parseStreetInParams(sql, params);
+      const allOrder = rest.map(String);
+      const cityOrder = allOrder.slice(0, cityKeys.length);
+      const streetOrder = allOrder.slice(cityKeys.length);
+      const hits: Array<{
+        province: string;
+        lat: number;
+        lon: number;
+        street_key: string;
+        city_key: string;
+      }> = [];
+      for (const cityKey of cityKeys) {
+        for (const streetKey of streetKeys) {
           for (const prov of provinces) {
             const hit = db.streetRanges.get(`${prov}|${cityKey}|${streetKey}`);
-            if (hit) return { ...hit, street_key: streetKey };
+            if (hit) hits.push({ ...hit, street_key: streetKey, city_key: cityKey });
           }
-          return null;
-        })
-        .filter(Boolean) as Array<{ province: string; lat: number; lon: number; street_key: string }>;
-      return pickStreetMatch(hits, streetKeys, orderParams);
+        }
+      }
+      return pickStreetMatch(hits, streetKeys, streetOrder, cityOrder);
     }
     case 'street_exact': {
       const hasUnitFilter = sql.toUpperCase().includes('AND UNIT =');
@@ -339,9 +372,17 @@ function executeQuery(db: OdaMemoryDb, sql: string, params: unknown[]): unknown 
       return null;
     }
     case 'city': {
+      // WHERE province = ? AND city_key IN (...) ORDER BY CASE city_key ... LIMIT 1
+      const s = sql.replace(/\s+/g, ' ').toUpperCase();
+      const cityCount = countPlaceholders(s.match(/CITY_KEY IN \(([^)]+)\)/)?.[1]);
       const province = String(params[0]);
-      const cityKey = String(params[1]);
-      return db.cityCentroids.get(`${province}|${cityKey}`) ?? null;
+      const cityKeys = params.slice(1, 1 + cityCount).map(String);
+      // Candidates are already in preference order, so the first hit wins.
+      for (const cityKey of cityKeys) {
+        const hit = db.cityCentroids.get(`${province}|${cityKey}`);
+        if (hit) return hit;
+      }
+      return null;
     }
     case 'city_fuzzy': {
       const provinces = params.slice(0, -1).map(String);

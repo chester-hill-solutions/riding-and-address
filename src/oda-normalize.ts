@@ -51,7 +51,45 @@ export const PROVINCE_NAME_TO_CODE: Record<string, string> = {
 };
 
 /** Search normalization: expand abbreviations to canonical search tokens */
-const STREET_TYPE_SEARCH: Record<string, string> = {
+/**
+ * Street types ODA stores verbatim, mapped to themselves.
+ *
+ * These MUST stay identity mappings. The ~10M rows already in D1 had their `search_key`
+ * built by this same table, and any type absent from it fell through to an identity
+ * fallback — so a row whose type is LANE is stored as `...|LANE|...`. Canonicalising
+ * any of these now (LANE -> LN, say) would make every query miss the data already
+ * imported. They are listed here purely so `parseStreetTail` recognises them as types
+ * rather than folding them into the street name.
+ *
+ * Derived from the data, not guessed:
+ *   SELECT street_type, COUNT(*) FROM oda_addresses WHERE province='ON' GROUP BY 1
+ * Ordered by address count. Ontario only for now; Quebec's French types are unverified.
+ *
+ * Single letters, bare digits and UNKNOWN are deliberately excluded: treating them as
+ * street types would misparse ordinary addresses for a handful of rows each.
+ */
+const ODA_VERBATIM_STREET_TYPES = [
+  'LANE', 'WAY', 'CIR', 'TRAIL', 'LINE', 'PVT', 'TERR', 'SQ', 'GATE', 'SIDERD', 'ISLAND', 'CR',
+  'LN', 'GDNS', 'RIDGE', 'GROVE', 'MEWS', 'CLOSE', 'WALK', 'BAY', 'PATH', 'HTS', 'CT', 'COMMON',
+  'HILL', 'RUN', 'ROW', 'WOOD', 'VIA', 'GLEN', 'HOLLOW', 'PK', 'TLINE', 'CHASE', 'GARDENS',
+  'HY', 'MANOR', 'PROM', 'CIRCT', 'GREEN', 'CROSS', 'PT', 'LI', 'VILLGE', 'HEIGHTS', 'LOOP',
+  'BEACH', 'RTE', 'CONCESSION', 'CONC', 'PASS', 'COVE', 'STREETLOUTH', 'WY', 'BEND', 'FOREST',
+  'LANDNG', 'CROSSING', 'PARK', 'VOIE', 'RISE', 'MALL', 'VIEW', 'QUAY', 'BRNE', 'VISTA',
+  'MEADOW', 'END', 'CERCLE', 'MONTEE', 'SHORE', 'AVENUELOUTH', 'DOWNS', 'GLADE', 'GS', 'MOUNT',
+  'MILLWAY', 'HT', 'LANDING', 'FARM', 'OUTLOOK', 'COUR', 'PORT', 'TSSE', 'PKWY', 'LKOUT',
+  'COTE', 'HEATH', 'GD', 'KNOLL', 'CHART', 'KEY', 'WALKWAY', 'RLE', 'ACRES', 'CROIS', 'DELL',
+  'VALE', 'ALLEY', 'RANG', 'CORNERS', 'HEIGHT', 'LINK', 'GV', 'WATERWAY', 'HARBOUR', 'COURS',
+  'LAKEWAY', 'PINES', 'GATEWAY', 'FIELD', 'GALLERY', 'WHARF', 'CTR', 'CROFT', 'TRACE', 'PLAZA',
+  'FRONT', 'TRNABT', 'MARSH', 'DALE', 'BYPASS', 'ABBEY', 'WYND', 'ORCH', 'LEA', 'GT', 'ESTATES',
+  'ROUND', 'HALL', 'SRD', 'TL', 'ME', 'CURVE', 'PY', 'BYWAY', 'TOWERS', 'TOP', 'CAPE', 'WW',
+  'WLK', 'PARADE', 'SIDELINE', 'PTH', 'ISLE', 'GREENWAY',
+] as const;
+
+/**
+ * Types that canonicalise to a different token. Import applied these too, so a row whose
+ * raw type is DRIVE is stored as `...|DR|...` — changing a target here would strand data.
+ */
+const STREET_TYPE_CANONICAL: Record<string, string> = {
   ST: 'ST',
   STREET: 'ST',
   AVE: 'AVE',
@@ -76,6 +114,12 @@ const STREET_TYPE_SEARCH: Record<string, string> = {
   RUE: 'RUE',
   CH: 'CH',
   CHEMIN: 'CH',
+};
+
+const STREET_TYPE_SEARCH: Record<string, string> = {
+  ...Object.fromEntries(ODA_VERBATIM_STREET_TYPES.map((type) => [type, type])),
+  // Canonical mappings win: a token in both tables must canonicalise, not self-map.
+  ...STREET_TYPE_CANONICAL,
 };
 
 const STREET_DIR_SEARCH: Record<string, string> = {
