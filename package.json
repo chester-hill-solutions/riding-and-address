@@ -28,7 +28,7 @@
     "dev": "npm --prefix portal run dev",
     "deploy": "npm --prefix portal run deploy",
     "deploy:staging": "npm --prefix portal run deploy:staging",
-    "build": "tsc --noEmit && tsc --noEmit -p tsconfig.dom.json",
+    "build": "npm run typecheck && npm --prefix portal ci && npm --prefix portal run build && node scripts/write-deploy-redirect.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.dom.json",
     "lint": "eslint src/**/*.ts test/**/*.ts scripts/**/*.ts --max-warnings 0",
     "lint:fix": "eslint src/**/*.ts test/**/*.ts scripts/**/*.ts --fix --max-warnings 0",
