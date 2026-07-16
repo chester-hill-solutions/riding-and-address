@@ -50,7 +50,7 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`, `npm 
 - [x] **Package sourcing**: CHS auth packages vendored under
       `portal/vendor/@chester-hill-solutions/*` (`auth`, `auth-d1`, `auth-react-router`).
 - [x] **Deploy target**: Cloudflare Workers via `portal/` Vite + Wrangler (not Railway).
-- [x] **Portal lockfile**: `portal/package-lock.json` present; regenerate after vendor changes.
+- [x] **Portal lockfile**: `portal/bun.lock` present; regenerate after vendor changes.
 
 ## CI follow-ups (code-side, tracked here for visibility)
 

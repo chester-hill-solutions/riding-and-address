@@ -17,7 +17,7 @@ for pkg in auth auth-d1 auth-react-router; do
   cp ../chester-hill-solutions/packages/$pkg/package.json portal/vendor/@chester-hill-solutions/$pkg/
   cp -R ../chester-hill-solutions/packages/$pkg/dist portal/vendor/@chester-hill-solutions/$pkg/
 done
-# rewrite workspace deps to file:../auth as needed, then npm install in portal/
+# rewrite workspace deps to file:../auth as needed, then bun install in portal/
 ```
 
 Prefer publishing to GitHub Packages (see `portal/.npmrc`) when `write:packages` is available,

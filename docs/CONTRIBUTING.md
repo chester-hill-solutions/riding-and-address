@@ -45,14 +45,15 @@ The CanCoder API is a Cloudflare Worker that provides geospatial lookup services
    cd ridingLookup
    ```
 
-2. **Install dependencies**
+2. **Install dependencies** (Bun only — Workers Builds and CI use `bun.lock`)
    ```bash
-   npm install
+   bun install
+   bun install --cwd portal
    ```
 
 3. **Install and configure Wrangler**
    ```bash
-   npm install -g wrangler
+   bun add -g wrangler
    wrangler login
    ```
 
@@ -247,7 +248,7 @@ async function geocodeWithFallback(
 3. **Test your changes**
    ```bash
    # Run the full validation suite (lint, typecheck, tests)
-   npm run validate
+   bun run validate
 
    # Optional: run local development server for manual checks
    wrangler dev
@@ -290,16 +291,16 @@ Examples:
 
 The project uses **Vitest** with 27 test files covering unit tests, integration tests, and regression checks. CI runs on every push to `main`/`master` and on all pull requests:
 
-1. `npm run lint` — ESLint on `src/`, `test/`, and `scripts/` (warnings fail the build)
-2. `npm run typecheck` — TypeScript strict check for source, tests, and scripts
-3. Portal CI: `npm --prefix portal ci && npm --prefix portal run typecheck && npm --prefix portal run build && wrangler deploy --dry-run` (from `portal/`)
+1. `bun run lint` — ESLint on `src/`, `test/`, and `scripts/` (warnings fail the build)
+2. `bun run typecheck` — TypeScript strict check for source, tests, and scripts
+3. Portal CI: `bun install --cwd portal --frozen-lockfile && bun run --cwd portal typecheck && bun run --cwd portal build && bunx wrangler deploy --dry-run` (from repo root)
 4. `npm audit --audit-level=high --omit=dev` — production dependency audit
 5. `npm test` — full Vitest suite
 
 Run the same checks locally with:
 
 ```bash
-npm run validate
+bun run validate
 ```
 
 **Live/network tests** are opt-in and skipped in CI:

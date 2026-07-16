@@ -10,7 +10,7 @@ import_province() {
   local max_attempts=5
   while true; do
     echo "========== Importing ${province} (attempt ${attempt}) $(date -u +%Y-%m-%dT%H:%M:%SZ) =========="
-    if npm run import:oda -- --download --provinces "${province}" --remote --skip-schema "$@"; then
+    if bun run import:oda -- --download --provinces "${province}" --remote --skip-schema "$@"; then
       echo "========== Done ${province} =========="
       return 0
     fi

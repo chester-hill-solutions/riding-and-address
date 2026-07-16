@@ -9,7 +9,7 @@ rebuild_province() {
   local max_attempts=5
   while true; do
     echo "========== Centroids ${province} (attempt ${attempt}) $(date -u +%Y-%m-%dT%H:%M:%SZ) =========="
-    if npm run import:oda -- --download --provinces "${province}" --remote --skip-schema --centroids-only; then
+    if bun run import:oda -- --download --provinces "${province}" --remote --skip-schema --centroids-only; then
       rm -rf ".oda-import/${province}" 2>/dev/null || true
       echo "========== Done centroids ${province} =========="
       return 0

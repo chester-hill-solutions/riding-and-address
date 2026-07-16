@@ -1,2 +1,2 @@
-npm run check:billing-invariants
-npm test
+bun run check:billing-invariants
+bun run test

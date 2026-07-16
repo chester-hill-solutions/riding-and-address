@@ -9,7 +9,7 @@ Self-serve Customer portal (signup, org/workspace, invites, Server/Browser keys,
 - D1 (`PORTAL_DB` / `cancoder-portal`) for auth + billing
 - In-process projection into Worker KV for API keys / Customer fuse (`src/projection-handlers.ts`)
 
-Config lives in [`wrangler.jsonc`](./wrangler.jsonc). Root `npm run deploy` builds and deploys from this directory.
+Config lives in [`wrangler.jsonc`](./wrangler.jsonc). Root `bun run deploy` builds and deploys from this directory.
 
 ## Local setup
 
@@ -18,9 +18,9 @@ Config lives in [`wrangler.jsonc`](./wrangler.jsonc). Root `npm run deploy` buil
 
    ```bash
    cd portal
-   npm install
-   npm run db:migrate:local
-   npm run dev
+   bun install
+   bun run db:migrate:local
+   bun run dev
    ```
 
    Combined Worker serves portal (`/`, `/login`, `/app/*`, …) and API (`/api/*`, `/docs`, `/embed.js`, …) on one origin.
@@ -32,9 +32,9 @@ Config lives in [`wrangler.jsonc`](./wrangler.jsonc). Root `npm run deploy` buil
 ## Migrations (D1)
 
 ```bash
-npm run db:migrate:local    # local Miniflare D1
-npm run db:migrate:remote   # production PORTAL_DB
-npm run db:migrate:staging  # staging env
+bun run db:migrate:local    # local Miniflare D1
+bun run db:migrate:remote   # production PORTAL_DB
+bun run db:migrate:staging  # staging env
 ```
 
 ## Stripe webhook

@@ -5,9 +5,9 @@
   "scripts": {
     "dev": "react-router dev",
     "build": "react-router build",
-    "preview": "npm run build && vite preview",
-    "deploy": "npm run build && wrangler deploy",
-    "deploy:staging": "CLOUDFLARE_ENV=staging npm run build && wrangler deploy",
+    "preview": "bun run build && vite preview",
+    "deploy": "bun run build && wrangler deploy",
+    "deploy:staging": "CLOUDFLARE_ENV=staging bun run build && wrangler deploy",
     "typecheck": "react-router typegen && tsc -b",
     "cf-typegen": "wrangler types",
     "db:generate": "drizzle-kit generate",
@@ -15,6 +15,7 @@
     "db:migrate:remote": "wrangler d1 migrations apply PORTAL_DB --remote",
     "db:migrate:staging": "wrangler d1 migrations apply PORTAL_DB --env staging --remote"
   },
+  "packageManager": "bun@1.2.15",
   "dependencies": {
     "@better-auth/drizzle-adapter": "^1.6.11",
     "@chester-hill-solutions/auth": "file:./vendor/@chester-hill-solutions/auth",

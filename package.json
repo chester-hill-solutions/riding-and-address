@@ -25,15 +25,15 @@
     "wrangler": "^4.111.0"
   },
   "scripts": {
-    "dev": "npm --prefix portal run dev",
-    "deploy": "npm --prefix portal run deploy",
-    "deploy:staging": "npm --prefix portal run deploy:staging",
-    "build": "npm run typecheck && npm --prefix portal ci && npm --prefix portal run build && node scripts/write-deploy-redirect.mjs",
+    "dev": "bun run --cwd portal dev",
+    "deploy": "bun run --cwd portal deploy",
+    "deploy:staging": "bun run --cwd portal deploy:staging",
+    "build": "bun run typecheck && bun install --cwd portal --frozen-lockfile && bun run --cwd portal build && bun scripts/write-deploy-redirect.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.dom.json",
     "lint": "eslint src/**/*.ts test/**/*.ts scripts/**/*.ts --max-warnings 0",
     "lint:fix": "eslint src/**/*.ts test/**/*.ts scripts/**/*.ts --fix --max-warnings 0",
-    "validate": "npm run lint && npm run typecheck && npm run check:billing-invariants && npm test",
-    "check:billing-invariants": "node scripts/check-billing-invariants.mjs",
+    "validate": "bun run lint && bun run typecheck && bun run check:billing-invariants && bun run test",
+    "check:billing-invariants": "bun scripts/check-billing-invariants.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:oda": "vitest run test/oda-normalize.test.ts test/oda-geocoding.test.ts test/oda-fixture-cases.test.ts test/oda-config.test.ts test/canada-post-format.test.ts",
@@ -50,6 +50,7 @@
     "keys": "tsx scripts/manage-keys.ts",
     "prepare": "husky"
   },
+  "packageManager": "bun@1.2.15",
   "keywords": [],
   "author": "",
   "license": "ISC"

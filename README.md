@@ -380,13 +380,13 @@ Config lives in [`portal/wrangler.jsonc`](portal/wrangler.jsonc) (combined porta
 
 #### Local development
 ```bash
-npm run dev
-# or: cd portal && npm run db:migrate:local && npm run dev
+bun run dev
+# or: cd portal && bun run db:migrate:local && bun run dev
 ```
 
 #### Production deployment
 ```bash
-npm run deploy
+bun run deploy
 # builds portal + deploys the combined Worker
 ```
 

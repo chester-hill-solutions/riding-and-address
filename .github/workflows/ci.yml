@@ -22,29 +22,28 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: npm
+          bun-version: 1.2.15
 
       - name: Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: Run lint
-        run: npm run lint
+        run: bun run lint
 
       - name: Run typecheck
-        run: npm run typecheck
+        run: bun run typecheck
 
       - name: Check billing invariants
-        run: npm run check:billing-invariants
+        run: bun run check:billing-invariants
 
       - name: Audit dependencies
-        run: npm audit --audit-level=high --omit=dev
+        run: bun audit --audit-level=high
 
       - name: Run tests
-        run: npm test
+        run: bun run test
 
   portal:
     runs-on: ubuntu-latest
@@ -53,32 +52,28 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            portal/package-lock.json
+          bun-version: 1.2.15
 
       # Root deps are needed too: the combined Worker entry (portal/workers/app.ts)
       # imports ../../src/worker, whose sources resolve zod and
       # @cloudflare/workers-types from the repo root node_modules.
       - name: Install root dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: Install portal dependencies
         working-directory: portal
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: Portal typecheck
         working-directory: portal
-        run: npm run typecheck
+        run: bun run typecheck
 
       - name: Portal build + Worker dry-run
         working-directory: portal
         env:
           NODE_ENV: production
           CLOUDFLARE_ACCOUNT_ID: ad5ec479b9a421faa2ed06c3d1c2b23a
-        run: npm run build && npx wrangler deploy --dry-run --env=""
+        run: bun run build && bunx wrangler deploy --dry-run --env=""
