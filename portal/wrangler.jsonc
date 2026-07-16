@@ -121,10 +121,10 @@
     "ODA_MAX_REVERSE_DISTANCE_METERS": "25000",
     "ODA_MAX_AMBIGUOUS_MATCHES": "5",
     "SPATIAL_DB_ENABLED": "false",
-    // Ships dark. While false, /api/search is not registered and falls through to the /api
-    // catch-all exactly as it did before the route existed. Flip to "true" only after
-    // `npm run build:oda:suggest -- --provinces ON --remote` has populated the index.
-    "ODA_SUGGEST_ENABLED": "false",
+    // While false, /api/search is not registered and falls through to the /api catch-all,
+    // and /embed.js 404s. Enabled 2026-07-16 after `bun run build:oda:suggest` populated the
+    // index for all ODA_PROVINCES on the production oda-addresses database.
+    "ODA_SUGGEST_ENABLED": "true",
     "ODA_SUGGEST_LIMIT": "7",
     "FREE_MONTHLY_ALLOWANCE": "1000",
     "DEMO_RATE_LIMIT": "30",
