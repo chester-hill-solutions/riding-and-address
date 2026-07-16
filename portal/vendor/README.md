@@ -3,6 +3,9 @@
 These packages are vendored so the portal installs in CI and Railway without a sibling
 `chester-hill-solutions` checkout or GitHub Packages `write:packages` publish.
 
+Commit **`dist/`** with each package (the root `.gitignore` only ignores `/dist/` at the
+repo root). CI typecheck fails if only `package.json` is present.
+
 Source of truth remains the CHS monorepo. To refresh after upstream changes:
 
 ```bash
