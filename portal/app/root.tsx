@@ -10,7 +10,7 @@ import type { Route } from './+types/root';
 import appStylesheet from './app.css?url';
 
 const FAVICON =
-  "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230f1c14'/><rect x='1' y='1' width='30' height='30' rx='5' fill='none' stroke='%232d4536'/><text x='16' y='23' font-family='Georgia,serif' font-size='19' font-weight='700' text-anchor='middle' fill='%23c4a35a'>R</text></svg>";
+  "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='5' fill='%231457a6'/><text x='16' y='22' font-family='Arial,sans-serif' font-size='17' font-weight='700' text-anchor='middle' fill='white'>RL</text></svg>";
 
 export const links: Route.LinksFunction = () => [
   { rel: 'stylesheet', href: appStylesheet },

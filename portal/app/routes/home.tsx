@@ -1,5 +1,9 @@
 import { Link } from 'react-router';
 import type { Route } from './+types/home';
+import {
+  DEFAULT_FREE_MONTHLY_ALLOWANCE,
+  formatMeteredUnitPrice,
+} from '~/lib/pricing';
 
 export function meta(): Route.MetaDescriptors {
   return [
@@ -14,28 +18,145 @@ export function meta(): Route.MetaDescriptors {
 
 export default function Home() {
   return (
-    <main className="shell">
-      <nav className="nav">
-        <Link className="brand" to="/">
-          Riding Lookup
-        </Link>
-        <Link to="/login">Log in</Link>
-        <Link to="/signup">Sign up</Link>
-        <Link to="/app">Dashboard</Link>
-      </nav>
-      <section className="panel">
-        <h1>Customer portal</h1>
-        <p className="muted">
-          Mint Server and Browser keys, watch monthly usage against the free allowance, and manage
-          fuse settings. Chester Hill Solutions master terms apply; product accuracy notes are in
-          the API docs.
-        </p>
-        <p>
-          <Link className="btn" to="/signup">
-            Create an organization
+    <>
+      <header className="site-header">
+        <nav className="nav shell" aria-label="Main navigation">
+          <Link className="brand" to="/">
+            Riding Lookup
           </Link>
-        </p>
-      </section>
-    </main>
+          <div className="nav__links">
+            <a href="#how-it-works">How it works</a>
+            <a href="#pricing">Pricing</a>
+            <Link to="/login">Log in</Link>
+            <Link className="btn btn--compact" to="/signup">
+              Start free
+            </Link>
+          </div>
+        </nav>
+      </header>
+
+      <main>
+        <section className="hero shell">
+          <div className="hero__copy">
+            <h1>Turn a Canadian address into its electoral riding.</h1>
+            <p className="hero__lead">
+              One API for federal and supported provincial riding lookups. Built for campaign
+              tools, civic products, and internal data workflows.
+            </p>
+            <div className="button-row">
+              <Link className="btn" to="/signup">
+                Get an API key
+              </Link>
+              <a className="text-link" href="#pricing">
+                See pricing
+              </a>
+            </div>
+            <p className="fine-print">
+              No credit card · {DEFAULT_FREE_MONTHLY_ALLOWANCE.toLocaleString('en-CA')} successful
+              calls included each month
+            </p>
+          </div>
+          <div className="request-demo" aria-label="Example API request and response">
+            <div className="request-demo__bar">
+              <span>Example lookup</span>
+              <span className="status-dot">200 OK</span>
+            </div>
+            <pre>
+              <code>{`GET /api/lookup?postal=K1A%200A6
+Authorization: Bearer sk_••••••••
+
+{
+  "properties": {
+    "FED_NUM": "35047",
+    "FED_NAME": "Ottawa Centre",
+    "PROV_TERR": "Ontario"
+  }
+}`}</code>
+            </pre>
+          </div>
+        </section>
+
+        <section className="section shell" id="how-it-works">
+          <div className="section-heading">
+            <h2>From signup to first result in three steps</h2>
+            <p>No sales call or account configuration required.</p>
+          </div>
+          <ol className="steps">
+            <li>
+              <span className="step-number">1</span>
+              <div>
+                <h3>Create your organization</h3>
+                <p>Invite teammates and keep keys, usage, and billing in one workspace.</p>
+              </div>
+            </li>
+            <li>
+              <span className="step-number">2</span>
+              <div>
+                <h3>Choose the right key</h3>
+                <p>Use a private Server key or an origin-restricted Browser key.</p>
+              </div>
+            </li>
+            <li>
+              <span className="step-number">3</span>
+              <div>
+                <h3>Make your first request</h3>
+                <p>Only successful 200 responses count toward monthly usage.</p>
+              </div>
+            </li>
+          </ol>
+        </section>
+
+        <section className="section section--pricing" id="pricing">
+          <div className="shell">
+            <div className="section-heading">
+              <h2>Start free. Pay only when usage grows.</h2>
+              <p>A billable unit is one successful lookup or search. Errors are never billed.</p>
+            </div>
+            <div className="pricing-grid">
+              <article className="price-card">
+                <h3>Free</h3>
+                <p className="price">$0</p>
+                <p className="price-detail">No expiry and no credit card</p>
+                <ul className="check-list">
+                  <li>{DEFAULT_FREE_MONTHLY_ALLOWANCE.toLocaleString('en-CA')} calls / month</li>
+                  <li>Server and Browser keys</li>
+                  <li>Usage dashboard and hard fuse</li>
+                </ul>
+                <Link className="btn" to="/signup">
+                  Start free
+                </Link>
+              </article>
+              <article className="price-card price-card--featured">
+                <h3>Metered</h3>
+                <p className="price">
+                  {formatMeteredUnitPrice()}
+                  <span> USD</span>
+                </p>
+                <p className="price-detail">per successful call after the free allowance</p>
+                <ul className="check-list">
+                  <li>Includes the free monthly allowance</li>
+                  <li>No charge for 4xx or 5xx responses</li>
+                  <li>Set a monthly hard limit at any time</li>
+                </ul>
+                <Link className="btn" to="/signup">
+                  Create an account
+                </Link>
+              </article>
+            </div>
+            <p className="pricing-note">
+              Usage resets each UTC calendar month. Paid access is enabled after the product
+              addendum is signed.
+            </p>
+          </div>
+        </section>
+      </main>
+
+      <footer className="site-footer">
+        <div className="shell">
+          <span>Riding Lookup by Chester Hill Solutions</span>
+          <Link to="/login">Customer login</Link>
+        </div>
+      </footer>
+    </>
   );
 }

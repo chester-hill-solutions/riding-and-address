@@ -91,43 +91,77 @@ export default function BillingPage({ loaderData, actionData }: Route.ComponentP
   const { billing, paidCheckoutEnabled, canManageBilling } = loaderData;
   return (
     <Panel title="Billing">
-      <p className="muted">
-        Free: {DEFAULT_FREE_MONTHLY_ALLOWANCE.toLocaleString('en-CA')} Billable units / UTC month.
-        Overage for metered plan: {formatMeteredUnitPrice()} / successful call. Paid Checkout stays
-        off until the product addendum is signed. Plan upgrades activate only after Stripe confirms
-        Checkout.
-      </p>
-      <p>
-        Plan: <code>{billing?.plan}</code>
-        {billing?.stripeCustomerId ? (
-          <>
-            {' '}
-            · Stripe <code>{billing.stripeCustomerId}</code>
-          </>
-        ) : null}
+      <p className="page-intro">
+        You are on the <strong>{billing.plan}</strong> plan. Only successful HTTP 200 lookups and
+        searches are billable.
       </p>
       <FormFeedback error={actionData?.error} />
+
+      <div className="pricing-grid pricing-grid--portal">
+        <article className={`price-card ${billing.plan === 'free' ? 'is-current' : ''}`}>
+          <div className="price-card__heading">
+            <h2>Free</h2>
+            {billing.plan === 'free' ? <span className="current-badge">Current plan</span> : null}
+          </div>
+          <p className="price">$0</p>
+          <p className="price-detail">No expiry</p>
+          <ul className="check-list">
+            <li>{DEFAULT_FREE_MONTHLY_ALLOWANCE.toLocaleString('en-CA')} calls each month</li>
+            <li>Server and Browser keys</li>
+            <li>Monthly usage fuse</li>
+          </ul>
+        </article>
+
+        <article className={`price-card ${billing.plan === 'metered' ? 'is-current' : ''}`}>
+          <div className="price-card__heading">
+            <h2>Metered</h2>
+            {billing.plan === 'metered' ? (
+              <span className="current-badge">Current plan</span>
+            ) : null}
+          </div>
+          <p className="price">
+            {formatMeteredUnitPrice()}
+            <span> USD</span>
+          </p>
+          <p className="price-detail">per successful call after the free allowance</p>
+          <ul className="check-list">
+            <li>Free allowance remains included</li>
+            <li>4xx and 5xx responses are not billed</li>
+            <li>Control spend with a hard fuse</li>
+          </ul>
+          {billing.plan === 'free' && canManageBilling && paidCheckoutEnabled ? (
+            <Form method="post">
+              <input type="hidden" name="intent" value="checkout" />
+              <SubmitButton pendingText="Redirecting to Stripe…">
+                Start metered subscription
+              </SubmitButton>
+            </Form>
+          ) : null}
+        </article>
+      </div>
+
       {!canManageBilling ? (
-        <p className="muted">Only owners and admins can change billing.</p>
-      ) : !paidCheckoutEnabled ? (
-        <p className="muted">
-          <code>PAID_CHECKOUT_ENABLED</code> is false — free tier works; metered Checkout is locked.
+        <p className="notice">Only workspace owners and admins can change the plan.</p>
+      ) : billing.plan === 'free' && !paidCheckoutEnabled ? (
+        <p className="notice">
+          Metered upgrades are arranged after the product addendum is signed. Contact Chester Hill
+          Solutions when you are ready to move beyond the free allowance.
         </p>
-      ) : (
-        <Form method="post">
-          <input type="hidden" name="intent" value="checkout" />
-          <SubmitButton pendingText="Redirecting to Stripe…">
-            Start metered subscription
-          </SubmitButton>
-        </Form>
-      )}
-      {canManageBilling && billing?.stripeCustomerId ? (
-        <Form method="post">
-          <input type="hidden" name="intent" value="portal" />
-          <SubmitButton className="secondary" pendingText="Opening portal…">
-            Open Stripe Customer Portal
-          </SubmitButton>
-        </Form>
+      ) : null}
+
+      {canManageBilling && billing.stripeCustomerId ? (
+        <div className="billing-actions">
+          <div>
+            <h2>Payment details and invoices</h2>
+            <p>Update your payment method or download past invoices in Stripe.</p>
+          </div>
+          <Form method="post">
+            <input type="hidden" name="intent" value="portal" />
+            <SubmitButton className="secondary" pendingText="Opening portal…">
+              Open billing portal
+            </SubmitButton>
+          </Form>
+        </div>
       ) : null}
     </Panel>
   );

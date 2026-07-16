@@ -1,4 +1,4 @@
-import { Form, Link, Outlet } from 'react-router';
+import { Form, Link, NavLink, Outlet } from 'react-router';
 import type { Route } from './+types/app';
 import { requireCustomer } from '~/lib/customer.server';
 import { isFounder } from '~/lib/auth.server';
@@ -19,27 +19,40 @@ export async function loader({ request }: Route.LoaderArgs) {
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
   const { customerId, plan, showAdmin } = loaderData;
   return (
-    <main className="shell">
-      <nav className="nav">
-        <Link className="brand" to="/app">
-          Riding Lookup
-        </Link>
-        <Link to="/app">Usage</Link>
-        <Link to="/app/keys">Keys</Link>
-        <Link to="/app/billing">Billing</Link>
-        <Link to="/app/invites">Invites</Link>
-        <Link to="/app/settings">Fuse</Link>
-        {showAdmin ? <Link to="/app/admin">Admin</Link> : null}
-        <Form method="post" action="/api/auth/sign-out">
-          <SubmitButton className="secondary" pendingText="Signing out…">
-            Sign out
-          </SubmitButton>
-        </Form>
-      </nav>
-      <p className="muted">
-        Customer <code>{customerId}</code> · plan <code>{plan}</code>
-      </p>
-      <Outlet />
-    </main>
+    <div className="app-shell">
+      <header className="app-header">
+        <div className="shell">
+          <Link className="brand" to="/app">
+            Riding Lookup
+          </Link>
+          <div className="account-summary">
+            <span className="plan-badge">{plan} plan</span>
+            <span className="account-summary__id">{customerId}</span>
+          </div>
+        </div>
+      </header>
+      <div className="app-body shell">
+        <aside className="app-sidebar">
+          <nav aria-label="Portal navigation">
+            <NavLink end to="/app">
+              Overview
+            </NavLink>
+            <NavLink to="/app/keys">API keys</NavLink>
+            <NavLink to="/app/billing">Plan & billing</NavLink>
+            <NavLink to="/app/invites">Team</NavLink>
+            <NavLink to="/app/settings">Usage fuse</NavLink>
+            {showAdmin ? <NavLink to="/app/admin">Admin</NavLink> : null}
+          </nav>
+          <Form method="post" action="/api/auth/sign-out">
+            <SubmitButton className="secondary sidebar-signout" pendingText="Signing out…">
+              Sign out
+            </SubmitButton>
+          </Form>
+        </aside>
+        <main className="app-content">
+          <Outlet />
+        </main>
+      </div>
+    </div>
   );
 }
