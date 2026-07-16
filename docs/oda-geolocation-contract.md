@@ -433,8 +433,8 @@ and costs CDN cacheability. The API calls are the resource; those are gated.
 | HTTP | Code | When |
 |------|------|------|
 | 401 | `KEY_REQUIRED` | Keys are enabled and none was supplied |
-| 403 | `KEY_INVALID` | No such key |
-| 403 | `KEY_DISABLED` | Key revoked |
+| 401 | `KEY_INVALID` | No such key |
+| 401 | `KEY_DISABLED` | Key revoked |
 | 403 | `ORIGIN_REQUIRED` | No `Origin` header |
 | 403 | `ORIGIN_NOT_ALLOWED` | Origin is not on this key's allowlist (the message names it, as Canada Post's does) |
 | 429 | `DAILY_LIMIT_EXCEEDED` | Daily cap reached; resets 00:00 UTC |

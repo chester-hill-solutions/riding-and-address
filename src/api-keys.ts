@@ -45,6 +45,32 @@ export interface KeyAuthResult {
   message?: string;
 }
 
+/**
+ * Canonical HTTP status for a KeyDenialReason.
+ * Lookup and search must both call this — do not re-map statuses in handlers.
+ */
+export function httpStatusForKeyDenial(reason: KeyDenialReason): number {
+  switch (reason) {
+    case 'KEY_REQUIRED':
+    case 'KEY_INVALID':
+    case 'KEY_DISABLED':
+      return 401;
+    case 'ORIGIN_REQUIRED':
+    case 'ORIGIN_NOT_ALLOWED':
+    case 'WRONG_KEY_KIND':
+    case 'BATCH_NOT_ENABLED':
+    case 'CUSTOMER_NOT_FOUND':
+      return 403;
+    case 'DAILY_LIMIT_EXCEEDED':
+      return 429;
+    default: {
+      const _exhaustive: never = reason;
+      void _exhaustive;
+      return 401;
+    }
+  }
+}
+
 export const API_KEY_PREFIX = 'pk_';
 export const SERVER_KEY_PREFIX = 'sk_';
 

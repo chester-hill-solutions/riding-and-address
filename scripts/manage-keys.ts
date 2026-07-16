@@ -24,7 +24,7 @@ import {
   sha256Hex,
   type ApiKeyRecord,
 } from '../src/api-keys';
-import { defaultFuseLimit, type CustomerPlan, type CustomerRecord } from '../src/customer';
+import { defaultFuseLimit, DEFAULT_FREE_MONTHLY_ALLOWANCE, type CustomerPlan, type CustomerRecord } from '../src/customer';
 
 const BINDING = 'API_KEYS';
 const DEFAULT_DAILY_LIMIT = 100_000;
@@ -156,7 +156,9 @@ async function main(): Promise<void> {
       const record: CustomerRecord = {
         id: options.customerId,
         plan,
-        fuseLimit: options.fuseLimit ?? defaultFuseLimit(plan, { FREE_MONTHLY_ALLOWANCE: '1000' } as never),
+        fuseLimit: options.fuseLimit ?? defaultFuseLimit(plan, {
+          FREE_MONTHLY_ALLOWANCE: String(DEFAULT_FREE_MONTHLY_ALLOWANCE),
+        } as never),
         fuseSoftWarn: options.fuseSoftWarn,
         batchEnabled: options.batchEnabled,
         label: options.label,

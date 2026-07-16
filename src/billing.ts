@@ -8,6 +8,15 @@ export interface BillableAuthContext {
   customer: CustomerRecord;
 }
 
+export interface RecordBillableOptions {
+  nowMs?: number;
+  /**
+   * Prefer ExecutionContext.waitUntil so Stripe meter delivery outlives the response.
+   * When omitted (tests / sync callers), the meter call is awaited instead of fire-and-forget.
+   */
+  waitUntil?: (task: Promise<unknown>) => void;
+}
+
 function effectiveFuseLimit(customer: CustomerRecord, env: Env): number {
   if (customer.fuseLimit > 0) return customer.fuseLimit;
   if (customer.plan === 'free') return defaultFuseLimit('free', env);
@@ -22,8 +31,9 @@ function effectiveFuseLimit(customer: CustomerRecord, env: Env): number {
 export async function recordSuccessfulBillable(
   env: Env,
   ctx: BillableAuthContext,
-  nowMs: number = Date.now()
+  options: RecordBillableOptions = {}
 ): Promise<{ allowed: boolean; status: number; body?: Record<string, unknown> }> {
+  const nowMs = options.nowMs ?? Date.now();
   const limit = effectiveFuseLimit(ctx.customer, env);
   const softWarn = Boolean(ctx.customer.fuseSoftWarn);
   // Hard-block uses limit; soft-warn / unlimited pass limit 0 into DO so increment always succeeds.
@@ -51,7 +61,12 @@ export async function recordSuccessfulBillable(
   }
 
   if (ctx.customer.plan === 'metered' || ctx.customer.plan === 'enterprise') {
-    void reportStripeMeter(env, ctx, 1);
+    const meterTask = reportStripeMeter(env, ctx, 1);
+    if (options.waitUntil) {
+      options.waitUntil(meterTask);
+    } else {
+      await meterTask;
+    }
   }
 
   return { allowed: true, status: 200 };
@@ -63,7 +78,7 @@ export async function peekCustomerUsage(env: Env, customerId: string): Promise<{
   limit: number;
 }> {
   const customer = await loadCustomer(env, customerId);
-  const limit = customer ? effectiveFuseLimit(customer, env) : 1000;
+  const limit = customer ? effectiveFuseLimit(customer, env) : defaultFuseLimit('free', env);
   const usage = await peekMonthlyQuota(env, customerId, limit);
   return { month: usage.month || utcMonth(Date.now()), count: usage.count, limit };
 }

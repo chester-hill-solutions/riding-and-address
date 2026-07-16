@@ -8,7 +8,9 @@ import {
   generateApiKey,
   clearApiKeyCache,
   apiKeysEnabled,
+  httpStatusForKeyDenial,
   type ApiKeyRecord,
+  type KeyDenialReason,
 } from '../src/api-keys';
 import { utcDay, consumeDailyQuota } from '../src/api-key-usage-do';
 import { clearCustomerCache, type CustomerRecord } from '../src/customer';
@@ -332,5 +334,28 @@ describe('authorizeSearchRequest — either credential', () => {
   it('is open when nothing at all is configured', async () => {
     const result = await authorizeSearchRequest({} as Env, req('https://x.test/api/search?q=main'), false);
     expect(result.ok).toBe(true);
+  });
+});
+
+describe('httpStatusForKeyDenial', () => {
+  /**
+   * Prevents lookup vs search from remapping the same KeyDenialReason to different statuses.
+   * Handlers must call this helper — see scripts/check-billing-invariants.mjs.
+   */
+  it('maps every KeyDenialReason to a stable status', () => {
+    const expected: Record<KeyDenialReason, number> = {
+      KEY_REQUIRED: 401,
+      KEY_INVALID: 401,
+      KEY_DISABLED: 401,
+      ORIGIN_REQUIRED: 403,
+      ORIGIN_NOT_ALLOWED: 403,
+      WRONG_KEY_KIND: 403,
+      BATCH_NOT_ENABLED: 403,
+      CUSTOMER_NOT_FOUND: 403,
+      DAILY_LIMIT_EXCEEDED: 429,
+    };
+    for (const [reason, status] of Object.entries(expected) as [KeyDenialReason, number][]) {
+      expect(httpStatusForKeyDenial(reason)).toBe(status);
+    }
   });
 });

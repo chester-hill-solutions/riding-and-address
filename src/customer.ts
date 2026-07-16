@@ -2,6 +2,9 @@ import { Env } from './types';
 
 export type CustomerPlan = 'free' | 'metered' | 'enterprise';
 
+/** Fallback free monthly Billable-unit allowance when env/plan does not override. */
+export const DEFAULT_FREE_MONTHLY_ALLOWANCE = 1000;
+
 export interface CustomerRecord {
   id: string;
   /** free | metered | enterprise */
@@ -54,6 +57,6 @@ export async function deleteCustomer(env: Env, customerId: string): Promise<void
 export function defaultFuseLimit(plan: CustomerPlan, env: Env): number {
   if (plan === 'enterprise') return 0;
   const raw = env.FREE_MONTHLY_ALLOWANCE;
-  const n = raw ? parseInt(raw, 10) : 1000;
-  return Number.isFinite(n) && n > 0 ? n : 1000;
+  const n = raw ? parseInt(raw, 10) : DEFAULT_FREE_MONTHLY_ALLOWANCE;
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_FREE_MONTHLY_ALLOWANCE;
 }

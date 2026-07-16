@@ -408,7 +408,7 @@ curl -X POST https://your-worker.your-subdomain.workers.dev/api/database/sync \
 - **Automatic cache warming**: Cloudflare Cron Trigger every 6 hours (`0 */6 * * *` in `wrangler.jsonc`)
 - **Circuit breakers**: Automatic failover when external services are unavailable
 
-**Note on Cache Warming**: Production uses Cron Triggers already configured in `wrangler.jsonc` (`triggers.crons`). The Worker `scheduled` handler runs cache warming.
+**Note on Cron Trigger**: `wrangler.jsonc` schedules `0 */6 * * *`. Each run calls the Worker `scheduled` handler to (1) warm riding/lookup caches for common locations and (2) process pending webhook deliveries. It is unrelated to API key metering or Stripe.
 
 #### Spatial Optimization
 - **Spatial indexing**: Bounding box pre-filtering for faster point-in-polygon tests

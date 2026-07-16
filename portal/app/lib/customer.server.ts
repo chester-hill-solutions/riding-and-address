@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '~/lib/db.server';
 import { apiKeyMirror, customerBilling, workspaceMembers, workspaces } from '~/db/schema';
 import { upsertCustomerProjection } from '~/lib/projection.server';
+import { DEFAULT_FREE_MONTHLY_ALLOWANCE } from '~/lib/pricing';
 
 export function customerIdForWorkspace(workspaceId: string): string {
   return `cust_${workspaceId.replace(/-/g, '').slice(0, 24)}`;
@@ -47,7 +48,7 @@ export async function ensureCustomerForUser(userId: string, orgName: string) {
     workspaceId,
     customerId,
     plan: 'free',
-    fuseLimit: 1000,
+    fuseLimit: DEFAULT_FREE_MONTHLY_ALLOWANCE,
     fuseSoftWarn: false,
     batchEnabled: false,
   };
@@ -55,7 +56,7 @@ export async function ensureCustomerForUser(userId: string, orgName: string) {
   await upsertCustomerProjection({
     id: customerId,
     plan: 'free',
-    fuseLimit: 1000,
+    fuseLimit: DEFAULT_FREE_MONTHLY_ALLOWANCE,
     fuseSoftWarn: false,
     batchEnabled: false,
     label: orgName,

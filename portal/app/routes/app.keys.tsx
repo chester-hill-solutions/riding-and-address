@@ -5,7 +5,7 @@ import { getBilling, listKeys } from '~/lib/customer.server';
 import { mintKey, revokeKey } from '~/lib/projection.server';
 import { getDb } from '~/lib/db.server';
 import { apiKeyMirror, workspaceMembers } from '~/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 async function workspaceForUser(userId: string) {
   const memberships = await getDb()
@@ -34,11 +34,19 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (intent === 'revoke') {
     const id = String(form.get('id') || '');
+    const owned = await getDb()
+      .select()
+      .from(apiKeyMirror)
+      .where(and(eq(apiKeyMirror.id, id), eq(apiKeyMirror.workspaceId, billing.workspaceId)))
+      .limit(1);
+    if (!owned[0]) {
+      return { error: 'Key not found in this organization' };
+    }
     await revokeKey(id);
     await getDb()
       .update(apiKeyMirror)
       .set({ disabled: true })
-      .where(eq(apiKeyMirror.id, id));
+      .where(and(eq(apiKeyMirror.id, id), eq(apiKeyMirror.workspaceId, billing.workspaceId)));
     return { ok: true };
   }
 

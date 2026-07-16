@@ -8,7 +8,7 @@ import {
   OdaGeocodeError,
 } from './oda-geocoding';
 import { searchSuggestions, SuggestError } from './oda-suggest';
-import { authorizeSearchRequest } from './api-keys';
+import { authorizeSearchRequest, httpStatusForKeyDenial } from './api-keys';
 import { consumeDailyQuota } from './api-key-usage-do';
 import { recordSuccessfulBillable } from './billing';
 import {
@@ -185,10 +185,11 @@ export async function handleSearchRoute(
     incrementMetric('suggestKeyDenials');
     // No CORS headers on a denial: the origin is by definition not allowed, so echoing it back
     // would let the page read the error and would undercut the check we just failed.
+    const status = auth.reason ? httpStatusForKeyDenial(auth.reason) : 401;
     return new Response(
       JSON.stringify({ error: auth.message, code: auth.reason, correlationId }),
       {
-        status: auth.reason === 'KEY_REQUIRED' ? 401 : 403,
+        status,
         headers: { 'content-type': 'application/json; charset=UTF-8' },
       }
     );
@@ -232,7 +233,13 @@ export async function handleSearchRoute(
   ): Promise<Response> => {
     // Billable unit: successful HTTP 200 search (including cache hits). Operator BASIC_AUTH skip.
     if (auth.key && auth.customer) {
-      const billed = await recordSuccessfulBillable(env, { key: auth.key, customer: auth.customer });
+      const billed = await recordSuccessfulBillable(
+        env,
+        { key: auth.key, customer: auth.customer },
+        {
+          waitUntil: ctx ? (task) => ctx.waitUntil(task) : undefined,
+        }
+      );
       if (!billed.allowed) {
         return new Response(JSON.stringify({ ...billed.body, correlationId }), {
           status: billed.status,

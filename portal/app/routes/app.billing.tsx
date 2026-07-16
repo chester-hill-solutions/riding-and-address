@@ -8,6 +8,7 @@ import { getDb } from '~/lib/db.server';
 import { customerBilling, workspaceMembers } from '~/db/schema';
 import { eq } from 'drizzle-orm';
 import { upsertCustomerProjection } from '~/lib/projection.server';
+import { DEFAULT_FREE_MONTHLY_ALLOWANCE, formatMeteredUnitPrice } from '~/lib/pricing';
 
 export async function loader({ request }: Route.LoaderArgs) {
   const userId = await requireSessionUserId(request);
@@ -83,8 +84,9 @@ export default function BillingPage() {
     <section className="panel">
       <h1>Billing</h1>
       <p className="muted">
-        Free: 1 000 Billable units / UTC month. Overage for metered plan: $0.005 / successful call.
-        Paid Checkout stays off until the product addendum is signed.
+        Free: {DEFAULT_FREE_MONTHLY_ALLOWANCE.toLocaleString('en-CA')} Billable units / UTC month.
+        Overage for metered plan: {formatMeteredUnitPrice()} / successful call. Paid Checkout stays
+        off until the product addendum is signed.
       </p>
       <p>
         Plan: <code>{billing?.plan}</code>

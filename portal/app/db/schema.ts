@@ -27,7 +27,7 @@ export const customerBilling = pgTable('customer_billing', {
   /** Same id used in Worker KV `customer:{id}`. */
   customerId: text('customer_id').notNull().unique(),
   plan: text('plan').notNull().default('free'),
-  fuseLimit: integer('fuse_limit').notNull().default(1000),
+  fuseLimit: integer('fuse_limit').notNull().default(1000), // keep in sync with DEFAULT_FREE_MONTHLY_ALLOWANCE
   fuseSoftWarn: boolean('fuse_soft_warn').notNull().default(false),
   batchEnabled: boolean('batch_enabled').notNull().default(false),
   stripeCustomerId: text('stripe_customer_id'),

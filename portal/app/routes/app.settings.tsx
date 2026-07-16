@@ -6,6 +6,7 @@ import { getDb } from '~/lib/db.server';
 import { customerBilling, workspaceMembers } from '~/db/schema';
 import { eq } from 'drizzle-orm';
 import { upsertCustomerProjection } from '~/lib/projection.server';
+import { DEFAULT_FREE_MONTHLY_ALLOWANCE } from '~/lib/pricing';
 
 export async function loader({ request }: Route.LoaderArgs) {
   const userId = await requireSessionUserId(request);
@@ -62,7 +63,7 @@ export default function SettingsPage() {
           name="fuseLimit"
           type="number"
           min={0}
-          defaultValue={billing?.fuseLimit ?? 1000}
+          defaultValue={billing?.fuseLimit ?? DEFAULT_FREE_MONTHLY_ALLOWANCE}
         />
         <label>
           <input

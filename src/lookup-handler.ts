@@ -87,7 +87,9 @@ export async function handleLookupRequest(
     recordTiming('totalLookupTime', Date.now() - startTime);
 
     if (billing?.customer && billing.key) {
-      const billed = await recordSuccessfulBillable(env, billing);
+      const billed = await recordSuccessfulBillable(env, billing, {
+        waitUntil: deferTask,
+      });
       if (!billed.allowed) {
         return new Response(JSON.stringify({ ...billed.body, correlationId }), {
           status: billed.status,

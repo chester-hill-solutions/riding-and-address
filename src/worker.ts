@@ -70,18 +70,18 @@ import { ApiKeyUsageDO } from './api-key-usage-do';
 import { CircuitBreakerDO } from './circuit-breaker-do';
 import { createLandingPage, createApiReference, createOpenAPISpec } from './docs';
 import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS } from './config';
-import { apiKeysEnabled, authorizeLookupRequest, type KeyAuthResult } from './api-keys';
+import {
+  apiKeysEnabled,
+  authorizeLookupRequest,
+  httpStatusForKeyDenial,
+  type KeyAuthResult,
+} from './api-keys';
 import { handleProjectionRequest } from './projection-handlers';
 import { recordSuccessfulBillable, type BillableAuthContext } from './billing';
 import { resolveCorsOrigin, securityHeaders } from './http-headers';
 
 function keyAuthFailureResponse(auth: KeyAuthResult, correlationId: string): Response {
-  const status =
-    auth.reason === 'ORIGIN_NOT_ALLOWED' ||
-    auth.reason === 'WRONG_KEY_KIND' ||
-    auth.reason === 'BATCH_NOT_ENABLED'
-      ? 403
-      : 401;
+  const status = auth.reason ? httpStatusForKeyDenial(auth.reason) : 401;
   return badRequest(auth.message || 'Unauthorized', status, auth.reason || 'UNAUTHORIZED', correlationId);
 }
 
@@ -950,10 +950,31 @@ export default {
             );
 
             // Same Billable unit as realtime: each successful item without error.
+            // Once the fuse denies an increment, redact that item and all remaining
+            // successes so results are not returned free past the hard fuse.
             if (batchBilling) {
+              let fuseExceeded = false;
               for (const item of results) {
-                if (!item.error) {
-                  await recordSuccessfulBillable(env, batchBilling);
+                if (item.error) continue;
+                if (fuseExceeded) {
+                  item.properties = null;
+                  item.riding = undefined;
+                  item.province_data = undefined;
+                  item.error = 'Monthly usage fuse exceeded';
+                  continue;
+                }
+                const billed = await recordSuccessfulBillable(env, batchBilling, {
+                  waitUntil: (task) => ctx.waitUntil(task),
+                });
+                if (!billed.allowed) {
+                  fuseExceeded = true;
+                  item.properties = null;
+                  item.riding = undefined;
+                  item.province_data = undefined;
+                  item.error =
+                    typeof billed.body?.error === 'string'
+                      ? billed.body.error
+                      : 'Monthly usage fuse exceeded';
                 }
               }
             }

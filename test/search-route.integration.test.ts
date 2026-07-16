@@ -268,6 +268,14 @@ describe('browser key gate on /api/search', () => {
     expect((await readJson(response)).code).toBe('KEY_REQUIRED');
   });
 
+  it('401s an unknown browser key (same status as lookup KEY_INVALID)', async () => {
+    const response = await fetchLookup(withKeys(base()), '/api/search?q=main st tor&key=pk_live_missing', {
+      headers: { Origin: 'https://acme.com' },
+    });
+    expect(response.status).toBe(401);
+    expect((await readJson(response)).code).toBe('KEY_INVALID');
+  });
+
   it('403s a stolen key used from someone else site', async () => {
     const response = await fetchLookup(withKeys(base()), '/api/search?q=main st tor&key=pk_live_abc', {
       headers: { Origin: 'https://evil.example' },
