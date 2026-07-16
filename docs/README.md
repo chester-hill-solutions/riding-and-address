@@ -1,6 +1,6 @@
-# Riding & Address Documentation
+# CanCoder Documentation
 
-Guides for operating, extending, and integrating with the Riding & Address API.
+Guides for operating, extending, and integrating with the CanCoder API.
 
 ## Product & architecture
 

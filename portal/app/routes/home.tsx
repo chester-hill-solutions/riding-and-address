@@ -1,5 +1,7 @@
-import { Link } from 'react-router';
+import { Link, useLoaderData } from 'react-router';
 import type { Route } from './+types/home';
+import { TryRidingForm } from '~/components/TryRidingForm';
+import { env } from '~/lib/env.server';
 import {
   DEFAULT_FREE_MONTHLY_ALLOWANCE,
   formatMeteredUnitPrice,
@@ -7,26 +9,39 @@ import {
 
 export function meta(): Route.MetaDescriptors {
   return [
-    { title: 'Riding & Address portal' },
+    { title: 'CanCoder' },
     {
       name: 'description',
       content:
-        'Canadian address geocoding, autocomplete, and electoral district API. Mint Server and Browser keys, watch monthly usage, and manage fuse settings.',
+        'Canadian address geocoding, autocomplete, and electoral district API for campaign tools and forms.',
     },
   ];
 }
 
+export function loader() {
+  const { publicApiBaseUrl, demoBrowserKey } = env();
+  return {
+    apiBaseUrl: publicApiBaseUrl.replace(/\/$/, ''),
+    demoBrowserKey,
+  };
+}
+
 export default function Home() {
+  const { apiBaseUrl, demoBrowserKey } = useLoaderData<typeof loader>();
+  const docsUrl = `${apiBaseUrl}/docs`;
+
   return (
-    <>
-      <header className="site-header">
+    <div className="marketing">
+      <header className="site-header site-header--marketing">
         <nav className="nav shell" aria-label="Main navigation">
           <Link className="brand" to="/">
-            Riding & Address
+            CanCoder
           </Link>
           <div className="nav__links">
-            <a href="#how-it-works">How it works</a>
+            <a href="#try-it">Try it</a>
+            <a href="#how-it-works">Product</a>
             <a href="#pricing">Pricing</a>
+            <a href={docsUrl}>Docs</a>
             <Link to="/login">Log in</Link>
             <Link className="btn btn--compact" to="/signup">
               Start free
@@ -36,81 +51,99 @@ export default function Home() {
       </header>
 
       <main>
-        <section className="hero shell">
-          <div className="hero__copy">
-            <h1>Resolve Canadian addresses to federal and provincial ridings.</h1>
-            <p className="hero__lead">
-              Geocode, autocomplete, and map any Canadian address to its riding. Built for campaign
-              tools, civic products, and internal data workflows.
+        <section className="hero-marketing">
+          <div className="hero-marketing__atmosphere" aria-hidden="true" />
+          <div className="shell hero-marketing__inner">
+            <h1>CanCoder</h1>
+            <p className="hero-marketing__lead">
+              Turn any Canadian address into its electoral riding. Geocode, autocomplete, and map
+              to federal and provincial districts — for campaign tools and form vendors.
             </p>
             <div className="button-row">
               <Link className="btn" to="/signup">
-                Get an API key
+                Start free
               </Link>
-              <a className="text-link" href="#pricing">
-                See pricing
+              <a className="btn btn--ghost" href="#try-it">
+                Try a lookup
               </a>
             </div>
             <p className="fine-print">
-              No credit card · {DEFAULT_FREE_MONTHLY_ALLOWANCE.toLocaleString('en-CA')} successful
-              calls included each month
+              No credit card · {DEFAULT_FREE_MONTHLY_ALLOWANCE.toLocaleString('en-CA')} calls / month
             </p>
-          </div>
-          <div className="request-demo" aria-label="Example API request and response">
-            <div className="request-demo__bar">
-              <span>Example lookup</span>
-              <span className="status-dot">200 OK</span>
-            </div>
-            <pre>
-              <code>{`GET /api/lookup?postal=K1A%200A6
-Authorization: Bearer sk_••••••••
-
-{
-  "properties": {
-    "FED_NUM": "35047",
-    "FED_NAME": "Ottawa Centre",
-    "PROV_TERR": "Ontario"
-  }
-}`}</code>
-            </pre>
           </div>
         </section>
 
-        <section className="section shell" id="how-it-works">
+        <section className="section shell" id="try-it">
           <div className="section-heading">
-            <h2>From signup to first result in three steps</h2>
-            <p>No sales call or account configuration required.</p>
+            <h2>Try it on a real address</h2>
+            <p>
+              Start typing a Canadian address. This is the same <code>/embed.js</code> autocomplete
+              widget you can drop into any form.
+            </p>
           </div>
-          <ol className="steps">
-            <li>
-              <span className="step-number">1</span>
-              <div>
-                <h3>Create your organization</h3>
-                <p>Invite teammates and keep keys, usage, and billing in one workspace.</p>
-              </div>
-            </li>
-            <li>
-              <span className="step-number">2</span>
-              <div>
-                <h3>Choose the right key</h3>
-                <p>Use a private Server key or an origin-restricted Browser key.</p>
-              </div>
-            </li>
-            <li>
-              <span className="step-number">3</span>
-              <div>
-                <h3>Make your first request</h3>
-                <p>Only successful 200 responses count toward monthly usage.</p>
-              </div>
-            </li>
-          </ol>
+          <TryRidingForm apiBaseUrl={apiBaseUrl} demoBrowserKey={demoBrowserKey} />
+        </section>
+
+        <section className="section section--how" id="how-it-works">
+          <div className="shell">
+            <div className="section-heading">
+              <h2>What CanCoder does</h2>
+              <p>Three products in one API — autocomplete, geocode, and riding lookup.</p>
+            </div>
+            <ol className="flow">
+              <li>
+                <span className="flow__num" aria-hidden="true">
+                  1
+                </span>
+                <div className="flow__body">
+                  <h3>Address autocomplete</h3>
+                  <p>
+                    Drop-in embed for your forms. As-you-type Canadian suggestions via{' '}
+                    <code>/embed.js</code>, then hand off a clean address on select.
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span className="flow__num" aria-hidden="true">
+                  2
+                </span>
+                <div className="flow__body">
+                  <h3>Canadian geocoding</h3>
+                  <p>
+                    Self-hosted StatCan address data turns a postal code or street address into a
+                    precise point — normalize and reverse geocode when you need them.
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span className="flow__num" aria-hidden="true">
+                  3
+                </span>
+                <div className="flow__body">
+                  <h3>Electoral riding lookup</h3>
+                  <p>
+                    Point-in-polygon against official boundaries returns federal and provincial
+                    ridings — names and codes ready for routing and tagging.
+                  </p>
+                </div>
+              </li>
+            </ol>
+            <div className="button-row button-row--section">
+              <Link className="btn" to="/signup">
+                Get an API key
+              </Link>
+              <a className="btn btn--ghost" href={docsUrl}>
+                View docs
+              </a>
+            </div>
+          </div>
         </section>
 
         <section className="section section--pricing" id="pricing">
           <div className="shell">
             <div className="section-heading">
               <h2>Start free. Pay only when usage grows.</h2>
-              <p>A billable unit is one successful lookup or search. Errors are never billed.</p>
+              <p>Successful lookups and searches count. Errors never do.</p>
             </div>
             <div className="pricing-grid">
               <article className="price-card">
@@ -153,10 +186,13 @@ Authorization: Bearer sk_••••••••
 
       <footer className="site-footer">
         <div className="shell">
-          <span>Riding & Address by Chester Hill Solutions</span>
-          <Link to="/login">Customer login</Link>
+          <span>CanCoder by Chester Hill Solutions</span>
+          <div className="site-footer__links">
+            <a href={docsUrl}>Docs</a>
+            <Link to="/login">Customer login</Link>
+          </div>
         </div>
       </footer>
-    </>
+    </div>
   );
 }

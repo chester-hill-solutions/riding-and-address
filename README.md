@@ -1,4 +1,4 @@
-## Riding & Address Cloudflare Worker
+## CanCoder Cloudflare Worker
 
 [![CI](https://github.com/chester-hill-solutions/riding-and-address/actions/workflows/ci.yml/badge.svg)](https://github.com/chester-hill-solutions/riding-and-address/actions/workflows/ci.yml)
 

@@ -1,6 +1,6 @@
 # Dataset changelog
 
-Customer-facing record of boundary and address-data vintages served by Riding & Address.
+Customer-facing record of boundary and address-data vintages served by CanCoder.
 
 | Date (UTC) | Dataset id | Year | Notes |
 |---|---|---|---|

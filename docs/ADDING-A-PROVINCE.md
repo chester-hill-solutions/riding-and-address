@@ -1,6 +1,6 @@
-# Adding a New Province to Riding & Address
+# Adding a New Province to CanCoder
 
-This guide documents the exact steps to add a new province or territory to the Riding & Address API. The codebase uses a registry pattern so most changes are additive — no existing files need to be modified beyond the registry array.
+This guide documents the exact steps to add a new province or territory to the CanCoder API. The codebase uses a registry pattern so most changes are additive — no existing files need to be modified beyond the registry array.
 
 ## Prerequisites
 

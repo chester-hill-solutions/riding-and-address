@@ -38,8 +38,8 @@ export async function sendEmail(opts: { to: string; subject: string; html: strin
 export async function sendInviteEmail(to: string, inviteUrl: string, orgName: string) {
   await sendEmail({
     to,
-    subject: `Join ${orgName} on Riding & Address`,
-    html: `<p>You have been invited to <strong>${escapeHtml(orgName)}</strong> on Riding &amp; Address.</p>
+    subject: `Join ${orgName} on CanCoder`,
+    html: `<p>You have been invited to <strong>${escapeHtml(orgName)}</strong> on CanCoder.</p>
            <p><a href="${escapeHtml(inviteUrl)}">Accept invitation</a></p>`,
   });
 }
@@ -47,7 +47,7 @@ export async function sendInviteEmail(to: string, inviteUrl: string, orgName: st
 export async function sendFuseWarningEmail(to: string, count: number, limit: number) {
   await sendEmail({
     to,
-    subject: 'Riding & Address usage fuse warning',
+    subject: 'CanCoder usage fuse warning',
     html: `<p>Your organization used <strong>${count}</strong> of <strong>${limit}</strong> Billable units this UTC month.</p>
            <p>Hard-block fuse is active unless soft-warn is enabled in the portal.</p>`,
   });

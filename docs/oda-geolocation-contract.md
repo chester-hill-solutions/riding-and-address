@@ -275,6 +275,7 @@ That is the whole integration. On load it finds the address field in each `<form
 on selection fills the address fields and emits the riding.
 
 **Script tag attributes:** `data-province`, `data-limit`, `data-include-province="true"`,
+`data-demo="true"` (resolve riding via keyless `/api/demo/*` — for marketing try-it),
 `data-endpoint`, `data-auto="false"` (disable auto-attach and use the API below).
 
 **Field detection.** The standard `autocomplete` attribute wins, since it is an explicit
@@ -300,6 +301,7 @@ const widget = RidingLookup.attach({
   },
   province: 'ON',
   includeProvince: false,          // true -> resolve via /api/combined
+  demo: false,                     // true -> resolve via /api/demo/* (keyless; marketing)
   fill: true,                      // false -> emit events only, touch nothing
   locationBias: { lat: 43.65, lon: -79.38 },
   onSelect(s) {}, onRiding(r) {}, onError(e) {}

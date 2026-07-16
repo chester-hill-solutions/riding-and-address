@@ -8,10 +8,10 @@
  * @cloudflare/workers-types.
  */
 
-export const EMBED_VERSION = '1.1.0';
+export const EMBED_VERSION = '1.2.0';
 
 export function createEmbedScript(baseUrl: string): string {
-  return `/* Riding & Address autocomplete widget v${EMBED_VERSION} */
+  return `/* CanCoder autocomplete widget v${EMBED_VERSION} */
 (function (global, factory) {
   if (global.RidingLookup) return;
   global.RidingLookup = factory(global);
@@ -29,6 +29,8 @@ export function createEmbedScript(baseUrl: string): string {
     limit: 7,
     fill: true,
     includeProvince: false,
+    // true -> resolve riding via keyless /api/demo/* (marketing try-it); search still needs a key when API_KEYS is on.
+    demo: false,
     useGeolocation: false,
     // '' follows the page's prefers-color-scheme; 'light'/'dark' pin the palette explicitly.
     theme: ''
@@ -551,7 +553,16 @@ export function createEmbedScript(baseUrl: string): string {
     }
 
     function resolveRiding(suggestion) {
-      var path = config.includeProvince ? '/api/combined?include_province=true&' : '/api/federal?';
+      var path;
+      if (config.demo) {
+        path = config.includeProvince
+          ? '/api/demo/combined?include_province=true&'
+          : '/api/demo/federal?';
+      } else {
+        path = config.includeProvince
+          ? '/api/combined?include_province=true&'
+          : '/api/federal?';
+      }
       var url = endpoint + path + 'lat=' + suggestion.location.lat + '&lon=' + suggestion.location.lon;
       return fetch(url, { headers: { accept: 'application/json' }, credentials: 'omit' })
         .then(function (response) {
@@ -704,6 +715,7 @@ export function createEmbedScript(baseUrl: string): string {
       province: data.province,
       limit: data.limit ? parseInt(data.limit, 10) : undefined,
       includeProvince: data.includeProvince === 'true',
+      demo: data.demo === 'true',
       endpoint: data.endpoint,
       theme: data.theme
     };
@@ -724,6 +736,7 @@ export function createEmbedScript(baseUrl: string): string {
         province: scriptConfig.province,
         limit: scriptConfig.limit,
         includeProvince: scriptConfig.includeProvince,
+        demo: scriptConfig.demo,
         endpoint: scriptConfig.endpoint,
         theme: scriptConfig.theme
       });

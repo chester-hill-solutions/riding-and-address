@@ -616,6 +616,21 @@ describe('selection', () => {
     expect(calls.some((c) => c.includes('/api/combined') && c.includes('include_province=true'))).toBe(true);
   });
 
+  it('uses keyless /api/demo/* riding paths when demo is set', async () => {
+    document.body.innerHTML = `<form><input id="a" name="address"></form>`;
+    const { calls } = mockFetch({ suggestions: [leafSuggestion()] });
+    const instance = loadWidget().attach({ input: '#a', demo: true, includeProvince: true })!;
+
+    await instance.search('250 main st');
+    await instance.select(0);
+    await flush();
+
+    expect(
+      calls.some((c) => c.includes('/api/demo/combined') && c.includes('include_province=true'))
+    ).toBe(true);
+    expect(calls.some((c) => c.includes('/api/combined?') && !c.includes('/api/demo/'))).toBe(false);
+  });
+
   it('writes the riding into a bound hidden field', async () => {
     document.body.innerHTML = `
       <form>

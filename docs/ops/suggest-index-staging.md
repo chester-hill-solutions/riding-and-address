@@ -26,4 +26,5 @@ Self-serve SKU includes `/api/search` + `/embed.js`. Keep `ODA_SUGGEST_ENABLED=f
 ## Notes
 
 - Search successes are Billable units when Customer keys are enabled.
-- Public landing try-it does **not** use search; it uses `/api/demo/*`.
+- Portal marketing try-it uses `/embed.js` with `demo: true` (riding via `/api/demo/*`) plus an
+  optional `DEMO_BROWSER_API_KEY` for `/api/search` when API_KEYS is enabled.

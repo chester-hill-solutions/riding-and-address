@@ -10,20 +10,26 @@ import type { Route } from './+types/root';
 import appStylesheet from './app.css?url';
 
 const FAVICON =
-  "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='5' fill='%231457a6'/><text x='16' y='22' font-family='Arial,sans-serif' font-size='17' font-weight='700' text-anchor='middle' fill='white'>RA</text></svg>";
+  "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='5' fill='%231457a6'/><text x='16' y='21' font-family='Arial,sans-serif' font-size='11' font-weight='700' text-anchor='middle' fill='white'>CC</text></svg>";
 
 export const links: Route.LinksFunction = () => [
+  { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+  { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' },
+  {
+    rel: 'stylesheet',
+    href: 'https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap',
+  },
   { rel: 'stylesheet', href: appStylesheet },
   { rel: 'icon', type: 'image/svg+xml', href: FAVICON },
 ];
 
 export function meta(): Route.MetaDescriptors {
   return [
-    { title: 'Riding & Address portal' },
+    { title: 'CanCoder portal' },
     {
       name: 'description',
       content:
-        'Customer portal for the Riding & Address API: mint Server and Browser keys, watch usage, and manage fuse settings.',
+        'Customer portal for the CanCoder API: mint Server and Browser keys, watch usage, and manage fuse settings.',
     },
   ];
 }

@@ -1,8 +1,8 @@
-# Riding & Address vs OpenNorth Represent
+# CanCoder vs OpenNorth Represent
 
 Comparison report generated 2026-06-14 from live production data.
 
-| | Riding & Address | OpenNorth Represent |
+| | CanCoder | OpenNorth Represent |
 |---|---------------|---------------------|
 | **Base URL** | https://riding-lookup.chester-hill-solutions.workers.dev | https://represent.opennorth.ca |
 | **Federal boundaries** | 2024 (`federalridings-2024.geojson`) | 2023 representation order (closest parity set) |
@@ -14,16 +14,16 @@ Comparison report generated 2026-06-14 from live production data.
 
 ## Executive summary
 
-1. **Speed (warm cache):** Riding & Address warm-cache p50 is **~1.6× faster** than OpenNorth for postal/lat/lon (37ms vs 59ms).
-2. **Robustness (93 cases):** 43/93 Riding & Address lookups succeeded; **23** agreed with OpenNorth on federal riding when both returned a result; **7** genuine disagreements on shared inputs.
-3. **Known divergence — postal vs point:** `M5V2T6` maps to **University—Rosedale** (Riding & Address, geocoded point-in-polygon on 2024 boundaries) vs **Spadina—Harbourfront** (OpenNorth postal centroid). Same pattern as documented Victoria Park case (postal centroid ≠ geocoded civic address).
+1. **Speed (warm cache):** CanCoder warm-cache p50 is **~1.6× faster** than OpenNorth for postal/lat/lon (37ms vs 59ms).
+2. **Robustness (93 cases):** 43/93 CanCoder lookups succeeded; **23** agreed with OpenNorth on federal riding when both returned a result; **7** genuine disagreements on shared inputs.
+3. **Known divergence — postal vs point:** `M5V2T6` maps to **University—Rosedale** (CanCoder, geocoded point-in-polygon on 2024 boundaries) vs **Spadina—Harbourfront** (OpenNorth postal centroid). Same pattern as documented Victoria Park case (postal centroid ≠ geocoded civic address).
 4. **Address geocoding under batch load:** 43 cases hit **30s geocoding timeout**; 0 tripped the **ODA circuit breaker**. Single-request production behavior is fine; this matrix hammers address geocoding with 4500ms spacing — still insufficient for sustained ODA load. Use longer pauses, smaller batches, or `POST /batch` for bulk work.
 5. **Production gap (resolved):** Provincial riding GeoJSON and ODA expansion — verify `/api/qc`, `/api/bc`, and `/api/geocode?province=BC` after deploy.
 6. **Ground truth (liblist):** 5 liblist cases where RL and OpenNorth agreed with each other but differed from OLP `RidingName` — likely stale member-list riding labels or boundary redistribution, not API disagreement.
 
 ## Methodology
 
-- **Speed:** 8 scenarios, 8 iterations + 2 warmup, production Riding & Address vs OpenNorth.
+- **Speed:** 8 scenarios, 8 iterations + 2 warmup, production CanCoder vs OpenNorth.
 - **Robustness:** 93 cases across postal (A), address (B), coordinates (C), endpoints (D), errors (E), divergence (F), Downloads wild mix (G), and OLP `liblist221123.csv` (I).
 - **OpenNorth parity:** Federal comparisons use `federal-electoral-districts-2023-representation-order` with `contains={lat},{lon}` for address/coordinate cases; `/postcodes/{POSTAL}/?sets=...` for postal-only.
 - **Pacing:** 4500ms between address geocodes, batch cooldown every 12 address cases — see [compare-opennorth.ts](../scripts/compare-opennorth.ts).
@@ -43,7 +43,7 @@ Comparison report generated 2026-06-14 from live production data.
 
 ### Speed notes
 
-- All warm postal/lat/lon scenarios returned `X-Cache-Status: HIT` on Riding & Address.
+- All warm postal/lat/lon scenarios returned `X-Cache-Status: HIT` on CanCoder.
 - `return=municipality` adds ODA normalization work (~900ms p50) even on cache hit.
 - OpenNorth rural postal (`K0A1K0`) is slower (101ms p50) but consistent.
 
@@ -60,7 +60,7 @@ Comparison report generated 2026-06-14 from live production data.
 | Error handled | 3 |
 | RL only | 1 |
 
-### Riding & Address errors (when present)
+### CanCoder errors (when present)
 
 - Geocoding timeout (30s): 43
 - Missing R2 dataset: 4
@@ -86,17 +86,17 @@ Comparison report generated 2026-06-14 from live production data.
 
 ## Genuine disagreements (both APIs returned a riding)
 
-- **A1** (postal=M5V2T6): Riding & Address → **University—Rosedale**; OpenNorth → **Spadina—Harbourfront** (source ground truth: Spadina—Harbourfront)
-- **A4** (postal=V6B1A1): Riding & Address → **Vancouver Centre**; OpenNorth → **Vancouver East**
-- **A5** (postal=K0A1K0): Riding & Address → **Nepean**; OpenNorth → **Carleton**
-- **A8** (postal=M5V 2T6): Riding & Address → **University—Rosedale**; OpenNorth → **Spadina—Harbourfront**
-- **D1** (postal=M5V2T6): Riding & Address → **University—Rosedale**; OpenNorth → **Spadina—Harbourfront**
-- **D2** (postal=M5V2T6): Riding & Address → **Spadina—Fort York**; OpenNorth → **Spadina—Harbourfront**
-- **D4** (postal=M5V2T6): Riding & Address → **University—Rosedale**; OpenNorth → **Spadina—Harbourfront**
+- **A1** (postal=M5V2T6): CanCoder → **University—Rosedale**; OpenNorth → **Spadina—Harbourfront** (source ground truth: Spadina—Harbourfront)
+- **A4** (postal=V6B1A1): CanCoder → **Vancouver Centre**; OpenNorth → **Vancouver East**
+- **A5** (postal=K0A1K0): CanCoder → **Nepean**; OpenNorth → **Carleton**
+- **A8** (postal=M5V 2T6): CanCoder → **University—Rosedale**; OpenNorth → **Spadina—Harbourfront**
+- **D1** (postal=M5V2T6): CanCoder → **University—Rosedale**; OpenNorth → **Spadina—Harbourfront**
+- **D2** (postal=M5V2T6): CanCoder → **Spadina—Fort York**; OpenNorth → **Spadina—Harbourfront**
+- **D4** (postal=M5V2T6): CanCoder → **University—Rosedale**; OpenNorth → **Spadina—Harbourfront**
 
 ## Expected divergences (methodology, not bugs)
 
-- **Postal centroid vs geocoded point:** OpenNorth `/postcodes/` uses centroid/concordance; Riding & Address geocodes then point-in-polygon. Large buildings and cross-boundary postcodes (e.g. `K0A1K0`, `M4C1N2`) often differ.
+- **Postal centroid vs geocoded point:** OpenNorth `/postcodes/` uses centroid/concordance; CanCoder geocodes then point-in-polygon. Large buildings and cross-boundary postcodes (e.g. `K0A1K0`, `M4C1N2`) often differ.
 - **Boundary vintage:** OpenNorth default `federal-electoral-districts` set last updated 2017; we compare against 2023/2024 redistribution where noted.
 - **757 Victoria Park / Victoria Park Ave:** Geocoded point → Scarborough Southwest (both APIs on 2023 contains); postal `M4C1N2` centroid → Beaches—East York on OpenNorth.
 
@@ -200,7 +200,7 @@ Comparison report generated 2026-06-14 from live production data.
 
 ## Feature comparison
 
-| Capability | Riding & Address | OpenNorth |
+| Capability | CanCoder | OpenNorth |
 |------------|---------------|-----------|
 | Postal lookup | Yes (geocode → PIP) | Yes (centroid/concordance) |
 | Address lookup | Yes | No (external geocoder required) |
@@ -214,7 +214,7 @@ Comparison report generated 2026-06-14 from live production data.
 
 ## When to use which
 
-**Use Riding & Address when:**
+**Use CanCoder when:**
 
 - You need address → riding in one call with Canadian geocoding (ODA when enabled).
 - You want 2024 federal boundaries and optional ON/QC provincial in `/api/combined`.

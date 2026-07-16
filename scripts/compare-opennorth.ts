@@ -1,5 +1,5 @@
 /**
- * Riding & Address vs OpenNorth comparison runner.
+ * CanCoder vs OpenNorth comparison runner.
  *
  * Usage:
  *   BENCHMARK_BASIC_AUTH='user:pass' tsx scripts/compare-opennorth.ts

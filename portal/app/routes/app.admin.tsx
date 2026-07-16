@@ -11,7 +11,7 @@ import { SubmitButton } from '~/components/SubmitButton';
 
 export function meta(): Route.MetaDescriptors {
   return [
-    { title: 'Founder admin · Riding & Address portal' },
+    { title: 'Founder admin · CanCoder portal' },
     { name: 'description', content: 'Flip Enterprise batch access for Customers.' },
   ];
 }

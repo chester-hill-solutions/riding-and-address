@@ -1,5 +1,5 @@
 /**
- * Normalize a riding boundary GeoJSON file for Riding & Address R2 upload.
+ * Normalize a riding boundary GeoJSON file for CanCoder R2 upload.
  *
  * Usage:
  *   npx tsx scripts/normalize-riding-geojson.ts --code BC --input raw.geojson --output data/ridings/bcridings-2022.geojson

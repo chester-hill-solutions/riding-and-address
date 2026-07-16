@@ -1,4 +1,4 @@
-# Riding & Address portal
+# CanCoder portal
 
 Self-serve Customer portal: signup, org (workspace), invites, Server/Browser keys, usage, Stripe metered Checkout (gated).
 

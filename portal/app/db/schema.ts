@@ -19,7 +19,7 @@ export {
 import { boolean, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { workspaces } from '@chester-hill-solutions/auth-postgres/schema';
 
-/** Riding & Address billing fields projected alongside CHS workspace. */
+/** CanCoder billing fields projected alongside CHS workspace. */
 export const customerBilling = pgTable('customer_billing', {
   workspaceId: text('workspace_id')
     .primaryKey()

@@ -12,7 +12,7 @@ import { SubmitButton } from '~/components/SubmitButton';
 
 export function meta(): Route.MetaDescriptors {
   return [
-    { title: 'Fuse settings · Riding & Address portal' },
+    { title: 'Fuse settings · CanCoder portal' },
     { name: 'description', content: 'Set the monthly Billable-unit fuse and soft-warn behaviour.' },
   ];
 }

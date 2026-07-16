@@ -7,7 +7,7 @@ import { SubmitButton } from '~/components/SubmitButton';
 
 export function meta(): Route.MetaDescriptors {
   return [
-    { title: 'Log in · Riding & Address portal' },
+    { title: 'Log in · CanCoder portal' },
     { name: 'description', content: 'Sign in to manage keys, usage, and fuse settings.' },
   ];
 }
@@ -37,7 +37,7 @@ export default function Login({ actionData }: Route.ComponentProps) {
     <main className="shell">
       <nav className="nav">
         <Link className="brand" to="/">
-          Riding & Address
+          CanCoder
         </Link>
       </nav>
       <Panel title="Log in">

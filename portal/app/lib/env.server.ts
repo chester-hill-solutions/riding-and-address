@@ -18,13 +18,23 @@ export function env() {
       process.env.BETTER_AUTH_URL || process.env.BASE_URL || (prod ? '' : 'http://localhost:5173'),
     workerProjectionUrl:
       process.env.WORKER_PROJECTION_URL || (prod ? '' : 'http://localhost:8787'),
+    /** Browser-facing Worker origin for docs links and marketing try-it. */
+    publicApiBaseUrl:
+      process.env.PUBLIC_API_BASE_URL ||
+      process.env.WORKER_PROJECTION_URL ||
+      (prod ? '' : 'http://localhost:8787'),
+    /**
+     * Optional public browser key (pk_*) for the marketing try-it embed.
+     * Required when the Worker has API_KEYS (or BASIC_AUTH) enabled; allowlist the portal origin.
+     */
+    demoBrowserKey: process.env.DEMO_BROWSER_API_KEY?.trim() || '',
     workerProjectionSecret: process.env.WORKER_PROJECTION_SECRET || '',
     stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
     stripePriceMetered: process.env.STRIPE_PRICE_METERED || '',
     paidCheckoutEnabled: process.env.PAID_CHECKOUT_ENABLED === 'true',
     resendApiKey: process.env.RESEND_API_KEY || '',
-    emailFrom: process.env.EMAIL_FROM || (prod ? '' : 'Riding & Address <noreply@localhost>'),
+    emailFrom: process.env.EMAIL_FROM || (prod ? '' : 'CanCoder <noreply@localhost>'),
     founderUserIds: (process.env.FOUNDER_USER_IDS || '')
       .split(',')
       .map((s) => s.trim())

@@ -21,7 +21,7 @@ export function createLandingPage(baseUrl: string): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Canadian address geocoding, autocomplete, and electoral district API.">
-  <title>Riding &amp; Address API</title>
+  <title>CanCoder API</title>
   <style>
     :root {
       --bg: #f4f6f8;
@@ -399,7 +399,7 @@ export function createLandingPage(baseUrl: string): string {
 </head>
 <body>
   <nav class="nav">
-    <a class="brand" href="${baseUrl}/">Riding &amp; Address</a>
+    <a class="brand" href="${baseUrl}/">CanCoder</a>
     <div class="nav-links">
       <a href="${baseUrl}/health">Health</a>
       <a href="https://github.com/chester-hill-solutions/riding-and-address/tree/main/docs">Guides</a>
@@ -411,7 +411,7 @@ export function createLandingPage(baseUrl: string): string {
   <header class="hero">
     <div class="hero-grid">
       <div>
-        <span class="eyebrow">Riding &amp; Address · Chester Hill Solutions</span>
+        <span class="eyebrow">CanCoder · Chester Hill Solutions</span>
         <h1>Resolve Canadian addresses to federal and provincial ridings</h1>
         <p class="lead">
           Geocode, autocomplete, and map any Canadian address to its riding.

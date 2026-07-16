@@ -10,10 +10,10 @@ import { SubmitButton } from '~/components/SubmitButton';
 
 export function meta(): Route.MetaDescriptors {
   return [
-    { title: 'Sign up · Riding & Address portal' },
+    { title: 'Sign up · CanCoder portal' },
     {
       name: 'description',
-      content: 'Create an organization on Riding & Address or join one you were invited to.',
+      content: 'Create an organization on CanCoder or join one you were invited to.',
     },
   ];
 }
@@ -97,7 +97,7 @@ export default function Signup({ loaderData, actionData }: Route.ComponentProps)
     <main className="shell">
       <nav className="nav">
         <Link className="brand" to="/">
-          Riding & Address
+          CanCoder
         </Link>
       </nav>
       <Panel title={joining ? `Join ${invite!.orgName}` : 'Create your organization'}>

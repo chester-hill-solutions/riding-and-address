@@ -12,7 +12,7 @@ import { CopyButton } from '~/components/CopyButton';
 
 export function meta(): Route.MetaDescriptors {
   return [
-    { title: 'API keys · Riding & Address portal' },
+    { title: 'API keys · CanCoder portal' },
     { name: 'description', content: 'Mint and revoke Server and Browser keys for your Customer.' },
   ];
 }
