@@ -7,6 +7,11 @@
  * HTTP comparison vs OpenNorth (requires local wrangler dev or deployed URL):
  *   npm run benchmark:lookup -- --http
  *   BENCHMARK_BASE_URL=https://your-worker.workers.dev npm run benchmark:lookup -- --http
+ *
+ * Autocomplete latency (/api/search), asserts the p95 budget:
+ *   npm run benchmark:lookup -- --suggest
+ *   BENCHMARK_SUGGEST_KEY=pk_live_... BENCHMARK_SUGGEST_ORIGIN=https://acme.com \
+ *     BENCHMARK_BASE_URL=https://your-worker.workers.dev npm run benchmark:lookup -- --suggest
  */
 import { createSpatialIndex, findCandidateFeatures } from '../src/spatial';
 import type { GeoJSONFeature, GeoJSONFeatureCollection } from '../src/types';
@@ -194,14 +199,111 @@ async function runHttpBenchmark(): Promise<void> {
   console.log('- OpenNorth uses pre-indexed postcodes; compare warm-cache postal for parity.');
 }
 
+/**
+ * Autocomplete is the one path with a per-keystroke budget, so it gets its own mode and a hard
+ * assertion. Scenarios follow the real typing ladder: the short-query short circuit, a broad
+ * container query, a narrowed one, and a civic resolution (the only step that touches the 10M-row
+ * address table).
+ */
+const SUGGEST_BUDGET_P95_MS = Number(process.env.BENCHMARK_SUGGEST_P95_MS ?? 100);
+
+const SUGGEST_SCENARIOS: Array<{ name: string; q: string; note: string }> = [
+  { name: 'below min length', q: 'ma', note: 'must not touch D1 at all' },
+  { name: 'broad container', q: 'main', note: 'widest candidate window' },
+  { name: 'narrowed container', q: 'main st tor', note: 'typical mid-typing state' },
+  { name: 'civic resolution', q: '250 main st tor', note: 'the only step querying oda_addresses' },
+  { name: 'no match', q: 'zzzz qqqq', note: 'empty result path' },
+];
+
+async function runSuggestBenchmark(): Promise<void> {
+  const baseUrl = process.env.BENCHMARK_BASE_URL ?? DEFAULT_LOCAL_BASE;
+  const iterations = Number(process.env.BENCHMARK_ITERATIONS ?? 10);
+  const warmup = Number(process.env.BENCHMARK_WARMUP ?? 2);
+  const key = process.env.BENCHMARK_SUGGEST_KEY;
+  const origin = process.env.BENCHMARK_SUGGEST_ORIGIN;
+  const province = process.env.BENCHMARK_SUGGEST_PROVINCE ?? 'ON';
+
+  console.log('Autocomplete benchmark (/api/search)');
+  console.log(`Base: ${baseUrl}`);
+  console.log(`Budget: p95 < ${SUGGEST_BUDGET_P95_MS}ms`);
+  console.log(`Iterations: ${iterations} (warmup ${warmup})\n`);
+
+  // The KV cache makes a repeated query trivially fast and the number meaningless, so every
+  // sample carries a cache-busting nonce. This measures the real path, not the cache.
+  const failures: string[] = [];
+  console.log('| Scenario | p50 | p95 | budget |');
+  console.log('|----------|-----|-----|--------|');
+
+  for (const scenario of SUGGEST_SCENARIOS) {
+    const samples: number[] = [];
+    let status = 0;
+
+    for (let i = 0; i < warmup + iterations; i++) {
+      const url = new URL(`${baseUrl}/api/search`);
+      url.searchParams.set('q', scenario.q);
+      url.searchParams.set('province', province);
+      url.searchParams.set('_n', String(Date.now()) + i);
+      if (key) url.searchParams.set('key', key);
+
+      const started = performance.now();
+      try {
+        const response = await fetch(url.toString(), {
+          headers: origin ? { Origin: origin } : {},
+        });
+        await response.arrayBuffer();
+        status = response.status;
+      } catch (error) {
+        console.error(`  ${scenario.name} failed:`, error instanceof Error ? error.message : error);
+        break;
+      }
+      if (i >= warmup) samples.push(performance.now() - started);
+      await sleep(50);
+    }
+
+    if (!samples.length) {
+      console.log(`| ${scenario.name} | error | error | — |`);
+      failures.push(`${scenario.name}: no samples`);
+      continue;
+    }
+    if (status >= 400) {
+      console.log(`| ${scenario.name} | — | — | HTTP ${status} |`);
+      failures.push(`${scenario.name}: HTTP ${status}`);
+      continue;
+    }
+
+    const p50 = percentile(samples, 0.5);
+    const p95 = percentile(samples, 0.95);
+    const withinBudget = p95 < SUGGEST_BUDGET_P95_MS;
+    if (!withinBudget) failures.push(`${scenario.name}: p95 ${p95.toFixed(1)}ms`);
+    console.log(
+      `| ${scenario.name} | ${p50.toFixed(1)}ms | ${p95.toFixed(1)}ms | ${withinBudget ? 'ok' : 'OVER'} |`
+    );
+  }
+
+  console.log('\nNotes:');
+  console.log('- Every request carries a nonce, so the KV cache never serves a sample.');
+  console.log('- Against a deployed worker this measures RTT + D1, and RTT usually dominates:');
+  console.log('  D1 has a single-region primary, so distance to it can exceed the whole budget.');
+
+  if (failures.length) {
+    console.error(`\nFAILED the p95 budget:\n  ${failures.join('\n  ')}`);
+    process.exit(1);
+  }
+  console.log(`\nAll scenarios within the ${SUGGEST_BUDGET_P95_MS}ms p95 budget.`);
+}
+
 async function main(): Promise<void> {
   const httpMode = process.argv.includes('--http');
+  const suggestMode = process.argv.includes('--suggest');
 
-  if (httpMode) {
+  if (suggestMode) {
+    await runSuggestBenchmark();
+  } else if (httpMode) {
     await runHttpBenchmark();
   } else {
     await runSpatialBenchmark();
-    console.log('\nRun HTTP comparison: npm run benchmark:lookup -- --http');
+    console.log('\nRun HTTP comparison:   npm run benchmark:lookup -- --http');
+    console.log('Run autocomplete p95:  npm run benchmark:lookup -- --suggest');
   }
 }
 

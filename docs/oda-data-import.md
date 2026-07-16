@@ -74,7 +74,99 @@ curl https://your-worker.workers.dev/api/oda/stats -H "Authorization: Basic ..."
 # Or via D1:
 wrangler d1 execute oda-addresses --remote --command \
   "SELECT province, COUNT(*) as cnt FROM oda_addresses GROUP BY province ORDER BY province;"
+
+# 6. Optional: build the autocomplete index for /api/search
+npm run build:oda:suggest -- --provinces ON --remote
 ```
+
+## Autocomplete index
+
+`GET /api/search` needs two extra tables: `oda_street_suggest` (one row per street-in-city) and
+`oda_suggest_fts` (an FTS5 index over it). They are **not** part of the base schema and are not
+created by `/api/oda/init`, so the import above is unaffected by them.
+
+Both are derived: every row is computed inside D1 from `oda_street_ranges` and
+`oda_city_centroids`, which the import has already written. Nothing is downloaded, no CSV is
+re-parsed, and `oda_addresses` is never scanned — so this takes **seconds, not hours**, and never
+requires a re-import.
+
+```bash
+# Local (against the fixture database)
+npm run build:oda:suggest -- --provinces ON,QC --local
+
+# Remote, one province at a time
+npm run build:oda:suggest -- --provinces ON --remote
+
+# All provinces
+npm run build:oda:suggest -- --provinces ALL --remote
+```
+
+Then verify and enable:
+
+```bash
+curl https://your-worker.workers.dev/api/oda/stats -H "Authorization: Basic ..."
+# -> "streetSuggest": 148213
+
+# Only now flip ODA_SUGGEST_ENABLED to "true" in wrangler.jsonc
+```
+
+**Prerequisite:** the centroid tables must be populated. If a province reports 0 suggestions, run
+`npm run import:oda:centroids` (or `--centroids-only`) first.
+
+### Staleness
+
+The index is **derived** from `oda_street_ranges`, so any import or centroid rebuild silently
+invalidates it — `/api/search` keeps serving streets that no longer exist, and nothing errors.
+Two safety nets:
+
+- `scripts/import-oda.ts` warns at the point of change, naming the exact rebuild command.
+- `GET /api/oda/stats` reports `streetSuggestStaleProvinces`: any province whose street count no
+  longer matches its indexed count.
+
+```bash
+curl .../api/oda/stats | jq .streetSuggestStaleProvinces
+# ["ON"]  -> npm run build:oda:suggest -- --provinces ON --remote --skip-schema
+```
+
+The check compares counts, so it cannot catch an edit that leaves the count identical — which is
+why the import script also warns directly. Rebuilds are idempotent and per-province.
+
+The build is idempotent per province — it clears and reinserts that province, so re-running is
+safe. Rollout is reversible at every step: building the index changes nothing while
+`ODA_SUGGEST_ENABLED` is `false`, and turning the flag back off restores the previous behaviour
+with no redeploy and no data change.
+
+### Build script options
+
+`scripts/build-oda-suggest.ts` is invoked via `npm run build:oda:suggest -- [options]`.
+
+| Flag | Description |
+|------|-------------|
+| `--provinces ON,QC` or `ALL` | Provinces to build (default: `ON`) |
+| `--remote` | Write to remote D1 (omit for `--local` dev database) |
+| `--local` | Implicit when `--remote` is omitted |
+| `--database name` | D1 database name (default: `oda-addresses`) |
+| `--skip-schema` | Skip creating the suggest tables (use when they already exist) |
+| `--output-dir dir` | SQL staging dir (default: `.oda-suggest`) |
+
+### FTS5 support
+
+The index uses SQLite FTS5 with prefix indexes (`prefix='2 3 4'`). Cloudflare
+[documents FTS5 as supported on D1](https://developers.cloudflare.com/d1/sql-api/sql-statements/).
+The `trigram` tokenizer is **not** documented for D1 and is deliberately unused — prefix matching
+is what autocomplete needs.
+
+Verify against your database before rolling out:
+
+```bash
+wrangler d1 execute oda-addresses --remote --command \
+  "CREATE VIRTUAL TABLE _fts_probe USING fts5(t, prefix='2 3');"
+wrangler d1 execute oda-addresses --remote --command "DROP TABLE _fts_probe;"
+```
+
+Note the prefix index roughly doubles the FTS table size, so check `wrangler d1 info` against your
+plan's storage limit before building all ten provinces. This is the main reason to roll out one
+province at a time.
 
 ## Import script options
 
@@ -137,3 +229,10 @@ npm run import:oda -- --download --provinces AB --remote --skip-schema --centroi
 ```
 
 Re-import QC or ON if `/api/oda/stats` shows unexpectedly low row counts (e.g. QC with only a handful of rows).
+
+After any re-import or centroid rebuild, rebuild the autocomplete index for that province — it is
+derived from the centroid tables and will otherwise serve stale streets:
+
+```bash
+npm run build:oda:suggest -- --provinces QC --remote --skip-schema
+```

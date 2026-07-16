@@ -100,19 +100,60 @@ The project follows a modular architecture with clear separation of concerns:
 
 ```
 src/
-├── worker.ts           # Main entry point and request routing
-├── types.ts           # TypeScript type definitions
-├── utils.ts           # Utility functions and helpers
-├── cache.ts           # Multi-level caching implementation
-├── geocoding.ts       # Geocoding provider management
-├── spatial.ts         # Spatial database and indexing
-├── queue-manager.ts   # Queue processing with Durable Objects
-├── batch.ts           # Batch processing logic
-├── webhooks.ts        # Webhook management
-├── circuit-breaker.ts # Circuit breaker patterns
-├── metrics.ts         # Metrics and monitoring
-└── docs.ts           # API documentation generation
+├── worker.ts              # Main entry point and request routing
+├── types.ts               # TypeScript type definitions
+├── config.ts              # Timeout and retry constants
+├── utils.ts               # Query parsing, auth, rate limiting, point-in-polygon
+├── validation.ts          # Zod schemas for external API responses
+│
+├── datasets.ts            # Dataset registry: R2 key <-> route <-> province
+├── lookup-handler.ts      # Shared handler for /api/* riding lookups
+├── lookup-expansion.ts    # include_province and return=municipality expansion
+├── return-selector.ts     # Parses return= / include_province=
+├── spatial.ts             # Bounding boxes, spatial index, D1 R-tree, centroids
+├── cache.ts               # LRU + KV caching, cache warming
+│
+├── geocoding.ts           # External geocoder chain (GeoGratis -> Google/Mapbox/Nominatim)
+├── geocode-query.ts       # Parses geocode_method=
+├── geocode-region.ts      # Province code/name maps, region-match validation
+│
+├── oda-config.ts          # ODA + autocomplete config and confidence/ranking tables
+├── oda-schema.ts          # D1 DDL for ODA and suggest tables; stats
+├── oda-import.ts          # ODA row -> D1 insert shaping
+├── oda-normalize.ts       # Address normalization, search/street/city keys
+├── oda-geocoding.ts       # ODA geocode cascade (exact -> ... -> nearest neighbour)
+├── oda-suggest.ts         # Address autocomplete for /api/search (D1 only, no R2)
+├── oda-handlers.ts        # HTTP handlers for the ODA endpoints
+├── oda-d1-tracker.ts      # Per-request D1 read counting
+├── canada-post-format.ts  # Canada Post-style mailing line formatting
+│
+├── batch.ts               # Batch processing logic
+├── queue-manager.ts       # QueueManagerDO: distributed job queue
+├── webhooks.ts            # Webhook CRUD, delivery, retry
+├── circuit-breaker.ts     # Circuit breaker patterns
+├── circuit-breaker-do.ts  # CircuitBreakerDO: shared breaker state
+├── metrics.ts             # Metrics and monitoring
+│
+├── api-keys.ts            # Browser API keys: origin allowlists (public keys, not secrets)
+├── api-key-usage-do.ts    # ApiKeyUsageDO: per-key daily cap
+│
+├── docs.ts                # OpenAPI spec + Scalar API reference
+├── landing-page.ts        # GET / landing page
+└── embed.ts               # GET /embed.js drop-in autocomplete widget
 ```
+
+**Why the widget is a string.** `embed.ts`, `landing-page.ts` and `docs.ts` all return browser
+code as template literals. For the widget this is forced: tsconfig has no DOM lib, because DOM
+types and `@cloudflare/workers-types` both declare `HTMLElement`/`Request`/`Response` with
+incompatible shapes and cannot share a program. The widget is therefore covered by
+`test/embed-widget.test.ts`, which evaluates the real served output in jsdom — typechecked
+separately via `tsconfig.dom.json`, which `npm run typecheck` also runs. The widget source uses
+no backticks and no `${}`, since either would terminate the enclosing template literal.
+
+**Module boundary worth preserving:** `oda-suggest.ts` imports nothing from R2 or `spatial.ts`.
+`/api/search` is queried per keystroke, so it must never load GeoJSON or run point-in-polygon;
+riding resolution happens separately, through the existing lookup routes, once a user selects a
+suggestion. A test asserts no suggestion ever carries a riding field.
 
 ### Key Design Patterns
 

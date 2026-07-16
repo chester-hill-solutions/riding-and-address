@@ -439,13 +439,46 @@ async function importProvinceFromFile(
     console.log(
       `Rebuilt centroids for ${province} (${postalCentroids.size.toLocaleString()} postal, ${cityCentroids.size.toLocaleString()} city, ${streetRanges.size.toLocaleString()} street ranges; skipped ${skipped.toLocaleString()} rows)`
     );
+    warnIfSuggestIndexNowStale(options, province);
     return { imported: 0, nextId: startId };
   }
 
   console.log(
     `Imported ${imported.toLocaleString()} addresses for ${province} (skipped ${skipped.toLocaleString()} rows)`
   );
+  warnIfSuggestIndexNowStale(options, province);
   return { imported, nextId: rowId };
+}
+
+/**
+ * The autocomplete index is DERIVED from oda_street_ranges, so any import or centroid rebuild
+ * silently invalidates it -- /api/search would keep serving streets that no longer exist, with no
+ * error to notice. Nothing else in the system knows to say so, and the failure is invisible.
+ *
+ * A warning rather than an automatic rebuild: this runs mid-import for multi-province runs, and
+ * rebuilding an index that the next province is about to invalidate again would be wasted work
+ * against remote D1.
+ */
+function warnIfSuggestIndexNowStale(options: ImportOptions, province: string): void {
+  if (!suggestIndexExists(options)) return;
+  console.warn(
+    `\n  ! ${province} changed and the autocomplete index is now STALE for it.\n` +
+      `    Rebuild before serving /api/search:\n` +
+      `      npm run build:oda:suggest -- --provinces ${province}${options.remote ? ' --remote' : ' --local'} --skip-schema\n`
+  );
+}
+
+function suggestIndexExists(options: ImportOptions): boolean {
+  try {
+    const parsed = queryD1Json<{ name: string }>(
+      options.database,
+      options.remote,
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='oda_street_suggest' LIMIT 1;`
+    );
+    return Boolean(parsed[0]?.results?.length);
+  } catch {
+    return false;
+  }
 }
 
 async function main(): Promise<void> {

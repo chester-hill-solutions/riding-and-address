@@ -135,3 +135,80 @@ Fixture CSV: `test/fixtures/oda/fixture.csv`
 - Federal riding resolved for the geocoded point
 - `province_data.riding` or provincial properties indicate Scarborough Southwest (not Beaches-East York)
 - Document resolved coordinates in tests if live geocoding varies
+
+## Case 13: Autocomplete ladder — street container to address
+
+**Context:** `/api/search` returns street *containers* until the query names a single address.
+Asserted in `test/oda-suggest.test.ts` and `test/search-route.integration.test.ts`.
+
+| Query | Expected |
+|-------|----------|
+| `GET /api/search?q=ma` | `suggestions: []` — below `ODA_SUGGEST_MIN_QUERY_LENGTH`, and **zero D1 queries** |
+| `GET /api/search?q=main` | Containers for every matching street; busier streets rank first |
+| `GET /api/search?q=main st tor` | Narrowed to Toronto; `next: search`, `dataLevel: Street`, `addressCount` present |
+| `GET /api/search?q=250 main st tor` | `next: lookup`, `dataLevel: Premise`, `addressComponents.civic_number: "250"` |
+| `GET /api/search?q=251 main st tor` | Civic in range but no record → `dataLevel: RangedPremise`, `location` is the street centroid |
+
+**Expected in every case:**
+- No suggestion carries a `riding` field — riding is resolved separately from `location`
+- `provinces` echoes what was searched (NL/NU/YT always return nothing; they are absent from ODA)
+
+**Street-type expansion.** The index stores canonical types (`CRES`, not `CRESCENT`), so a query
+must match both forms. `q=rumbellow crescent` builds `"RUMBELLOW"* AND ("CRESCENT"* OR "CRES"*)`
+and matches `RUMBELLOW CRES AJAX ON`. A naive `"CRESCENT"*` matches nothing.
+
+The OR group also protects street *names*: `normalizeStreetDirection('WEST')` is `W`, so replacing
+rather than expanding would turn a search for "West St" into "W St".
+
+**Civic stripping.** `suggest_text` holds no civic number, so the civic is removed before matching:
+`250 main st tor` searches `"MAIN"* AND "ST"* AND "TOR"*`. Exactly one leading token is dropped,
+so `250 16th ave` keeps `16TH`.
+
+## Case 14: Candidate window ordering
+
+**Context:** `/api/search` takes a candidate window from FTS5 (`ODA_SUGGEST_CANDIDATE_WINDOW`, default
+50) and then scores it in JS. Because the window is a *truncation*, whatever orders it decides what
+scoring is allowed to see. Ordering it by bm25 alone was wrong.
+
+**Reproduction** (Ontario, streets named Main St in Toronto/Stratford/Stouffville/Steeles/St
+Catharines/Ottawa), query `main st`:
+
+```
+ORDER BY bm25 ASC LIMIT 5            <- the old ordering
+  MAIN ST STOUFFVILLE ON    bm25=-0.0000  n=15
+  MAIN ST STRATFORD ON      bm25=-0.0000  n=12
+  MAIN ST STEELES ON        bm25=-0.0000  n=8
+  MAIN ST ST CATHARINES ON  bm25=-0.0000  n=30
+  MAIN ST E STOUFFVILLE ON  bm25=-0.0000  n=5
+```
+
+**Main St Toronto (n=250) does not appear at all.** Two mechanisms:
+
+1. **bm25 gives no signal here.** Every matching row contains both `MAIN` and `ST`, so IDF
+   collapses and every row scores `-0.0000`. Ordering by a constant is ordering arbitrarily.
+2. **Prefix terms inflate term frequency.** `"ST"*` matches the token `ST` *and* `STOUFFVILLE`,
+   `STRATFORD`, `STEELES`, `ST CATHARINES` — cities whose names merely begin with "st".
+
+bm25 is a document ranker; these are 4-token strings. It is used here as a *matcher*, and ranking
+belongs in JS where prefix quality, popularity and proximity live.
+
+**Expected ordering** — prefix match, then proximity when biased, then popularity, with bm25 last
+as a tie-break only:
+
+```
+main st                              main st + locationBias=43.65,-79.38
+  MAIN ST TORONTO ON     n=250         MAIN ST TORONTO ON     n=250
+  MAIN ST E TORONTO ON   n=83          MAIN ST E TORONTO ON   n=83
+  MAIN ST W TORONTO ON   n=62          MAIN ST W TORONTO ON   n=62
+  MAIN ST OTTAWA ON      n=40          MAIN ST STEELES ON     n=8    <- nearby beats bigger
+  MAIN ST ST CATHARINES  n=30          MAIN ST E STEELES ON   n=2
+```
+
+Proximity must be part of the **SQL** ordering, not applied only in JS afterwards: applied after
+the window, it can only reshuffle rows bm25 already admitted, so a nearby street cut at position 79
+of 348 can never be recovered. `locationBias` stays a soft signal — it reorders the window, it
+never filters (that is `locationRestriction`).
+
+Asserted in `test/oda-suggest.test.ts` ("candidate window ordering"). Those tests assert the
+generated SQL, because the `LIMIT` executes in SQLite and the D1 mock cannot run it — the
+behaviour above was verified against a real database.
