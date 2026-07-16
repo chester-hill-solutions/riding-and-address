@@ -8,7 +8,7 @@
  * @cloudflare/workers-types.
  */
 
-export const EMBED_VERSION = '1.2.0';
+export const EMBED_VERSION = '1.3.0';
 
 export function createEmbedScript(baseUrl: string): string {
   return `/* CanCoder autocomplete widget v${EMBED_VERSION} */
@@ -249,6 +249,7 @@ export function createEmbedScript(baseUrl: string): string {
     '.panel[data-open="true"]{display:block}',
     '.item{padding:8px 12px;cursor:pointer;display:flex;justify-content:space-between;gap:12px;align-items:baseline}',
     '.item[aria-selected="true"]{background:var(--rl-active)}',
+    '.item.more .main{color:var(--rl-muted);font-size:13px}',
     '.main{color:var(--rl-fg)}',
     '.main b{font-weight:700}',
     '.sub{color:var(--rl-muted);font-size:12px;white-space:nowrap}',
@@ -345,7 +346,10 @@ export function createEmbedScript(baseUrl: string): string {
 
     var state = {
       items: [], active: -1, open: false, containerId: null, seq: 0, controller: null,
-      timer: null, loadingTimer: null, suppress: false
+      timer: null, loadingTimer: null, suppress: false,
+      // Keyset paging inside a container: the server's nextCursor plus the query that produced
+      // it, so "More addresses" can re-issue the same search one page further.
+      nextCursor: null, lastQuery: ''
     };
 
     /**
@@ -430,6 +434,11 @@ export function createEmbedScript(baseUrl: string): string {
       openPanel();
     }
 
+    /** Selectable rows: the suggestions plus, when the server has more pages, the "more" row. */
+    function rowCount() {
+      return state.items.length + (state.nextCursor ? 1 : 0);
+    }
+
     function render() {
       if (!state.items.length) {
         ui.panel.innerHTML = '';
@@ -451,14 +460,25 @@ export function createEmbedScript(baseUrl: string): string {
           + '<span class="sub">' + escapeHtml(sub) + count + '</span>'
           + '</div>';
       }
+      if (state.nextCursor) {
+        // A container with more rows than one page: an ordinary option that loads the next
+        // keyset page in place, so long streets and towers are reachable without retyping.
+        var moreIndex = state.items.length;
+        html += '<div class="item more" role="option" id="' + listId + '-' + moreIndex + '"'
+          + ' data-index="' + moreIndex + '" aria-selected="' + (moreIndex === state.active) + '">'
+          + '<span class="main">More addresses…</span>'
+          + '</div>';
+      }
       ui.panel.innerHTML = html;
       openPanel();
-      announce(state.items.length + (state.items.length === 1 ? ' suggestion' : ' suggestions'));
+      announce(state.items.length + (state.items.length === 1 ? ' suggestion' : ' suggestions')
+        + (state.nextCursor ? ', more available' : ''));
     }
 
     function setActive(index) {
-      if (!state.items.length) return;
-      state.active = (index + state.items.length) % state.items.length;
+      var total = rowCount();
+      if (!total) return;
+      state.active = (index + total) % total;
       var nodes = ui.panel.querySelectorAll('.item');
       for (var i = 0; i < nodes.length; i++) {
         nodes[i].setAttribute('aria-selected', String(i === state.active));
@@ -468,7 +488,7 @@ export function createEmbedScript(baseUrl: string): string {
       if (node && node.scrollIntoView) node.scrollIntoView({ block: 'nearest' });
     }
 
-    function buildUrl(value) {
+    function buildUrl(value, cursor) {
       var url = endpoint + '/api/search?q=' + encodeURIComponent(value);
       // Public by design: this key is an identifier the server pairs with an origin allowlist,
       // not a secret. See docs/oda-geolocation-contract.md.
@@ -476,6 +496,7 @@ export function createEmbedScript(baseUrl: string): string {
       if (config.province) url += '&province=' + encodeURIComponent(config.province);
       if (config.limit) url += '&limit=' + encodeURIComponent(config.limit);
       if (state.containerId) url += '&containerId=' + encodeURIComponent(state.containerId);
+      if (cursor) url += '&cursor=' + encodeURIComponent(cursor);
       if (config.locationBias) {
         url += '&locationBias=' + encodeURIComponent(config.locationBias.lat + ',' + config.locationBias.lon);
       } else if (config.locationRestriction) {
@@ -489,6 +510,7 @@ export function createEmbedScript(baseUrl: string): string {
       if (!value || value.trim().length < config.minLength) {
         setLoading(false);
         state.items = [];
+        state.nextCursor = null;
         render();
         return Promise.resolve([]);
       }
@@ -515,6 +537,8 @@ export function createEmbedScript(baseUrl: string): string {
           setLoading(false);
           state.items = (body && body.suggestions) || [];
           state.active = -1;
+          state.nextCursor = (body && body.nextCursor) || null;
+          state.lastQuery = value;
           if (state.items.length) {
             render();
           } else {
@@ -530,10 +554,58 @@ export function createEmbedScript(baseUrl: string): string {
           if (seq !== state.seq) return [];
           setLoading(false);
           state.items = [];
+          state.nextCursor = null;
           renderNotice('error', 'Search unavailable — try again');
           announce('Search unavailable');
           emit('error', { error: error });
           return [];
+        });
+    }
+
+    /**
+     * Fetch the next keyset page of the current container and append it in place, keeping the
+     * panel open. Same seq/abort discipline as search(), so typing during the load supersedes
+     * it cleanly and the stale page is dropped.
+     */
+    function loadMore() {
+      var cursor = state.nextCursor;
+      if (!cursor) return Promise.resolve(state.items);
+
+      if (state.controller) state.controller.abort();
+      var controller = typeof global.AbortController === 'function' ? new global.AbortController() : null;
+      state.controller = controller;
+      var seq = ++state.seq;
+      setLoading(true);
+
+      return fetch(buildUrl(state.lastQuery, cursor), {
+        headers: { accept: 'application/json' },
+        credentials: 'omit',
+        signal: controller ? controller.signal : undefined
+      })
+        .then(function (response) {
+          if (!response.ok) throw new Error('Search failed: ' + response.status);
+          return response.json();
+        })
+        .then(function (body) {
+          if (seq !== state.seq) return state.items;
+          setLoading(false);
+          var appended = (body && body.suggestions) || [];
+          var firstNew = state.items.length;
+          state.items = state.items.concat(appended);
+          state.nextCursor = (body && body.nextCursor) || null;
+          render();
+          // Land on the first newly loaded row rather than snapping back to the top.
+          if (appended.length) setActive(firstNew);
+          return state.items;
+        })
+        .catch(function (error) {
+          if (error && error.name === 'AbortError') return state.items;
+          if (seq !== state.seq) return state.items;
+          setLoading(false);
+          // Keep what is already on screen; the more row survives so the user can retry.
+          render();
+          emit('error', { error: error });
+          return state.items;
         });
     }
 
@@ -592,6 +664,9 @@ export function createEmbedScript(baseUrl: string): string {
     }
 
     function select(index) {
+      // The trailing "More addresses…" row pages the container instead of resolving anything.
+      if (state.nextCursor && index === state.items.length) return loadMore();
+
       var suggestion = state.items[index];
       if (!suggestion) return Promise.resolve(null);
 
@@ -612,6 +687,7 @@ export function createEmbedScript(baseUrl: string): string {
       }
 
       state.containerId = null;
+      state.nextCursor = null;
       fillAddress(suggestion);
       close();
       return resolveRiding(suggestion);
