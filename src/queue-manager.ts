@@ -714,7 +714,7 @@ export class QueueManager {
         job.request.query,
         cachedLookupRiding,
         {
-          geocodeIfNeeded: (env, query, req, cb) => geocodeIfNeeded(env, query, req, undefined, cb),
+          geocodeIfNeeded: geocodeIfNeeded,
         }
       );
       return {

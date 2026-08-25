@@ -4,11 +4,10 @@ import {
   BatchLookupResponse,
   BatchJob,
   QueryParams,
-  GoogleAddressComponents,
   CircuitBreakerExecutor,
 } from './types';
 import { parseBatchLookupRequests } from './validation';
-import { type GeocodeBatchResult } from './geocoding';
+import { type GeocodeBatchResult, type GeocodeIfNeededFn } from './geocoding';
 import { incrementMetric, recordTiming } from './metrics';
 import {
   performExpandedLookup,
@@ -34,16 +33,7 @@ export const MAX_REQUEST_BODY_SIZE = 10 * 1024 * 1024; // 10MB
 export async function processBatchLookupWithBatchGeocoding(
   env: Env,
   requests: BatchLookupRequest[],
-  geocodeIfNeeded: (
-    env: Env,
-    query: QueryParams,
-    request?: Request
-  ) => Promise<{
-    lon: number;
-    lat: number;
-    normalizedAddress?: string;
-    addressComponents?: GoogleAddressComponents;
-  }>,
+  geocodeIfNeeded: GeocodeIfNeededFn,
   lookupRiding: LookupRidingFn,
   geocodeBatchFn: (
     env: Env,

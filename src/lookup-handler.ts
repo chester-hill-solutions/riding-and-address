@@ -110,8 +110,8 @@ export async function handleLookupRequest(
     const expanded = await performExpandedLookup(env, lookupPathname, sanitizedQuery, lookupRiding, {
       request,
       circuitBreaker,
-      geocodeIfNeeded: (env, query, req, cb) =>
-        geocodeIfNeeded(env, query, req, undefined, cb, deferTask),
+      geocodeIfNeeded: (env, query, opts) =>
+        geocodeIfNeeded(env, query, { ...opts, deferTask }),
       geocodingTimeoutMs: timeoutConfig.geocoding,
       deferTask,
     });

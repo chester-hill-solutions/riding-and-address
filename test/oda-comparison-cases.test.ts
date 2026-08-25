@@ -78,8 +78,11 @@ describe('ODA comparison address cases (offline, categories B and G)', () => {
       }
 
       try {
-        await geocodeIfNeeded(odaEnv(), qp, undefined, undefined, {
-          execute: (key, fn, options) => circuitBreaker.execute(key, fn, options),
+        await geocodeIfNeeded(odaEnv(), qp, {
+          circuitBreaker: {
+            execute: (key: string, fn: () => Promise<unknown>, options?: unknown) =>
+              circuitBreaker.execute(key, fn, options as never)
+          }
         });
       } catch (error) {
         if (error instanceof Error && error.message.includes('Circuit breaker is OPEN')) {

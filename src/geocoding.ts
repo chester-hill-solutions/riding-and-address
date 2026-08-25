@@ -12,6 +12,7 @@ import {
   CanadaPostStyleAddress,
 } from './types';
 import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS, TIME_CONSTANTS_SECONDS, QUALITY_THRESHOLDS, GEOCODING_STAGE_TIMEOUTS } from './config';
+import { runOrDefer } from './utils';
 import { withRetry, withTimeout, NonRetriableError } from './utils';
 import { CircuitBreakerOpenError } from './circuit-breaker';
 import { isPostalOnlyQuery, wantsPostalCentroidOnly } from './geocode-query';
@@ -38,13 +39,6 @@ import {
   selectGeoGratisResult,
 } from './geocode-region';
 
-async function runOrDefer(deferTask: DeferTaskFn | undefined, task: Promise<void>): Promise<void> {
-  if (deferTask) {
-    deferTask(task);
-  } else {
-    await task;
-  }
-}
 
 // Geocoding cache entry interface
 interface GeocodingCacheEntry {
@@ -413,7 +407,7 @@ export async function normalizeAddressWithGoogle(
       region: 'ca'
     });
     const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
-    const resp = await fetch(url, { headers: { 'User-Agent': 'riding-lookup/1.0' }, signal: AbortSignal.timeout(10000) });
+    const resp = await fetch(url, { headers: { 'User-Agent': 'riding-lookup/1.0' }, signal: AbortSignal.timeout(Math.min(getTimeoutConfig(env).geocoding, 10000)) });
     if (!resp.ok) throw new Error(`Google reverse geocode HTTP error: ${resp.status}`);
     const rawData = await resp.json();
     const validation = safeValidateGoogleGeocode(rawData);
@@ -471,8 +465,9 @@ export async function normalizeAddressWithGoogle(
  * - Requests score and component data via expand parameter for quality assessment
  * - Returns null on API errors, empty results, or invalid coordinates
  */
-async function geocodeWithGeoGratis(qp: QueryParams): Promise<{ lon: number; lat: number; qualifier?: string; score?: number } | null> {
+async function geocodeWithGeoGratis(qp: QueryParams, env: Env): Promise<{ lon: number; lat: number; qualifier?: string; score?: number } | null> {
   const retryConfig = getRetryConfig();
+  const fetchTimeoutMs = getTimeoutConfig(env).geocoding;
   try {
     return await withRetry(async () => {
       const queryString = buildGeocodeQueryString(qp);
@@ -482,9 +477,9 @@ async function geocodeWithGeoGratis(qp: QueryParams): Promise<{ lon: number; lat
       });
 
       const url = `https://www.geolocator.api.geo.ca/geolocation/en/locate?${params.toString()}`;
-      const resp = await fetch(url, { 
+      const resp = await fetch(url, {
         headers: { "User-Agent": "riding-lookup/1.0" },
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(fetchTimeoutMs)
       });
       
       if (!resp.ok) {
@@ -538,7 +533,7 @@ async function geocodeWithGeoGratis(qp: QueryParams): Promise<{ lon: number; lat
  * Geocodes an address using the Google Geocoding API.
  * Falls back to Nominatim on ZERO_RESULTS, REQUEST_DENIED, or INVALID_REQUEST.
  */
-async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, request?: Request): Promise<GeocodeResult> {
+async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, request?: Request, fetchTimeoutMs: number = getTimeoutConfig(env).geocoding): Promise<GeocodeResult> {
   const headerKey = request?.headers.get("X-Google-API-Key");
   const key = headerKey || env.GOOGLE_MAPS_KEY;
   if (!key) throw new NonRetriableError("Google API key not provided. Set X-Google-API-Key header or configure GOOGLE_MAPS_KEY environment variable");
@@ -555,7 +550,7 @@ async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, reque
   params.set('region', 'ca');
 
   const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
-  const resp = await fetch(url, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(10000) });
+  const resp = await fetch(url, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(fetchTimeoutMs) });
   if (!resp.ok) throw new Error(`Google error: ${resp.status}`);
   const rawData = await resp.json();
   const validation = safeValidateGoogleGeocode(rawData);
@@ -566,7 +561,7 @@ async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, reque
   const data = validation.data;
   if (data.status === 'ZERO_RESULTS' || data.status === 'REQUEST_DENIED' || data.status === 'INVALID_REQUEST' || !data.results?.length) {
     console.error(`[GEOCODING] Google API failed (${data.status || 'no results'}), falling back to Nominatim`);
-    return await geocodeWithNominatimFallback(qp, query);
+    return await geocodeWithNominatim(qp, query, { notFoundMessage: 'No results from Google' });
   }
   if (data.status === 'OVER_QUERY_LIMIT' || data.status === 'UNKNOWN_ERROR') {
     throw new Error(`Google API error: ${data.status}`);
@@ -577,7 +572,7 @@ async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, reque
   const components = parseGoogleAddressComponents(result);
   if (!googleResultMatchesRegion(qp, components, typeof fmt === 'string' ? fmt : undefined)) {
     console.warn('[GEOCODING] Google result outside requested region, falling back to Nominatim');
-    return await geocodeWithNominatimFallback(qp, buildGeocodeQueryString(qp));
+    return await geocodeWithNominatim(qp, buildGeocodeQueryString(qp), { notFoundMessage: 'No results from Google' });
   }
   return {
     lon: loc.lng,
@@ -588,9 +583,16 @@ async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, reque
 }
 
 /**
- * Fallback to Nominatim when Google returns no results or errors.
+ * Geocodes an address using the Nominatim (OpenStreetMap) API.
+ * Single implementation for both direct use (`nominatim` provider) and as
+ * Google's zero-results fallback (`notFoundMessage` keeps the legacy error).
  */
-async function geocodeWithNominatimFallback(qp: QueryParams, query: string): Promise<GeocodeResult> {
+async function geocodeWithNominatim(
+  qp: QueryParams,
+  query: string,
+  opts?: { notFoundMessage?: string; fetchTimeoutMs?: number }
+): Promise<GeocodeResult> {
+  const notFoundMessage = opts?.notFoundMessage ?? 'No results from Nominatim';
   const nominatimParams = new URLSearchParams({ format: 'jsonv2', limit: '1', country: 'canada' });
   const street = qp.address ? expandStreetAddress(qp.address) : undefined;
   if (street) nominatimParams.set('street', street);
@@ -605,22 +607,21 @@ async function geocodeWithNominatimFallback(qp: QueryParams, query: string): Pro
     nominatimParams.set("q", query);
   }
   const nominatimUrl = `https://nominatim.openstreetmap.org/search?${nominatimParams.toString()}`;
-  const nomResp = await fetch(nominatimUrl, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(10000) });
-  if (nomResp.ok) {
-    const rawResults = await nomResp.json();
-    const nomValidation = safeValidateNominatim(rawResults);
-    if (!nomValidation.success) {
-      console.warn(`[GEOCODING] Nominatim response validation failed:`, nomValidation.error.issues);
-      throw new NonRetriableError(`Nominatim API response validation failed`);
-    }
-    const results = nomValidation.data;
-    const first = results?.[0];
-    if (first) {
-      return { lon: Number(first.lon), lat: Number(first.lat) };
-    }
+  const resp = await fetch(nominatimUrl, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(opts?.fetchTimeoutMs ?? 10000) });
+  if (!resp.ok && !opts?.notFoundMessage) throw new Error(`Nominatim error: ${resp.status}`);
+  const rawResults = await resp.json();
+  const nomValidation = safeValidateNominatim(rawResults);
+  if (!nomValidation.success) {
+    console.warn(`[GEOCODING] Nominatim response validation failed:`, nomValidation.error.issues);
+    throw new NonRetriableError(`Nominatim API response validation failed`);
   }
-  console.error(`[GEOCODING] Nominatim fallback also failed, no results found`);
-  throw new NonRetriableError("No results from Google");
+  const results = nomValidation.data;
+  const first = results?.[0];
+  if (!first) {
+    console.error(`[GEOCODING] Nominatim returned no results${opts?.notFoundMessage ? ' after fallback' : ''}`);
+    throw new NonRetriableError(notFoundMessage);
+  }
+  return { lon: Number(first.lon), lat: Number(first.lat) };
 }
 
 /**
@@ -631,45 +632,13 @@ async function geocodeWithMapbox(qp: QueryParams, query: string, env: Env): Prom
   if (!token) throw new NonRetriableError("MAPBOX_TOKEN not configured");
   const resp = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?limit=1&proximity=ca&access_token=${token}`, {
     headers: { "User-Agent": "riding-lookup/1.0" },
-    signal: AbortSignal.timeout(10000)
+    signal: AbortSignal.timeout(getTimeoutConfig(env).geocoding)
   });
   if (!resp.ok) throw new Error(`Mapbox error: ${resp.status}`);
   const data = await resp.json() as MapboxResponse;
   const feat = data?.features?.[0];
   if (!feat?.center) throw new NonRetriableError("No results from Mapbox");
   return { lon: feat.center[0], lat: feat.center[1] };
-}
-
-/**
- * Geocodes an address using the Nominatim (OpenStreetMap) API.
- */
-async function geocodeWithNominatim(qp: QueryParams, query: string): Promise<GeocodeResult> {
-  const nominatimParams = new URLSearchParams({ format: 'jsonv2', limit: '1', country: 'canada' });
-  const street = qp.address ? expandStreetAddress(qp.address) : undefined;
-  if (street) nominatimParams.set('street', street);
-  if (qp.city) nominatimParams.set('city', qp.city);
-  if (qp.state) {
-    const provinceName = provinceNameForGoogleComponent(qp.state);
-    nominatimParams.set('state', provinceName || qp.state);
-  }
-  if (qp.country) nominatimParams.set("country", qp.country);
-  if (qp.postal) nominatimParams.set("postalcode", qp.postal);
-  if (![qp.address, qp.city, qp.state, qp.country, qp.postal].some(Boolean)) {
-    nominatimParams.set("q", query);
-  }
-  const nominatimUrl = `https://nominatim.openstreetmap.org/search?${nominatimParams.toString()}`;
-  const resp = await fetch(nominatimUrl, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(10000) });
-  if (!resp.ok) throw new Error(`Nominatim error: ${resp.status}`);
-  const rawResults = await resp.json();
-  const nomValidation = safeValidateNominatim(rawResults);
-  if (!nomValidation.success) {
-    console.warn(`[GEOCODING] Nominatim response validation failed:`, nomValidation.error.issues);
-    throw new NonRetriableError(`Nominatim API response validation failed`);
-  }
-  const results = nomValidation.data;
-  const first = results?.[0];
-  if (!first) throw new NonRetriableError("No results from Nominatim");
-  return { lon: Number(first.lon), lat: Number(first.lat) };
 }
 
 function remainingMs(budgetMs: number, startTime: number): number {
@@ -757,17 +726,36 @@ async function runOdaGeocodeStage(
  * @returns Promise resolving to {lon, lat, normalizedAddress?} coordinates
  * @throws Error if geocoding fails for all providers
  */
+export type GeocodingMetricsSink = {
+  incrementMetric: (key: keyof Metrics, value?: number) => void;
+  recordTiming: (key: keyof Metrics, duration: number) => void;
+};
+
+export type GeocodeIfNeededOptions = {
+  request?: Request;
+  metrics?: GeocodingMetricsSink;
+  circuitBreaker?: CircuitBreakerExecutor;
+  deferTask?: DeferTaskFn;
+};
+
+/** Canonical shape every caller/test uses to inject or invoke geocoding. */
+export type GeocodeIfNeededFn = (
+  env: Env,
+  query: QueryParams,
+  options?: GeocodeIfNeededOptions
+) => Promise<GeocodeResult>;
+
+/**
+ * The one way anything geocodes an address or postal code in this codebase.
+ * Options are an object — never positional — so new knobs don't break callers.
+ */
 export async function geocodeIfNeeded(
-  env: Env, 
-  qp: QueryParams, 
-  request?: Request,
-  metrics?: {
-    incrementMetric: (key: keyof Metrics, value?: number) => void;
-    recordTiming: (key: keyof Metrics, duration: number) => void;
-  },
-  circuitBreaker?: CircuitBreakerExecutor,
-  deferTask?: DeferTaskFn
+  env: Env,
+  qp: QueryParams,
+  options: GeocodeIfNeededOptions = {}
 ): Promise<GeocodeResult> {
+  const { request, metrics, circuitBreaker, deferTask } = options;
+
   if (typeof qp.lat === "number" && typeof qp.lon === "number") {
     return { lon: qp.lon, lat: qp.lat };
   }
@@ -827,7 +815,7 @@ export async function geocodeIfNeeded(
     const geogratisStarted = Date.now();
     try {
       const geogratisStageMs = stageLimit(timeoutMs, startTime, GEOCODING_STAGE_TIMEOUTS.geogratis);
-      const geogratisResult = await withTimeout(geocodeWithGeoGratis(qp), geogratisStageMs, 'GeoGratis geocoding');
+      const geogratisResult = await withTimeout(geocodeWithGeoGratis(qp, env), geogratisStageMs, 'GeoGratis geocoding');
       recordTiming('geocodingGeoGratisTime', Date.now() - geogratisStarted);
       
       if (geogratisResult) {
@@ -973,7 +961,7 @@ export async function geocodeBatchWithGoogle(
         'User-Agent': 'riding-lookup/1.0'
       },
       body: JSON.stringify(batchRequest),
-      signal: AbortSignal.timeout(10000)
+      signal: AbortSignal.timeout(getTimeoutConfig(env).geocoding)
     });
 
     if (!response.ok) {
@@ -1164,7 +1152,7 @@ export async function geocodeBatch(
         // GeoGratis-first individual geocoding
         for (const query of batch) {
           try {
-            const result = await geocodeIfNeeded(env, query, request, metrics, circuitBreaker);
+            const result = await geocodeIfNeeded(env, query, { request, metrics, circuitBreaker });
             results.push(geocodeResultToBatchResult(result));
           } catch (error) {
             results.push({
@@ -1181,7 +1169,7 @@ export async function geocodeBatch(
 
       for (const query of batch) {
         try {
-          const result = await geocodeIfNeeded(env, query, request, metrics, circuitBreaker);
+          const result = await geocodeIfNeeded(env, query, { request, metrics, circuitBreaker });
           results.push(geocodeResultToBatchResult(result));
         } catch (individualError) {
           results.push({

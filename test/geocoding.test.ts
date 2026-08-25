@@ -465,9 +465,7 @@ describe('geocodeIfNeeded with ODA enabled', () => {
     const result = await geocodeIfNeeded(
       env,
       { address: '901-560 Birchmount Rd', city: 'Toronto', state: 'ON' },
-      undefined,
-      undefined,
-      circuitBreaker
+      { circuitBreaker }
     );
 
     expect(result.lon).toBeCloseTo(-79.264, 3);

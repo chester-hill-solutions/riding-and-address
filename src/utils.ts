@@ -827,3 +827,12 @@ function pointToLineDistance(point: number[], lineStart: number[], lineEnd: numb
   
   return Math.sqrt(dx * dx + dy * dy);
 }
+
+/** Run `task` now, or hand it to the response's waitUntil when deferring. */
+export async function runOrDefer(deferTask: ((task: Promise<unknown>) => void) | undefined, task: Promise<void>): Promise<void> {
+  if (deferTask) {
+    deferTask(task);
+  } else {
+    await task;
+  }
+}

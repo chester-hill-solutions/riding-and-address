@@ -243,7 +243,7 @@ export async function warmCacheForPostalCode(
   try {
     // Geocode the postal code first
     const query: QueryParams = { postal: postalCode };
-    const { lon, lat } = await geocodeIfNeeded(env, query, undefined, undefined, geocodingExecutor());
+    const { lon, lat } = await geocodeIfNeeded(env, query, { circuitBreaker: geocodingExecutor() });
     
     // Warm cache for all datasets (includes lookup cache)
     const locationWarmed = await warmCacheForLocation(env, lat, lon, `Postal Code ${postalCode}`, loadGeo, lookupRiding);
