@@ -1,4 +1,14 @@
-import { CircuitBreakerState, Env } from './types';
+import { CircuitBreakerExecuteOptions, CircuitBreakerState, CircuitBreakerExecutor, Env } from './types';
+
+/** Thrown when a circuit refuses to execute. Callers branch on the type, never on message text. */
+export class CircuitBreakerOpenError extends Error {
+  readonly key: string;
+  constructor(key: string) {
+    super(`Circuit breaker is OPEN for ${key}`);
+    this.name = 'CircuitBreakerOpenError';
+    this.key = key;
+  }
+}
 
 /**
  * Circuit breaker wrapper that uses Durable Object for shared state when available,
@@ -52,7 +62,7 @@ export class CircuitBreaker {
           if (checkResponse.ok) {
             const checkResult = await checkResponse.json() as { allowed: boolean; state: CircuitBreakerState };
             if (!checkResult.allowed) {
-              throw new Error(`Circuit breaker is OPEN for ${key}`);
+              throw new CircuitBreakerOpenError(key);
             }
             
             // Execute operation locally, then report result to DO
@@ -69,7 +79,7 @@ export class CircuitBreaker {
           }
         } catch (error) {
           // Fallback to local state if DO call fails
-          if (error instanceof Error && error.message.includes('Circuit breaker is OPEN')) {
+          if (error instanceof CircuitBreakerOpenError) {
             throw error;
           }
           console.warn('[CircuitBreaker] Durable Object call failed, using local state:', error);
@@ -85,7 +95,7 @@ export class CircuitBreaker {
         state.state = 'HALF_OPEN';
         state.successCount = 0;
       } else {
-        throw new Error(`Circuit breaker is OPEN for ${key}`);
+        throw new CircuitBreakerOpenError(key);
       }
     }
 
@@ -287,4 +297,26 @@ export let r2CircuitBreaker: CircuitBreaker;
 export function initializeCircuitBreakers(env: Env): void {
   geocodingCircuitBreaker = new CircuitBreaker(3, 30000, 2, env); // 3 failures, 30s timeout, 2 successes to close
   r2CircuitBreaker = new CircuitBreaker(5, 60000, 3, env); // 5 failures, 60s timeout, 3 successes to close
+}
+
+// Executor adapters — hand these where a CircuitBreakerExecutor is expected.
+// The class satisfies the interface structurally; these helpers exist so callers
+// never rebuild narrowing wrappers or reach for the mutable singletons directly.
+
+export function geocodingExecutor(): CircuitBreakerExecutor | undefined {
+  return geocodingCircuitBreaker ?? undefined;
+}
+
+export function r2Executor(): CircuitBreakerExecutor | undefined {
+  return r2CircuitBreaker ?? undefined;
+}
+
+export function executeOrRun<T>(
+  executor: CircuitBreakerExecutor | undefined,
+  key: string,
+  fn: () => Promise<T>,
+  options?: CircuitBreakerExecuteOptions
+): Promise<T> {
+  if (!executor) return fn();
+  return executor.execute(key, fn as () => Promise<unknown>, options) as Promise<T>;
 }

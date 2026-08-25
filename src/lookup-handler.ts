@@ -1,7 +1,8 @@
-import { Env, CircuitBreakerExecuteOptions } from './types';
+import { Env, DeferTaskFn } from './types';
 import { geocodeIfNeeded } from './geocoding';
-import { geocodingCircuitBreaker } from './circuit-breaker';
+import { geocodingExecutor } from './circuit-breaker';
 import { incrementMetric, recordTiming } from './metrics';
+import { resolveCorsOrigin, securityHeaders } from './http-headers';
 import { parseQuery, badRequest, internalErrorResponse } from './utils';
 import { getTimeoutConfig } from './config';
 import {
@@ -11,6 +12,7 @@ import {
 } from './lookup-expansion';
 import { resolveLookupPath } from './return-selector';
 import { BillableAuthContext, recordSuccessfulBillable } from './billing';
+import { cachedLookupRiding } from './riding-lookup';
 import { FEDERAL_DATASET, PROVINCIAL_DATASETS } from './datasets';
 
 function datasetMetaForPath(pathname: string): { id: string; year: number; name: string } {
@@ -24,17 +26,58 @@ function datasetMetaForPath(pathname: string): { id: string; year: number; name:
   return { id: FEDERAL_DATASET.r2Key, year: FEDERAL_DATASET.year, name: FEDERAL_DATASET.name };
 }
 
-export async function handleLookupRequest(
-  request: Request,
+/**
+ * Per-request environment assembled once in the Worker fetch handler.
+ * Handlers take this instead of threading env/correlationId/timing/CORS/defer
+ * individually — the interface is one object, not five parameters.
+ */
+export type LookupRequestScope = {
+  env: Env;
+  correlationId: string;
+  startTime: number;
+  corsHeaders: (origin?: string | null) => Record<string, string>;
+  deferTask?: DeferTaskFn;
+  /** Test seam: override the riding lookup. Production uses the cached core. */
+  lookup?: LookupRidingFn;
+};
+
+export function createLookupRequestScope(
   env: Env,
-  pathname: string,
-  lookupRiding: LookupRidingFn,
+  request: Request,
+  ctx: ExecutionContext | undefined,
   correlationId: string,
-  startTime: number,
-  getCorsHeaders: (origin?: string | null) => Record<string, string>,
-  ctx?: ExecutionContext,
+  startTime: number
+): LookupRequestScope {
+  return {
+    env,
+    correlationId,
+    startTime,
+    corsHeaders: (origin?: string | null) => {
+      const cors = resolveCorsOrigin(env, origin);
+      return {
+        'Access-Control-Allow-Origin': cors.allowOrigin,
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers':
+          'Content-Type, Authorization, X-Api-Key, X-Google-API-Key, X-Correlation-ID, X-Request-ID',
+        'Access-Control-Max-Age': '86400',
+        // Credentials only for an origin explicitly matched against the configured allowlist.
+        ...(cors.allowCredentials ? { 'Access-Control-Allow-Credentials': 'true' } : {}),
+        'X-Correlation-ID': correlationId,
+        ...securityHeaders(),
+      };
+    },
+    deferTask: ctx ? (task: Promise<unknown>) => { ctx.waitUntil(task); } : undefined,
+  };
+}
+
+export async function handleLookupRequest(
+  scope: LookupRequestScope,
+  request: Request,
+  pathname: string,
   billing?: BillableAuthContext | null
 ): Promise<Response> {
+  const { env, correlationId, startTime, corsHeaders: getCorsHeaders, deferTask } = scope;
+  const lookupRiding = scope.lookup ?? cachedLookupRiding;
   const { lookupPathname } = resolveLookupPath(pathname);
   const { validation } = parseQuery(request);
 
@@ -61,18 +104,7 @@ export async function handleLookupRequest(
   incrementMetric('lookupRequests');
 
   const timeoutConfig = getTimeoutConfig(env);
-  const circuitBreaker = geocodingCircuitBreaker
-    ? {
-        execute: (key: string, fn: () => Promise<unknown>, options?: CircuitBreakerExecuteOptions) =>
-          geocodingCircuitBreaker!.execute(key, fn, options),
-      }
-    : undefined;
-
-  const deferTask = ctx
-    ? (task: Promise<unknown>) => {
-        ctx.waitUntil(task);
-      }
-    : undefined;
+  const circuitBreaker = geocodingExecutor();
 
   try {
     const expanded = await performExpandedLookup(env, lookupPathname, sanitizedQuery, lookupRiding, {

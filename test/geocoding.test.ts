@@ -6,6 +6,7 @@ import {
   geocodeIfNeeded,
 } from '../src/geocoding';
 import { Env } from '../src/types';
+import { CircuitBreakerOpenError } from '../src/circuit-breaker';
 
 describe('generateGeocodingCacheKey', () => {
   it('generates a key with provider prefix', () => {
@@ -457,7 +458,7 @@ describe('geocodeIfNeeded with ODA enabled', () => {
 
     const circuitBreaker = {
       execute: vi.fn(async (_key: string, _fn: () => Promise<unknown>) => {
-        throw new Error('Circuit breaker is OPEN for geocoding:oda');
+        throw new CircuitBreakerOpenError('geocoding:oda');
       }),
     };
 

@@ -13,6 +13,7 @@ import {
 } from './types';
 import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS, TIME_CONSTANTS_SECONDS, QUALITY_THRESHOLDS, GEOCODING_STAGE_TIMEOUTS } from './config';
 import { withRetry, withTimeout, NonRetriableError } from './utils';
+import { CircuitBreakerOpenError } from './circuit-breaker';
 import { isPostalOnlyQuery, wantsPostalCentroidOnly } from './geocode-query';
 import { recordTiming } from './metrics';
 import { 
@@ -726,7 +727,7 @@ async function runOdaGeocodeStage(
     if (wantsPostalCentroidOnly(qp)) {
       throw error;
     }
-    if (error instanceof Error && error.message.includes('Circuit breaker is OPEN')) {
+    if (error instanceof CircuitBreakerOpenError) {
       console.warn(
         `[GEOCODING] ODA circuit breaker open, falling back to GeoGratis/${env.GEOCODER || 'nominatim'}`
       );
@@ -919,7 +920,7 @@ export async function geocodeIfNeeded(
       recordTiming('geocodingFallbackTime', Date.now() - fallbackStarted);
       console.error(`[GEOCODING] Geocoding failed after ${Date.now() - startTime}ms:`, error instanceof Error ? error.message : 'Unknown error');
       metrics?.incrementMetric('geocodingFailures');
-      if (error instanceof Error && error.message.includes('Circuit breaker is OPEN')) {
+      if (error instanceof CircuitBreakerOpenError) {
         console.error(`[GEOCODING] Circuit breaker is OPEN for provider: ${provider}`);
         metrics?.incrementMetric('geocodingCircuitBreakerTrips');
       }

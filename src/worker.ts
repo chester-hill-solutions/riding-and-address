@@ -1,7 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 
 import {
-  Env, CircuitBreakerExecuteOptions
+  Env
 } from './types';
 import { geocodeIfNeeded, geocodeBatch } from './geocoding';
 import {
@@ -18,7 +18,7 @@ import {
   performCacheWarming,
   getCacheWarmingStatus
 } from './cache';
-import { initializeCircuitBreakers, geocodingCircuitBreaker, r2CircuitBreaker } from './circuit-breaker';
+import { geocodingExecutor, geocodingCircuitBreaker, initializeCircuitBreakers, r2CircuitBreaker } from './circuit-breaker';
 import { incrementMetric, recordTiming, getMetrics, getMetricsSummary } from './metrics';
 import { 
   checkAdminAuth,
@@ -32,7 +32,7 @@ import {
   getCorrelationId,
 } from './utils';
 import { checkRidingDatasets, allRequiredDatasetsPresent, missingDatasetKeys, getAllR2Keys } from './datasets';
-import { handleLookupRequest } from './lookup-handler';
+import { createLookupRequestScope, handleLookupRequest } from './lookup-handler';
 import { resolveLookupPath } from './return-selector';
 import {
   initializeSpatialDatabase,
@@ -74,7 +74,6 @@ import { handleProjectionRequest } from './projection-handlers';
 import { getStats as getQueueStats } from './queue-client';
 import { cachedLookupRiding as lookupRiding, loadGeo } from './riding-lookup';
 import { recordSuccessfulBillable, type BillableAuthContext } from './billing';
-import { resolveCorsOrigin, securityHeaders } from './http-headers';
 
 function keyAuthFailureResponse(auth: KeyAuthResult, correlationId: string): Response {
   const status = auth.reason ? httpStatusForKeyDenial(auth.reason) : 401;
@@ -167,27 +166,14 @@ export default {
       const url = new URL(request.url);
       const pathname = url.pathname;
       
-      const getCorsHeaders = (origin?: string | null): Record<string, string> => {
-        const cors = resolveCorsOrigin(env, origin);
-        return {
-          'Access-Control-Allow-Origin': cors.allowOrigin,
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers':
-            'Content-Type, Authorization, X-Api-Key, X-Google-API-Key, X-Correlation-ID, X-Request-ID',
-          'Access-Control-Max-Age': '86400',
-          // Credentials only for an origin explicitly matched against the configured allowlist.
-          ...(cors.allowCredentials ? { 'Access-Control-Allow-Credentials': 'true' } : {}),
-          'X-Correlation-ID': correlationId,
-          ...securityHeaders(),
-        };
-      };
-      
+      const scope = createLookupRequestScope(env, request, ctx, correlationId, startTime);
+
       // Handle CORS preflight
       if (request.method === 'OPTIONS') {
         const origin = request.headers.get('Origin');
         return new Response(null, {
           status: 200,
-          headers: getCorsHeaders(origin)
+          headers: scope.corsHeaders(origin)
         });
       }
       
@@ -745,10 +731,7 @@ export default {
               );
             }
 
-            const cb = geocodingCircuitBreaker ? {
-              execute: (k: string, fn: () => Promise<unknown>, options?: CircuitBreakerExecuteOptions) =>
-                geocodingCircuitBreaker!.execute(k, fn, options),
-            } : undefined;
+            const cb = geocodingExecutor();
             const results = await processBatchLookupWithBatchGeocoding(
               env,
               parsedRequests.data,
@@ -1000,7 +983,7 @@ export default {
             'content-type': 'application/javascript; charset=UTF-8',
             'Cache-Control': 'public, max-age=300, s-maxage=3600',
             'X-Embed-Version': EMBED_VERSION,
-            ...getCorsHeaders(request.headers.get('Origin')),
+            ...scope.corsHeaders(request.headers.get('Origin')),
           },
         });
       }
@@ -1022,15 +1005,9 @@ export default {
         if (demoPath === '/api/reverse') return handleReverseRoute(request, env);
         if (demoPath === '/api/normalize-address') return handleNormalizeAddressRoute(request, env);
         return handleLookupRequest(
+          scope,
           request,
-          env,
-          demoPath === '/api' ? '/api/federal' : demoPath,
-          lookupRiding,
-          correlationId,
-          startTime,
-          getCorsHeaders,
-          ctx,
-          null
+          demoPath === '/api' ? '/api/federal' : demoPath
         );
       }
 
@@ -1091,7 +1068,7 @@ export default {
         // No checkBasicAuth here: /api/search accepts EITHER basic auth or a browser key, and a
         // hard basic-auth gate would 401 the widget before it could ever present its key.
         // handleSearchRoute owns that decision.
-        return handleSearchRoute(request, env, correlationId, getCorsHeaders, ctx);
+        return handleSearchRoute(scope, request);
       }
 
       // Main lookup endpoint
@@ -1105,14 +1082,9 @@ export default {
         if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
 
         return handleLookupRequest(
+          scope,
           request,
-          env,
           pathname,
-          lookupRiding,
-          correlationId,
-          startTime,
-          getCorsHeaders,
-          ctx,
           billingFromAuth(auth)
         );
       }

@@ -1,7 +1,7 @@
-import { Env, GeoJSONFeatureCollection, GeoJSONGeometry, SpatialIndex, CacheWarmingState, QueryParams, LookupResult, LookupCacheEntry, CircuitBreakerExecuteOptions, Suggestion, SuggestQueryParams } from './types';
+import { Env, GeoJSONFeatureCollection, GeoJSONGeometry, SpatialIndex, CacheWarmingState, QueryParams, LookupResult, LookupCacheEntry, Suggestion, SuggestQueryParams } from './types';
 import { geocodeIfNeeded } from './geocoding';
 import { TIME_CONSTANTS, TIME_CONSTANTS_SECONDS } from './config';
-import { geocodingCircuitBreaker } from './circuit-breaker';
+import { geocodingExecutor } from './circuit-breaker';
 import { pickDataset, getLiveWarmTargets } from './datasets';
 import { normalizeSearchToken } from './oda-normalize';
 
@@ -243,10 +243,7 @@ export async function warmCacheForPostalCode(
   try {
     // Geocode the postal code first
     const query: QueryParams = { postal: postalCode };
-    const { lon, lat } = await geocodeIfNeeded(env, query, undefined, undefined, geocodingCircuitBreaker ? {
-      execute: (key: string, fn: () => Promise<unknown>, options?: CircuitBreakerExecuteOptions) =>
-        geocodingCircuitBreaker.execute(key, fn, options)
-    } : undefined);
+    const { lon, lat } = await geocodeIfNeeded(env, query, undefined, undefined, geocodingExecutor());
     
     // Warm cache for all datasets (includes lookup cache)
     const locationWarmed = await warmCacheForLocation(env, lat, lon, `Postal Code ${postalCode}`, loadGeo, lookupRiding);

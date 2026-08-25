@@ -1,6 +1,7 @@
 import { Env, QueryParams, SuggestQueryParams, SuggestResponse } from './types';
 import { initializeOdaDatabase, getOdaStats } from './oda-schema';
 import { isOdaEnabled, getOdaConfig, getOdaSuggestConfig, ODA_DEFAULTS } from './oda-config';
+import type { LookupRequestScope } from './lookup-handler';
 import {
   geocodeWithOda,
   reverseGeocodeWithOda,
@@ -164,13 +165,11 @@ export async function handleNormalizeAddressRoute(request: Request, env: Env): P
  * existing lookup routes once the user selects one, which is why this path never touches R2.
  */
 export async function handleSearchRoute(
-  request: Request,
-  env: Env,
-  correlationId: string,
-  getCorsHeaders: (origin?: string | null) => Record<string, string>,
-  ctx?: ExecutionContext
+  scope: LookupRequestScope,
+  request: Request
 ): Promise<Response> {
-  const startTime = Date.now();
+  const { env, correlationId, startTime, corsHeaders: getCorsHeaders, deferTask } = scope;
+  const ctx = deferTask ? { waitUntil: deferTask } as unknown as ExecutionContext : undefined;
   const origin = request.headers.get('Origin');
   const config = getOdaSuggestConfig(env);
   const url = new URL(request.url);

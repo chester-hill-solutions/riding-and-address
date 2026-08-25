@@ -15,7 +15,7 @@ import {
 import { isPointInPolygon, ridingNameFromProperties, withRetry, withTimeout } from './utils';
 import { getRetryConfig, getTimeoutConfig } from './config';
 import { incrementMetric, recordTiming } from './metrics';
-import { r2CircuitBreaker } from './circuit-breaker';
+import { CircuitBreakerOpenError, r2CircuitBreaker } from './circuit-breaker';
 import { pickDataset } from './datasets';
 
 /**
@@ -100,7 +100,7 @@ export async function loadGeo(env: Env, key: string): Promise<GeoJSONFeatureColl
     return geo;
   } catch (error) {
     incrementMetric('r2Failures');
-    if (error instanceof Error && error.message.includes('Circuit breaker is OPEN')) {
+    if (error instanceof CircuitBreakerOpenError) {
       incrementMetric('r2CircuitBreakerTrips');
     }
     recordTiming('totalR2Time', Date.now() - startTime);
