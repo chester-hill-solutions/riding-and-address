@@ -53,5 +53,8 @@
   "packageManager": "bun@1.2.15",
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "overrides": {
+    "undici": "^7.29.0"
+  }
 }
