@@ -576,11 +576,15 @@ export default {
           try {
             const body = await request.json() as { dataset?: string };
             const dataset = body.dataset || 'federalridings-2024.geojson';
-            
-            const success = await syncGeoJSONToDatabase(env, dataset, loadGeo);
+
+            const result = await syncGeoJSONToDatabase(env, dataset, loadGeo);
             return new Response(JSON.stringify({
-              success,
-              message: success ? `Database synced for ${dataset}` : "Database sync failed",
+              success: result.success,
+              inserted: result.inserted,
+              failed: result.failed,
+              message: result.success
+                ? `Database synced for ${dataset}`
+                : `Database sync incomplete for ${dataset}`,
               dataset
             }), {
               headers: { 

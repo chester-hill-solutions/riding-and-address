@@ -120,7 +120,7 @@
     "ODA_NN_MAX_CANDIDATES": "50",
     "ODA_MAX_REVERSE_DISTANCE_METERS": "25000",
     "ODA_MAX_AMBIGUOUS_MATCHES": "5",
-    "SPATIAL_DB_ENABLED": "false",
+    "SPATIAL_DB_ENABLED": "true",
     // While false, /api/search is not registered and falls through to the /api catch-all,
     // and /embed.js 404s. Enabled 2026-07-16 after `bun run build:oda:suggest` populated the
     // index for all ODA_PROVINCES on the production oda-addresses database.
@@ -161,7 +161,7 @@
         "ODA_NN_MAX_CANDIDATES": "50",
         "ODA_MAX_REVERSE_DISTANCE_METERS": "25000",
         "ODA_MAX_AMBIGUOUS_MATCHES": "5",
-        "SPATIAL_DB_ENABLED": "false",
+        "SPATIAL_DB_ENABLED": "true",
         "ODA_SUGGEST_ENABLED": "false",
         "ODA_SUGGEST_LIMIT": "7",
         "FREE_MONTHLY_ALLOWANCE": "1000",

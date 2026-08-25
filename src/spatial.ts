@@ -220,11 +220,14 @@ export async function initializeSpatialDatabase(env: Env): Promise<boolean> {
   }
 
   try {
-    // Create the main features table with spatial indexes
+    // Create the main features table with spatial indexes.
+    // `rid` is a per-dataset integer that keys the rtree vtable (its id column
+    // only accepts integers — feature ids are TEXT and cannot be used there).
     await env.RIDING_DB.prepare(`
       CREATE TABLE IF NOT EXISTS spatial_features (
         id TEXT PRIMARY KEY,
         dataset TEXT NOT NULL,
+        rid INTEGER NOT NULL DEFAULT 0,
         feature_data TEXT NOT NULL,
         minx REAL NOT NULL,
         miny REAL NOT NULL,
@@ -235,6 +238,19 @@ export async function initializeSpatialDatabase(env: Env): Promise<boolean> {
         area REAL DEFAULT 0,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
+    `).run();
+
+    // Migration for tables created before `rid` existed.
+    try {
+      await env.RIDING_DB.prepare(`ALTER TABLE spatial_features ADD COLUMN rid INTEGER NOT NULL DEFAULT 0`).run();
+    } catch (error) {
+      if (!(error instanceof Error) || !/duplicate column/i.test(error.message)) {
+        throw error;
+      }
+    }
+
+    await env.RIDING_DB.prepare(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_spatial_dataset_rid ON spatial_features(dataset, rid)
     `).run();
 
     // Create spatial indexes for better query performance
@@ -269,55 +285,181 @@ export async function initializeSpatialDatabase(env: Env): Promise<boolean> {
 }
 
 // Insert features into spatial database
-export async function insertFeaturesIntoDatabase(env: Env, dataset: string, features: GeoJSONFeature[]): Promise<boolean> {
-  const dbConfig = getSpatialDbConfig(env);
-  if (!dbConfig.ENABLED || !env.RIDING_DB) {
-    return false;
+export type SpatialInsertResult = { inserted: number; failed: number };
+
+/**
+ * D1 rejects bound values past ~2MB; the largest real riding polygons exceed
+ * that. The database copy may be simplified — R2 keeps full fidelity — so
+ * oversized features are decimated until they fit.
+ */
+const D1_MAX_VALUE_BYTES = 1_500_000;
+
+function featureByteSize(feature: GeoJSONFeature): number {
+  return JSON.stringify(feature).length;
+}
+
+function roundCoordinates(coords: unknown, decimals: number): unknown {
+  if (typeof coords === 'number') {
+    const factor = 10 ** decimals;
+    return Math.round(coords * factor) / factor;
+  }
+  if (Array.isArray(coords)) {
+    return coords.map((c) => roundCoordinates(c, decimals));
+  }
+  return coords;
+}
+
+export function shrinkFeatureGeometry(feature: GeoJSONFeature, maxBytes: number): GeoJSONFeature | null {
+  // Pass 1: coordinate precision — trims every number in every polygon.
+  for (const decimals of [5, 4, 3]) {
+    const candidate: GeoJSONFeature = {
+      ...feature,
+      geometry: { ...feature.geometry, coordinates: roundCoordinates(feature.geometry.coordinates, decimals) as typeof feature.geometry.coordinates }
+    };
+    if (featureByteSize(candidate) <= maxBytes) return candidate;
   }
 
-  try {
-    const statements: D1PreparedStatement[] = [];
+  // Pass 2: vertex decimation on top of the tightest precision.
+  const base: GeoJSONFeature = {
+    ...feature,
+    geometry: { ...feature.geometry, coordinates: roundCoordinates(feature.geometry.coordinates, 3) as typeof feature.geometry.coordinates }
+  };
+  let maxVertices = 4000;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const geometry = base.geometry;
+    const simplifyRing = (ring: number[][]): number[][] =>
+      simplifyLineString(ring, 0, maxVertices);
+    let simplified: GeoJSONFeature;
+    if (geometry.type === 'Polygon') {
+      const rings = geometry.coordinates as unknown as number[][][];
+      simplified = { ...base, geometry: { ...geometry, coordinates: rings.map(simplifyRing) } };
+    } else if (geometry.type === 'MultiPolygon') {
+      const polys = geometry.coordinates as unknown as number[][][][];
+      simplified = { ...base, geometry: { ...geometry, coordinates: polys.map((poly) => poly.map(simplifyRing)) } };
+    } else {
+      return null;
+    }
+    if (featureByteSize(simplified) <= maxBytes) return simplified;
+    maxVertices = Math.floor(maxVertices / 2);
+  }
+  return null;
+}
 
-    for (const feature of features) {
-      const bbox = calculateBoundingBox(feature.geometry);
-      const centroid = calculateCentroid(feature.geometry);
-      const area = 0; // Placeholder for area calculation
+/** Group features into batches that stay under D1's per-batch payload limits. */
+export function chunkFeaturesByByteSize(
+  features: GeoJSONFeature[],
+  maxChunkBytes: number = 512 * 1024
+): { features: GeoJSONFeature[]; bytes: number }[] {
+  const chunks: { features: GeoJSONFeature[]; bytes: number }[] = [];
+  let current: GeoJSONFeature[] = [];
+  let currentBytes = 0;
+  for (const feature of features) {
+    const bytes = JSON.stringify(feature).length;
+    if (current.length > 0 && currentBytes + bytes > maxChunkBytes) {
+      chunks.push({ features: current, bytes: currentBytes });
+      current = [];
+      currentBytes = 0;
+    }
+    current.push(feature);
+    currentBytes += bytes;
+  }
+  if (current.length > 0) chunks.push({ features: current, bytes: currentBytes });
+  return chunks;
+}
 
-      const featureId = `${dataset}_${feature.properties?.FED_NUM || feature.properties?.RIDING_NUM || feature.properties?.ID || Date.now()}`;
+async function insertFeatureBatch(
+  env: Env,
+  dataset: string,
+  features: GeoJSONFeature[],
+  startRid: number,
+  useRtreeIndex: boolean
+): Promise<number> {
+  const db = env.RIDING_DB!;
+  const statements: D1PreparedStatement[] = [];
+  for (let i = 0; i < features.length; i += 1) {
+    const feature = features[i]!;
+    const rid = startRid + i;
+    const bbox = calculateBoundingBox(feature.geometry);
+    const centroid = calculateCentroid(feature.geometry);
+    const area = 0; // Placeholder for area calculation
+    const featureId = `${dataset}_${rid}`;
 
-      // Insert into main table
-      statements.push(env.RIDING_DB.prepare(`
-        INSERT OR REPLACE INTO spatial_features 
-        (id, dataset, feature_data, minx, miny, maxx, maxy, centroid_lon, centroid_lat, area)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        featureId,
-        dataset,
-        JSON.stringify(feature),
-        bbox.minX,
-        bbox.minY,
-        bbox.maxX,
-        bbox.maxY,
-        centroid.lon,
-        centroid.lat,
-        area
-      ));
+    statements.push(db.prepare(`
+      INSERT OR REPLACE INTO spatial_features
+      (id, dataset, rid, feature_data, minx, miny, maxx, maxy, centroid_lon, centroid_lat, area)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      featureId,
+      dataset,
+      rid,
+      JSON.stringify(feature),
+      bbox.minX,
+      bbox.minY,
+      bbox.maxX,
+      bbox.maxY,
+      centroid.lon,
+      centroid.lat,
+      area
+    ));
 
-      // Insert into R-tree index if enabled
-      if (dbConfig.USE_RTREE_INDEX) {
-        statements.push(env.RIDING_DB.prepare(`
-          INSERT OR REPLACE INTO spatial_rtree (id, minx, maxx, miny, maxy)
-          VALUES (?, ?, ?, ?, ?)
-        `).bind(featureId, bbox.minX, bbox.maxX, bbox.minY, bbox.maxY));
+    if (useRtreeIndex) {
+      // rtree vtable ids are INTEGER-only — key them to spatial_features.rid.
+      statements.push(db.prepare(`
+        INSERT OR REPLACE INTO spatial_rtree (id, minx, maxx, miny, maxy)
+        VALUES (?, ?, ?, ?, ?)
+      `).bind(rid, bbox.minX, bbox.maxX, bbox.minY, bbox.maxY));
+    }
+  }
+
+  await db.batch(statements);
+  return features.length;
+}
+
+export async function insertFeaturesIntoDatabase(
+  env: Env,
+  dataset: string,
+  features: GeoJSONFeature[]
+): Promise<SpatialInsertResult> {
+  const dbConfig = getSpatialDbConfig(env);
+  if (!dbConfig.ENABLED || !env.RIDING_DB || features.length === 0) {
+    return { inserted: 0, failed: 0 };
+  }
+
+  const chunks = chunkFeaturesByByteSize(features);
+  let rid = 0;
+  let inserted = 0;
+  let failed = 0;
+
+  for (const chunk of chunks) {
+    // Pre-shrink anything that alone would exceed D1's value limit.
+    for (let i = 0; i < chunk.features.length; i += 1) {
+      if (featureByteSize(chunk.features[i]!) > D1_MAX_VALUE_BYTES) {
+        chunk.features[i] = shrinkFeatureGeometry(chunk.features[i]!, D1_MAX_VALUE_BYTES) ?? chunk.features[i]!;
       }
     }
-
-    await env.RIDING_DB.batch(statements);
-    return true;
-  } catch (error) {
-    console.error('Failed to insert features into spatial database:', error);
-    return false;
+    try {
+      inserted += await insertFeatureBatch(env, dataset, chunk.features, rid, dbConfig.USE_RTREE_INDEX);
+    } catch {
+      // Chunk failed wholesale (oversized value, transient D1 error) — retry
+      // feature-by-feature so one bad row doesn't discard its neighbours.
+      for (let i = 0; i < chunk.features.length; i += 1) {
+        try {
+          inserted += await insertFeatureBatch(
+            env,
+            dataset,
+            [chunk.features[i]!],
+            rid + i,
+            dbConfig.USE_RTREE_INDEX
+          );
+        } catch {
+          failed += 1;
+        }
+      }
+    }
+    rid += chunk.features.length;
   }
+
+  return { inserted, failed };
 }
 
 // Query spatial database for point-in-polygon lookup
@@ -344,10 +486,10 @@ export async function queryRidingFromDatabase(env: Env, dataset: string, lon: nu
 
     if (dbConfig.USE_RTREE_INDEX) {
       query = `
-        SELECT sf.feature_data 
+        SELECT sf.feature_data
         FROM spatial_features sf
-        JOIN spatial_rtree sr ON sf.id = sr.id
-        WHERE sf.dataset = ? 
+        JOIN spatial_rtree sr ON sr.id = sf.rid
+        WHERE sf.dataset = ?
         AND sr.minx <= ? AND sr.maxx >= ?
         AND sr.miny <= ? AND sr.maxy >= ?
       `;
@@ -474,46 +616,36 @@ export function getSpatialDatasetCleanupOrder(useRtree: boolean): SpatialDataset
 }
 
 export async function syncGeoJSONToDatabase(
-  env: Env, 
+  env: Env,
   dataset: string,
   loadGeo: (env: Env, r2Key: string) => Promise<GeoJSONFeatureCollection>
-): Promise<boolean> {
+): Promise<SpatialInsertResult & { success: boolean }> {
   const dbConfig = getSpatialDbConfig(env);
   if (!dbConfig.ENABLED || !env.RIDING_DB) {
-    return false;
+    return { success: false, inserted: 0, failed: 0 };
   }
 
   try {
     // Load GeoJSON data from R2
     const featureCollection = await loadGeo(env, dataset);
-    
+
     // Initialize database if needed
     await initializeSpatialDatabase(env);
-    
+
     // Clear existing data for this dataset (R-tree rows must be removed before feature rows)
     if (dbConfig.USE_RTREE_INDEX) {
-      const existingIds = await env.RIDING_DB.prepare(`
-        SELECT id FROM spatial_features WHERE dataset = ?
-      `).bind(dataset).all();
-
-      for (const row of existingIds.results) {
-        await env.RIDING_DB.prepare(`DELETE FROM spatial_rtree WHERE id = ?`).bind(row.id).run();
-      }
+      await env.RIDING_DB.prepare(`
+        DELETE FROM spatial_rtree WHERE id IN (SELECT rid FROM spatial_features WHERE dataset = ?)
+      `).bind(dataset).run();
     }
 
     await env.RIDING_DB.prepare(`DELETE FROM spatial_features WHERE dataset = ?`).bind(dataset).run();
-    
-    // Insert features in batches
-    const batchSize = dbConfig.BATCH_INSERT_SIZE;
-    for (let i = 0; i < featureCollection.features.length; i += batchSize) {
-      const batch = featureCollection.features.slice(i, i + batchSize);
-      await insertFeaturesIntoDatabase(env, dataset, batch);
-    }
 
-    return true;
+    const result = await insertFeaturesIntoDatabase(env, dataset, featureCollection.features);
+    return { ...result, success: result.failed === 0 && result.inserted > 0 };
   } catch (error) {
     console.error('Failed to sync GeoJSON to spatial database:', error);
-    return false;
+    return { success: false, inserted: 0, failed: 0 };
   }
 }
 
