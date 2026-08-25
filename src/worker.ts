@@ -1,6 +1,8 @@
 /// <reference types="@cloudflare/workers-types" />
 
-import { Env, LookupResult, GeoJSONFeatureCollection, SpatialIndex, GeoJSONFeature, CircuitBreakerExecuteOptions } from './types';
+import {
+  Env, CircuitBreakerExecuteOptions
+} from './types';
 import { geocodeIfNeeded, geocodeBatch } from './geocoding';
 import {
   handleGeocodeRoute,
@@ -12,21 +14,13 @@ import {
 } from './oda-handlers';
 import { isOdaSuggestEnabled } from './oda-config';
 import { createEmbedScript, EMBED_VERSION } from './embed';
-import { 
-  geoCacheLRU, 
-  spatialIndexCacheLRU, 
-  setCachedGeoJSON, 
-  setCachedSpatialIndex,
+import {
   performCacheWarming,
-  getCacheWarmingStatus,
+  getCacheWarmingStatus
 } from './cache';
 import { initializeCircuitBreakers, geocodingCircuitBreaker, r2CircuitBreaker } from './circuit-breaker';
 import { incrementMetric, recordTiming, getMetrics, getMetricsSummary } from './metrics';
 import { 
-  isPointInPolygon, 
-  withTimeout, 
-  withRetry, 
-  ridingNameFromProperties,
   checkAdminAuth,
   hasValidBasicAuth,
   badRequest,
@@ -37,19 +31,16 @@ import {
   getClientId,
   getCorrelationId,
 } from './utils';
-import { pickDataset, checkRidingDatasets, allRequiredDatasetsPresent, missingDatasetKeys, getAllR2Keys } from './datasets';
+import { checkRidingDatasets, allRequiredDatasetsPresent, missingDatasetKeys, getAllR2Keys } from './datasets';
 import { handleLookupRequest } from './lookup-handler';
 import { resolveLookupPath } from './return-selector';
-import { 
-  createSpatialIndex, 
-  findCandidateFeatures, 
-  isPointInBoundingBox,
-  queryRidingFromDatabase,
+import {
   initializeSpatialDatabase,
   getAllFeaturesFromDatabase,
   getSpatialDatabaseStats,
   syncGeoJSONToDatabase,
-  getSpatialDbConfig
+  getSpatialDbConfig,
+  queryRidingFromDatabase
 } from './spatial';
 import { 
   initializeWebhookProcessing, 
@@ -71,7 +62,7 @@ import { QueueManagerDO } from './queue-manager';
 import { ApiKeyUsageDO } from './api-key-usage-do';
 import { CircuitBreakerDO } from './circuit-breaker-do';
 import { createApiReference, createOpenAPISpec } from './docs';
-import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS } from './config';
+import { TIME_CONSTANTS } from './config';
 import {
   apiKeysEnabled,
   authorizeLookupRequest,
@@ -80,6 +71,8 @@ import {
   type KeyAuthResult,
 } from './api-keys';
 import { handleProjectionRequest } from './projection-handlers';
+import { getStats as getQueueStats } from './queue-client';
+import { cachedLookupRiding as lookupRiding, loadGeo } from './riding-lookup';
 import { recordSuccessfulBillable, type BillableAuthContext } from './billing';
 import { resolveCorsOrigin, securityHeaders } from './http-headers';
 
@@ -130,169 +123,9 @@ async function handleScheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionC
   }
 }
 
-// Main lookup function
-async function lookupRiding(env: Env, pathname: string, lon: number, lat: number): Promise<LookupResult> {
-  const timeoutConfig = getTimeoutConfig(env);
-  const timeoutMs = timeoutConfig.lookup;
-  
-  const lookupPromise = (async () => {
-    const { r2Key } = pickDataset(pathname);
-    
-    // Try spatial database first if enabled
-    const dbConfig = getSpatialDbConfig(env);
-    if (dbConfig.ENABLED && env.RIDING_DB) {
-      try {
-        const dbResult = await queryRidingFromDatabase(env, r2Key, lon, lat);
-        if (dbResult) {
-          return {
-            riding: ridingNameFromProperties(dbResult.properties) ?? 'Unknown',
-            properties: dbResult.properties || {}
-          };
-        }
-      } catch (error) {
-        console.warn('Database lookup failed, falling back to spatial index:', error);
-      }
-    }
-    
-    // Check LRU cache
-    let spatialIndex = spatialIndexCacheLRU.get(r2Key);
-    
-    if (!spatialIndex) {
-        // Load GeoJSON to create spatial index
-        await loadGeo(env, r2Key);
-        spatialIndex = spatialIndexCacheLRU.get(r2Key);
-        if (!spatialIndex) throw new Error(`Failed to create spatial index for ${r2Key}`);
-    }
-    
-    return lookupRidingWithIndex(spatialIndex, lon, lat);
-  })();
 
-  return withTimeout(lookupPromise, timeoutMs, "Riding lookup");
-}
 
-// Load GeoJSON data from R2
-async function loadGeo(env: Env, key: string): Promise<GeoJSONFeatureCollection> {
-  const startTime = Date.now();
-  incrementMetric('r2Requests');
-  
-  // Check LRU cache
-  const cached = geoCacheLRU.get(key);
-  if (cached) {
-    incrementMetric('r2CacheHits');
-    recordTiming('totalR2Time', Date.now() - startTime);
-    return cached;
-  }
 
-  incrementMetric('r2CacheMisses');
-  
-  try {
-    const geo = await r2CircuitBreaker.execute(`r2:${key}`, async () => {
-      const retryConfig = getRetryConfig();
-      return await withRetry(async () => {
-        const obj = await env.RIDINGS.get(key);
-        if (!obj) throw new Error(`R2 object not found: ${key}`);
-        const text = await obj.text();
-        const parsed = JSON.parse(text) as GeoJSONFeatureCollection;
-        
-        // Validate GeoJSON structure
-        if (!parsed || typeof parsed !== 'object') {
-          throw new Error(`Invalid GeoJSON: not an object`);
-        }
-        if (parsed.type !== 'FeatureCollection') {
-          throw new Error(`Invalid GeoJSON: expected FeatureCollection, got ${parsed.type}`);
-        }
-        if (!Array.isArray(parsed.features)) {
-          throw new Error(`Invalid GeoJSON: features must be an array`);
-        }
-        
-        // Validate features structure
-        for (let i = 0; i < Math.min(parsed.features.length, 10); i++) {
-          const feature = parsed.features[i];
-          if (!feature || typeof feature !== 'object') {
-            throw new Error(`Invalid GeoJSON: feature ${i} is not an object`);
-          }
-          if (feature.type !== 'Feature') {
-            throw new Error(`Invalid GeoJSON: feature ${i} type is not 'Feature'`);
-          }
-          if (!feature.geometry || typeof feature.geometry !== 'object') {
-            throw new Error(`Invalid GeoJSON: feature ${i} missing or invalid geometry`);
-          }
-          if (!feature.geometry.coordinates || !Array.isArray(feature.geometry.coordinates)) {
-            throw new Error(`Invalid GeoJSON: feature ${i} missing or invalid coordinates`);
-          }
-        }
-        
-        return parsed;
-      }, retryConfig, `R2 fetch ${key}`);
-    });
-    
-    // Cache the result
-    setCachedGeoJSON(key, geo);
-    
-    // Create spatial index
-    const spatialIndex = createSpatialIndex(geo);
-    setCachedSpatialIndex(key, spatialIndex);
-    
-    incrementMetric('r2Successes');
-    recordTiming('totalR2Time', Date.now() - startTime);
-    return geo;
-  } catch (error) {
-    incrementMetric('r2Failures');
-    if (error instanceof Error && error.message.includes('Circuit breaker is OPEN')) {
-      incrementMetric('r2CircuitBreakerTrips');
-    }
-    recordTiming('totalR2Time', Date.now() - startTime);
-    throw error;
-  }
-}
-
-// Lookup riding using spatial index
-function lookupRidingWithIndex(spatialIndex: SpatialIndex, lon: number, lat: number): LookupResult {
-  const startTime = Date.now();
-  
-  // First check if point is within the overall bounding box
-  if (!isPointInBoundingBox(lon, lat, spatialIndex.boundingBox)) {
-    incrementMetric('spatialIndexHits');
-    recordTiming('totalSpatialIndexTime', Date.now() - startTime);
-    return { properties: null };
-  }
-  
-  // Find candidate features using spatial index
-  const candidates = findCandidateFeatures(lon, lat, spatialIndex);
-  
-  if (candidates.length === 0) {
-    incrementMetric('spatialIndexHits');
-    recordTiming('totalSpatialIndexTime', Date.now() - startTime);
-    return { properties: null };
-  }
-  
-  incrementMetric('spatialIndexMisses');
-  
-  // Only test point-in-polygon for candidates
-  for (const feat of candidates) {
-    const props = featurePropertiesIfContains(feat, lon, lat);
-    if (props) {
-      recordTiming('totalSpatialIndexTime', Date.now() - startTime);
-      return {
-        properties: props,
-        riding: ridingNameFromProperties(props),
-      };
-    }
-  }
-  
-  recordTiming('totalSpatialIndexTime', Date.now() - startTime);
-  return { properties: null };
-}
-
-// Check if point is in polygon and return properties
-function featurePropertiesIfContains(ridingFeature: GeoJSONFeature, lon: number, lat: number): Record<string, unknown> | null {
-  const geom = ridingFeature?.geometry;
-  if (!geom) return null;
-  if (isPointInPolygon(lon, lat, geom)) {
-    return ridingFeature?.properties || {};
-  }
-  return null;
-}
 
 /**
  * Main Cloudflare Worker entry point.
@@ -1099,16 +932,7 @@ export default {
             return badRequest("Queue manager not configured", 503);
           }
           
-          const queueManagerId = env.QUEUE_MANAGER.idFromName("main-queue");
-          const queueManager = env.QUEUE_MANAGER.get(queueManagerId);
-          const response = await queueManager.fetch(new Request("https://queue.local/queue/stats"));
-          
-          if (!response.ok) {
-            const error = await response.json() as { error?: string };
-            throw new Error(error.error || "Failed to get queue stats");
-          }
-          
-          const stats = await response.json();
+          const stats = await getQueueStats(env);
           return new Response(JSON.stringify(stats), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",

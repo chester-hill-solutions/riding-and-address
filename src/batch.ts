@@ -16,9 +16,18 @@ import {
   type NormalizedAddressContext,
   type LookupRidingFn,
 } from './lookup-expansion';
+import * as queueClient from './queue-client';
+
+export const BATCH_CONFIG = {
+  DEFAULT_BATCH_SIZE: 10,
+  MAX_BATCH_SIZE: 100,
+  TIMEOUT: 300000,
+  RETRY_ATTEMPTS: 3,
+  RETRY_DELAY: 1000,
+};
 
 // Maximum batch size limits
-export const MAX_BATCH_SIZE = 100;
+export const MAX_BATCH_SIZE = BATCH_CONFIG.MAX_BATCH_SIZE;
 export const MAX_REQUEST_BODY_SIZE = 10 * 1024 * 1024; // 10MB
 
 // Process batch lookup with batch geocoding (GeoGratis-first). Optional normalization via Google when key configured.
@@ -208,71 +217,15 @@ export async function submitBatchToQueue(env: Env, requests: unknown): Promise<{
     throw new Error(`Batch size exceeds maximum of ${MAX_BATCH_SIZE} requests`);
   }
 
-  if (!env.QUEUE_MANAGER) {
-    throw new Error('Queue manager not configured');
-  }
-
-  const queueManagerId = env.QUEUE_MANAGER.idFromName('main-queue');
-  const queueManager = env.QUEUE_MANAGER.get(queueManagerId);
-
-  const response = await queueManager.fetch(
-    new Request('https://queue.local/queue/submit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requests: validatedRequests }),
-    })
-  );
-
-  if (!response.ok) {
-    const error = (await response.json()) as { error?: string };
-    throw new Error(error.error || 'Failed to submit batch to queue');
-  }
-
-  return await response.json();
+  return queueClient.submitBatch(env, validatedRequests);
 }
 
-export async function getBatchStatus(env: Env, batchId: string): Promise<unknown> {
-  if (!env.QUEUE_MANAGER) {
-    throw new Error('Queue manager not configured');
-  }
-
-  const queueManagerId = env.QUEUE_MANAGER.idFromName('main-queue');
-  const queueManager = env.QUEUE_MANAGER.get(queueManagerId);
-
-  const response = await queueManager.fetch(
-    new Request(`https://queue.local/queue/status?batchId=${batchId}`)
-  );
-
-  if (!response.ok) {
-    const error = (await response.json()) as { error?: string };
-    throw new Error(error.error || 'Failed to get batch status');
-  }
-
-  return await response.json();
+export function getBatchStatus(env: Env, batchId: string): Promise<unknown> {
+  return queueClient.getBatchStatus(env, batchId);
 }
 
-export async function processQueueJobs(env: Env, maxJobs: number = 10): Promise<unknown> {
-  if (!env.QUEUE_MANAGER) {
-    throw new Error('Queue manager not configured');
-  }
-
-  const queueManagerId = env.QUEUE_MANAGER.idFromName('main-queue');
-  const queueManager = env.QUEUE_MANAGER.get(queueManagerId);
-
-  const response = await queueManager.fetch(
-    new Request('https://queue.local/queue/process', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ maxJobs }),
-    })
-  );
-
-  if (!response.ok) {
-    const error = (await response.json()) as { error?: string };
-    throw new Error(error.error || 'Failed to process queue jobs');
-  }
-
-  return await response.json();
+export function processQueueJobs(env: Env, maxJobs: number = 10): Promise<unknown> {
+  return queueClient.processJobs(env, maxJobs);
 }
 
 export function createBatchJob(requests: BatchLookupRequest[]): BatchJob {
@@ -309,10 +262,3 @@ export function updateBatchJobStatus(
   return updatedJob;
 }
 
-export const BATCH_CONFIG = {
-  DEFAULT_BATCH_SIZE: 10,
-  MAX_BATCH_SIZE: 100,
-  TIMEOUT: 300000,
-  RETRY_ATTEMPTS: 3,
-  RETRY_DELAY: 1000,
-};

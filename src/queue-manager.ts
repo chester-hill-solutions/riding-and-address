@@ -1,9 +1,9 @@
 /// <reference types="@cloudflare/workers-types" />
 
-import { Env } from './types';
+import { BatchLookupRequest, BatchLookupResponse, Env, QueryParams } from './types';
 import { parseBatchLookupRequests } from './validation';
 import { performExpandedLookup, expandedLookupResponseFields } from './lookup-expansion';
-import { lookupRidingFromR2 } from './lookup-riding';
+import { cachedLookupRiding } from './riding-lookup';
 import { geocodeIfNeeded } from './geocoding';
 
 export interface QueueJob {
@@ -37,32 +37,6 @@ export interface BatchJob {
   completedAt?: number;
   results: BatchLookupResponse[];
   errors: string[];
-}
-
-export interface BatchLookupRequest {
-  id: string;
-  query: QueryParams;
-  pathname: string;
-}
-
-export interface BatchLookupResponse {
-  id: string;
-  query: QueryParams;
-  point?: { lon: number; lat: number };
-  properties: Record<string, unknown> | null;
-  normalizedAddress?: string;
-  error?: string;
-  processingTime: number;
-}
-
-export interface QueryParams {
-  address?: string;
-  postal?: string;
-  lat?: number;
-  lon?: number;
-  city?: string;
-  state?: string;
-  country?: string;
 }
 
 export interface QueueStats {
@@ -738,7 +712,7 @@ export class QueueManager {
         this.env,
         job.request.pathname,
         job.request.query,
-        lookupRidingFromR2,
+        cachedLookupRiding,
         {
           geocodeIfNeeded: (env, query, req, cb) => geocodeIfNeeded(env, query, req, undefined, cb),
         }
