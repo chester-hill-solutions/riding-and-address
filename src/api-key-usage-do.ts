@@ -1,4 +1,5 @@
 import { Env } from './types';
+import { DurableUsageLedger } from './usage-ledger';
 
 /**
  * Per-key daily request counter — the fuse behind the browser API keys.
@@ -136,16 +137,7 @@ function monthBefore(month: string, months: number): string {
  * When `monthlyLimit <= 0` (unlimited / soft-warn counting path), fail-open so
  * availability is not tied to the counter (Stripe sync remains eventual per ADR 0002).
  */
-function monthlyFailClosed(
-  monthlyLimit: number,
-  month: string
-): UsageResult {
-  return { allowed: false, count: 0, limit: monthlyLimit, day: month, month };
-}
 
-function monthlyFailOpen(monthlyLimit: number, month: string): UsageResult {
-  return { allowed: true, count: 0, limit: monthlyLimit, day: month, month };
-}
 
 export async function consumeMonthlyQuota(
   env: Env,
@@ -153,24 +145,8 @@ export async function consumeMonthlyQuota(
   monthlyLimit: number,
   nowMs: number = Date.now()
 ): Promise<UsageResult> {
-  const month = utcMonth(nowMs);
-  if (!env.API_KEY_USAGE) {
-    return monthlyLimit > 0 ? monthlyFailClosed(monthlyLimit, month) : monthlyFailOpen(monthlyLimit, month);
-  }
-
-  try {
-    const id = env.API_KEY_USAGE.idFromName(`customer:${customerId}`);
-    const stub = env.API_KEY_USAGE.get(id);
-    const response = await stub.fetch(
-      `https://usage/consume?month=${month}&limit=${monthlyLimit}`,
-      { method: 'POST' }
-    );
-    const result = (await response.json()) as UsageResult;
-    return { ...result, month: result.month || month };
-  } catch (error) {
-    console.warn(`[ApiKeyUsage] monthly counter unavailable for ${customerId}:`, error);
-    return monthlyLimit > 0 ? monthlyFailClosed(monthlyLimit, month) : monthlyFailOpen(monthlyLimit, month);
-  }
+  const result = await new DurableUsageLedger(env).consumeMonthly(customerId, monthlyLimit, nowMs);
+  return { ...result, day: result.month };
 }
 
 export async function peekMonthlyQuota(
@@ -179,20 +155,8 @@ export async function peekMonthlyQuota(
   monthlyLimit: number,
   nowMs: number = Date.now()
 ): Promise<UsageResult> {
-  const month = utcMonth(nowMs);
-  if (!env.API_KEY_USAGE) {
-    return monthlyLimit > 0 ? monthlyFailClosed(monthlyLimit, month) : monthlyFailOpen(monthlyLimit, month);
-  }
-
-  try {
-    const id = env.API_KEY_USAGE.idFromName(`customer:${customerId}`);
-    const stub = env.API_KEY_USAGE.get(id);
-    const response = await stub.fetch(`https://usage/peek?month=${month}&limit=${monthlyLimit}`);
-    const result = (await response.json()) as UsageResult;
-    return { ...result, month: result.month || month };
-  } catch {
-    return monthlyLimit > 0 ? monthlyFailClosed(monthlyLimit, month) : monthlyFailOpen(monthlyLimit, month);
-  }
+  const result = await new DurableUsageLedger(env).peekMonthly(customerId, monthlyLimit, nowMs);
+  return { ...result, day: result.month };
 }
 
 /**
