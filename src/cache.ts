@@ -1,5 +1,6 @@
 import { Env, GeoJSONFeatureCollection, GeoJSONGeometry, SpatialIndex, CacheWarmingState, QueryParams, LookupResult, LookupCacheEntry, Suggestion, SuggestQueryParams } from './types';
 import { geocodeIfNeeded } from './geocoding';
+import { readTimestampedEntry, writeTimestampedEntry } from './kv-cache';
 import { TIME_CONSTANTS, TIME_CONSTANTS_SECONDS } from './config';
 import { geocodingExecutor } from './circuit-breaker';
 import { pickDataset, getLiveWarmTargets } from './datasets';
@@ -500,24 +501,12 @@ export function generateLookupCacheKey(query: QueryParams, pathname: string): st
  * @returns Cached lookup result, or null if not found/expired
  */
 export async function getCachedLookupResult(env: Env, cacheKey: string): Promise<LookupCacheEntry | null> {
-  if (!env.LOOKUP_CACHE) return null;
-  
-  try {
-    const cached = await env.LOOKUP_CACHE.get(cacheKey, 'json') as LookupCacheEntry | null;
-    if (!cached) return null;
-    
-    // Check if cache entry is still valid (24 hours TTL)
-    // Don't delete expired entries - let KV TTL handle cleanup
-    const maxAge = TIME_CONSTANTS.TWENTY_FOUR_HOURS_MS;
-    if (Date.now() - cached.timestamp > maxAge) {
-      return null;
-    }
-    
-    return cached;
-  } catch (error) {
-    console.warn('Failed to get cached lookup result:', error);
-    return null;
-  }
+  return readTimestampedEntry<LookupCacheEntry>(
+    env.LOOKUP_CACHE,
+    cacheKey,
+    TIME_CONSTANTS.TWENTY_FOUR_HOURS_MS,
+    'lookup result'
+  );
 }
 
 /**
@@ -530,28 +519,24 @@ export async function getCachedLookupResult(env: Env, cacheKey: string): Promise
  * @param point - Optional point coordinates (lon, lat) to store with the cache entry
  */
 export async function setCachedLookupResult(env: Env, cacheKey: string, result: LookupResult, dataset: string, point?: { lon: number; lat: number }): Promise<void> {
-  if (!env.LOOKUP_CACHE) return;
-  
-  try {
-    const entry: LookupCacheEntry = {
-      properties: result.properties,
-      riding: result.riding,
-      point,
-      normalizedAddress: result.normalizedAddress,
-      addressComponents: result.addressComponents,
-      mailingAddress: result.mailingAddress,
-      timestamp: Date.now(),
-      dataset
-    };
-    
-    // Store with 24 hour TTL
-    await env.LOOKUP_CACHE.put(cacheKey, JSON.stringify(entry), {
-      expirationTtl: TIME_CONSTANTS_SECONDS.TWENTY_FOUR_HOURS
-    });
-  } catch (error) {
-    console.warn('Failed to cache lookup result:', error);
-    // Don't throw - cache errors should never fail requests
-  }
+  const entry: LookupCacheEntry = {
+    properties: result.properties,
+    riding: result.riding,
+    point,
+    normalizedAddress: result.normalizedAddress,
+    addressComponents: result.addressComponents,
+    mailingAddress: result.mailingAddress,
+    timestamp: Date.now(),
+    dataset
+  };
+
+  await writeTimestampedEntry(
+    env.LOOKUP_CACHE,
+    cacheKey,
+    entry,
+    TIME_CONSTANTS_SECONDS.TWENTY_FOUR_HOURS,
+    'lookup result'
+  );
 }
 
 interface SuggestCacheEntry {
@@ -594,17 +579,12 @@ export async function getCachedSuggestions(
   cacheKey: string,
   ttlSeconds: number
 ): Promise<SuggestCacheEntry | null> {
-  if (!env.LOOKUP_CACHE) return null;
-
-  try {
-    const cached = (await env.LOOKUP_CACHE.get(cacheKey, 'json')) as SuggestCacheEntry | null;
-    if (!cached) return null;
-    if (Date.now() - cached.timestamp > ttlSeconds * 1000) return null;
-    return cached;
-  } catch (error) {
-    console.warn('Failed to get cached suggestions:', error);
-    return null;
-  }
+  return readTimestampedEntry<SuggestCacheEntry>(
+    env.LOOKUP_CACHE,
+    cacheKey,
+    ttlSeconds * 1000,
+    'suggestions'
+  );
 }
 
 export async function setCachedSuggestions(
@@ -615,13 +595,6 @@ export async function setCachedSuggestions(
   ttlSeconds: number,
   nextCursor?: string
 ): Promise<void> {
-  if (!env.LOOKUP_CACHE) return;
-
-  try {
-    const entry: SuggestCacheEntry = { suggestions, provinces, nextCursor, timestamp: Date.now() };
-    await env.LOOKUP_CACHE.put(cacheKey, JSON.stringify(entry), { expirationTtl: ttlSeconds });
-  } catch (error) {
-    console.warn('Failed to cache suggestions:', error);
-    // Don't throw - cache errors should never fail requests
-  }
+  const entry: SuggestCacheEntry = { suggestions, provinces, nextCursor, timestamp: Date.now() };
+  await writeTimestampedEntry(env.LOOKUP_CACHE, cacheKey, entry, ttlSeconds, 'suggestions');
 }

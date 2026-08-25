@@ -8,6 +8,16 @@ import {
 import { Env } from '../src/types';
 import { CircuitBreakerOpenError } from '../src/circuit-breaker';
 
+const nullKv = () =>
+  ({
+    get: async () => null,
+    put: async () => {},
+    delete: async () => {},
+    list: async () => ({ keys: [], list_complete: true, cacheStatus: null }),
+    getWithMetadata: async () => ({ value: null, metadata: null, cacheStatus: null }),
+  }) as unknown as KVNamespace;
+
+
 describe('generateGeocodingCacheKey', () => {
   it('generates a key with provider prefix', () => {
     const key = generateGeocodingCacheKey({ address: '123 Main St' }, 'google');
@@ -351,13 +361,7 @@ describe('geocodeIfNeeded with ODA enabled', () => {
       ODA_DB: db,
       ODA_GEOCODING_ENABLED: 'true',
       ODA_PROVINCES: 'ON,QC',
-      GEOCODING_CACHE: {
-        get: async () => null,
-        put: async () => {},
-        delete: async () => {},
-        list: async () => ({ keys: [], list_complete: true, cacheStatus: null }),
-        getWithMetadata: async () => ({ value: null, metadata: null, cacheStatus: null }),
-      } as unknown as KVNamespace,
+      GEOCODING_CACHE: nullKv(),
     };
 
     const result = await geocodeIfNeeded(env, {
@@ -396,13 +400,7 @@ describe('geocodeIfNeeded with ODA enabled', () => {
     const env: Env = {
       RIDINGS: {} as R2Bucket,
       ODA_GEOCODING_ENABLED: 'false',
-      GEOCODING_CACHE: {
-        get: async () => null,
-        put: async () => {},
-        delete: async () => {},
-        list: async () => ({ keys: [], list_complete: true, cacheStatus: null }),
-        getWithMetadata: async () => ({ value: null, metadata: null, cacheStatus: null }),
-      } as unknown as KVNamespace,
+      GEOCODING_CACHE: nullKv(),
     };
 
     const result = await geocodeIfNeeded(env, {
@@ -447,13 +445,7 @@ describe('geocodeIfNeeded with ODA enabled', () => {
       ODA_DB: db,
       ODA_GEOCODING_ENABLED: 'true',
       ODA_PROVINCES: 'ON,QC',
-      GEOCODING_CACHE: {
-        get: async () => null,
-        put: async () => {},
-        delete: async () => {},
-        list: async () => ({ keys: [], list_complete: true, cacheStatus: null }),
-        getWithMetadata: async () => ({ value: null, metadata: null, cacheStatus: null }),
-      } as unknown as KVNamespace,
+      GEOCODING_CACHE: nullKv(),
     };
 
     const circuitBreaker = {
