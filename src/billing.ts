@@ -115,3 +115,22 @@ export async function reportStripeMeter(
     console.warn('[StripeMeter] unavailable:', error);
   }
 }
+
+/**
+ * Wire shape for a denied Billable unit: billed.body + correlation ID under
+ * the status chosen by the billing decision. Single place so every route
+ * speaks one Fuse-denial dialect (ADR-0002: never fail-closed on Stripe).
+ */
+export function billableDenialResponse(
+  billed: { status: number; body?: Record<string, unknown> },
+  correlationId: string,
+  corsHeaders: Record<string, string>
+): Response {
+  return new Response(JSON.stringify({ ...(billed.body ?? {}), correlationId }), {
+    status: billed.status,
+    headers: {
+      'content-type': 'application/json; charset=UTF-8',
+      ...corsHeaders,
+    },
+  });
+}

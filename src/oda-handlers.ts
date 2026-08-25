@@ -11,7 +11,7 @@ import {
 import { searchSuggestions, SuggestError } from './oda-suggest';
 import { authorizeSearchRequest, httpStatusForKeyDenial } from './api-keys';
 import { consumeDailyQuota } from './api-key-usage-do';
-import { recordSuccessfulBillable } from './billing';
+import { billableDenialResponse, recordSuccessfulBillable } from './billing';
 import {
   generateSuggestCacheKey,
   getCachedSuggestions,
@@ -253,13 +253,7 @@ export async function handleSearchRoute(
         }
       );
       if (!billed.allowed) {
-        return new Response(JSON.stringify({ ...billed.body, correlationId }), {
-          status: billed.status,
-          headers: {
-            'content-type': 'application/json; charset=UTF-8',
-            ...corsHeaders(),
-          },
-        });
+        return billableDenialResponse(billed, correlationId, corsHeaders());
       }
     }
 

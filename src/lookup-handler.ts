@@ -11,7 +11,7 @@ import {
   type LookupRidingFn,
 } from './lookup-expansion';
 import { resolveLookupPath } from './return-selector';
-import { BillableAuthContext, recordSuccessfulBillable } from './billing';
+import { BillableAuthContext, billableDenialResponse, recordSuccessfulBillable } from './billing';
 import { cachedLookupRiding } from './riding-lookup';
 import { FEDERAL_DATASET, PROVINCIAL_DATASETS } from './datasets';
 
@@ -123,13 +123,7 @@ export async function handleLookupRequest(
         waitUntil: deferTask,
       });
       if (!billed.allowed) {
-        return new Response(JSON.stringify({ ...billed.body, correlationId }), {
-          status: billed.status,
-          headers: {
-            'content-type': 'application/json; charset=UTF-8',
-            ...getCorsHeaders(origin),
-          },
-        });
+        return billableDenialResponse(billed, correlationId, getCorsHeaders(origin));
       }
     }
 

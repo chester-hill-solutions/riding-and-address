@@ -189,7 +189,7 @@ export default {
         return new Response(JSON.stringify(createOpenAPISpec(baseUrl)), {
           headers: { 
             "content-type": "application/json; charset=UTF-8",
-            'Access-Control-Allow-Origin': '*'
+            ...scope.corsHeaders(request.headers.get('Origin'))
           }
         });
       }
@@ -205,7 +205,7 @@ export default {
         return new Response(createApiReference(baseUrl), {
           headers: {
             "content-type": "text/html; charset=UTF-8",
-            'Access-Control-Allow-Origin': '*'
+            ...scope.corsHeaders(request.headers.get('Origin'))
           }
         });
       }
@@ -219,7 +219,7 @@ export default {
           }), {
             headers: {
               "content-type": "application/json; charset=UTF-8",
-              'Access-Control-Allow-Origin': '*'
+              ...scope.corsHeaders(request.headers.get('Origin'))
             }
           });
         }
@@ -245,7 +245,7 @@ export default {
         }), {
           headers: {
             "content-type": "application/json; charset=UTF-8",
-            'Access-Control-Allow-Origin': '*'
+            ...scope.corsHeaders(request.headers.get('Origin'))
           }
         });
       }
@@ -266,7 +266,7 @@ export default {
           return new Response(JSON.stringify({ success: true, message: `Circuit breaker ${key} reset` }), {
             headers: {
               'content-type': 'application/json; charset=UTF-8',
-              'Access-Control-Allow-Origin': '*',
+              ...scope.corsHeaders(request.headers.get('Origin')),
             },
           });
         }
@@ -275,7 +275,7 @@ export default {
         return new Response(JSON.stringify({ success: true, message: 'All circuit breakers reset' }), {
           headers: {
             'content-type': 'application/json; charset=UTF-8',
-            'Access-Control-Allow-Origin': '*',
+            ...scope.corsHeaders(request.headers.get('Origin')),
           },
         });
       }
@@ -290,7 +290,7 @@ export default {
         return new Response(JSON.stringify(metrics), {
           headers: {
             "content-type": "application/json; charset=UTF-8",
-            'Access-Control-Allow-Origin': '*'
+            ...scope.corsHeaders(request.headers.get('Origin'))
           }
         });
       }
@@ -316,7 +316,7 @@ export default {
           return new Response(JSON.stringify({ webhooks }), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",
-              'Access-Control-Allow-Origin': '*'
+              ...scope.corsHeaders(request.headers.get('Origin'))
             }
           });
         }
@@ -326,7 +326,7 @@ export default {
           return new Response(JSON.stringify({ events }), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",
-              'Access-Control-Allow-Origin': '*'
+              ...scope.corsHeaders(request.headers.get('Origin'))
             }
           });
         }
@@ -336,7 +336,7 @@ export default {
           return new Response(JSON.stringify({ deliveries }), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",
-              'Access-Control-Allow-Origin': '*'
+              ...scope.corsHeaders(request.headers.get('Origin'))
             }
           });
         }
@@ -359,7 +359,7 @@ export default {
         }), {
           headers: { 
             "content-type": "application/json; charset=UTF-8",
-            'Access-Control-Allow-Origin': '*'
+            ...scope.corsHeaders(request.headers.get('Origin'))
           }
         });
       }
@@ -379,7 +379,7 @@ export default {
             }), {
               headers: { 
                 "content-type": "application/json; charset=UTF-8",
-                'Access-Control-Allow-Origin': '*'
+                ...scope.corsHeaders(request.headers.get('Origin'))
               }
             });
           } catch (error) {
@@ -408,7 +408,7 @@ export default {
             }), {
               headers: { 
                 "content-type": "application/json; charset=UTF-8",
-                'Access-Control-Allow-Origin': '*'
+                ...scope.corsHeaders(request.headers.get('Origin'))
               }
             });
           } catch (error) {
@@ -431,7 +431,7 @@ export default {
             }), {
               headers: {
                 "content-type": "application/json; charset=UTF-8",
-                'Access-Control-Allow-Origin': '*'
+                ...scope.corsHeaders(request.headers.get('Origin'))
               }
             });
           } catch (error) {
@@ -453,7 +453,7 @@ export default {
             return new Response(JSON.stringify(result), {
               headers: { 
                 "content-type": "application/json; charset=UTF-8",
-                'Access-Control-Allow-Origin': '*'
+                ...scope.corsHeaders(request.headers.get('Origin'))
               }
             });
           } catch (error) {
@@ -479,7 +479,7 @@ export default {
             return new Response(JSON.stringify(result), {
               headers: { 
                 "content-type": "application/json; charset=UTF-8",
-                'Access-Control-Allow-Origin': '*'
+                ...scope.corsHeaders(request.headers.get('Origin'))
               }
             });
           } catch (error) {
@@ -499,7 +499,7 @@ export default {
               return new Response(JSON.stringify(result), {
                 headers: { 
                   "content-type": "application/json; charset=UTF-8",
-                  'Access-Control-Allow-Origin': '*'
+                  ...scope.corsHeaders(request.headers.get('Origin'))
                 }
               });
             } else {
@@ -520,7 +520,7 @@ export default {
           }), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",
-              'Access-Control-Allow-Origin': '*'
+              ...scope.corsHeaders(request.headers.get('Origin'))
             }
           });
         }
@@ -542,7 +542,7 @@ export default {
           }), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",
-              'Access-Control-Allow-Origin': '*'
+              ...scope.corsHeaders(request.headers.get('Origin'))
             }
           });
         } else {
@@ -576,7 +576,7 @@ export default {
             }), {
               headers: { 
                 "content-type": "application/json; charset=UTF-8",
-                'Access-Control-Allow-Origin': '*'
+                ...scope.corsHeaders(request.headers.get('Origin'))
               }
             });
           } catch (error) {
@@ -610,7 +610,7 @@ export default {
           return new Response(JSON.stringify({ webhooks }), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",
-              'Access-Control-Allow-Origin': '*'
+              ...scope.corsHeaders(request.headers.get('Origin'))
             }
           });
         }
@@ -635,7 +635,7 @@ export default {
             }), {
               headers: { 
                 "content-type": "application/json; charset=UTF-8",
-                'Access-Control-Allow-Origin': '*'
+                ...scope.corsHeaders(request.headers.get('Origin'))
               }
             });
           } catch (error) {
@@ -658,7 +658,7 @@ export default {
           return new Response(JSON.stringify({ events: filteredEvents }), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",
-              'Access-Control-Allow-Origin': '*'
+              ...scope.corsHeaders(request.headers.get('Origin'))
             }
           });
         }
@@ -678,7 +678,7 @@ export default {
           return new Response(JSON.stringify({ deliveries: filteredDeliveries }), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",
-              'Access-Control-Allow-Origin': '*'
+              ...scope.corsHeaders(request.headers.get('Origin'))
             }
           });
         }
@@ -775,7 +775,7 @@ export default {
             return new Response(JSON.stringify({ results }), {
               headers: { 
                 "content-type": "application/json; charset=UTF-8",
-                'Access-Control-Allow-Origin': '*'
+                ...scope.corsHeaders(request.headers.get('Origin'))
               }
             });
           } catch (error) {
@@ -790,7 +790,7 @@ export default {
             return new Response(JSON.stringify(status), {
               headers: { 
                 "content-type": "application/json; charset=UTF-8",
-                'Access-Control-Allow-Origin': '*'
+                ...scope.corsHeaders(request.headers.get('Origin'))
               }
             });
           } catch (error) {
@@ -836,7 +836,7 @@ export default {
           return new Response(JSON.stringify(result), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",
-              'Access-Control-Allow-Origin': '*'
+              ...scope.corsHeaders(request.headers.get('Origin'))
             }
           });
         } catch (error) {
@@ -865,7 +865,7 @@ export default {
           return new Response(JSON.stringify(result), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",
-              'Access-Control-Allow-Origin': '*'
+              ...scope.corsHeaders(request.headers.get('Origin'))
             }
           });
         } catch (error) {
@@ -890,7 +890,7 @@ export default {
           return new Response(JSON.stringify(result), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",
-              'Access-Control-Allow-Origin': '*'
+              ...scope.corsHeaders(request.headers.get('Origin'))
             }
           });
         } catch (error) {
@@ -919,7 +919,7 @@ export default {
           return new Response(JSON.stringify(stats), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",
-              'Access-Control-Allow-Origin': '*'
+              ...scope.corsHeaders(request.headers.get('Origin'))
             }
           });
         } catch (error) {
@@ -939,7 +939,7 @@ export default {
           return new Response(JSON.stringify(result), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",
-              'Access-Control-Allow-Origin': '*'
+              ...scope.corsHeaders(request.headers.get('Origin'))
             }
           });
         } catch (error) {

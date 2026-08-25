@@ -88,8 +88,8 @@ One construction site in `worker.ts` startup. Everything else consumes the insta
 
 1. Every Response goes through `resolveCorsOrigin` + `securityHeaders`. Sweep the 33 wildcard literals (`worker.ts:373–1135`, `oda-handlers.ts:202–209`). Admin/diagnostic routes get explicit origin policy rather than `*`.
 2. One Fuse-denial shaper module beside `httpStatusForKeyDenial` (ADR-0005 vocabulary): input = denial reason + correlationId, output = Response. Replace the three dialects (`lookup-handler.ts:89–102`, `oda-handlers.ts:247–265`, `worker.ts:932–957`). Batch redaction loop (932–957) uses it per item.
-3. Merge webhook admin surfaces (`480–524` vs `772–868`) into one webhook module serving both URI namespaces; delete the v1/v2 copy-paste handlers.
-4. Remove the `initializeWebhookProcessing(env)` init ritual from the fetch path (`worker.ts:331`) — fold into module state or the core from Wave 1.
+3. Merge webhook admin surfaces (`480–524` vs `772–868`) into one webhook module serving both URI namespaces; delete the v1/v2 copy-paste handlers. **Status: remaining** — the two surfaces mask secrets differently (v1 omits `secret`, v2 masks it and adds `maxFailures`) and gate auth at different granularities; merge needs an explicit redaction decision first.
+4. Remove the `initializeWebhookProcessing(env)` init ritual from the fetch path (`worker.ts:331`) — fold into module state or the core from Wave 1. **Status: remaining** (paired with 3).
 
 **Done when.** `grep "'Access-Control-Allow-Origin': '\*'" src/` returns 0 outside `http-headers.ts`; one function builds every Fuse-denied response; webhook handlers exist once.
 
