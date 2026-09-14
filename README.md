@@ -340,6 +340,8 @@ npm run keys -- create-server --customer cust_acme --remote
 npm run keys -- create-browser --customer cust_acme --origins "https://acme.com" --remote
 ```
 
+> The `keys` script resolves `portal/wrangler.jsonc` automatically, so run it from the repo root.
+
 #### 9) Set environment variables
 Configure in `wrangler.jsonc` under `"vars"`:
 ```jsonc
