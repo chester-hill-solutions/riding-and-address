@@ -62,6 +62,7 @@ import { QueueManagerDO } from './queue-manager';
 import { ApiKeyUsageDO } from './api-key-usage-do';
 import { CircuitBreakerDO } from './circuit-breaker-do';
 import { createApiReference, createOpenAPISpec } from './docs';
+import { createEmbedDocsPage } from './embed-docs';
 import { TIME_CONSTANTS } from './config';
 import {
   apiKeysEnabled,
@@ -190,6 +191,18 @@ export default {
           headers: { 
             "content-type": "application/json; charset=UTF-8",
             ...scope.corsHeaders(request.headers.get('Origin'))
+          }
+        });
+      }
+
+      // Standalone documentation for the drop-in autocomplete widget. Kept separate from the
+      // Scalar API reference so the widget guide has a stable, linkable URL of its own.
+      if (pathname === '/docs/embed' || pathname === '/embed/docs') {
+        const baseUrl = `${url.protocol}//${url.host}`;
+        return new Response(createEmbedDocsPage(baseUrl), {
+          headers: {
+            "content-type": "text/html; charset=UTF-8",
+            'Access-Control-Allow-Origin': '*'
           }
         });
       }

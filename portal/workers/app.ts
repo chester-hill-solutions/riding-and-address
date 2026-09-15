@@ -42,6 +42,8 @@ function isApiWorkerPath(pathname: string): boolean {
   }
   return (
     pathname === '/docs' ||
+    pathname.startsWith('/docs/') ||
+    pathname === '/embed/docs' ||
     pathname === '/swagger' ||
     pathname === '/embed.js' ||
     pathname === '/health' ||
