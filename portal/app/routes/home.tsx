@@ -29,6 +29,7 @@ export function loader() {
 export default function Home() {
   const { apiBaseUrl, demoBrowserKey } = useLoaderData<typeof loader>();
   const docsUrl = `${apiBaseUrl}/docs`;
+  const widgetDocsUrl = `${apiBaseUrl}/docs/embed`;
 
   return (
     <div className="marketing">
@@ -42,6 +43,7 @@ export default function Home() {
             <a href="#how-it-works">Product</a>
             <a href="#pricing">Pricing</a>
             <a href={docsUrl}>Docs</a>
+            <a href={widgetDocsUrl}>Widget</a>
             <Link to="/login">Log in</Link>
             <Link className="btn btn--compact" to="/signup">
               Start free
@@ -189,6 +191,7 @@ export default function Home() {
           <span>CanCoder by Chester Hill Solutions</span>
           <div className="site-footer__links">
             <a href={docsUrl}>Docs</a>
+            <a href={widgetDocsUrl}>Widget</a>
             <Link to="/login">Customer login</Link>
           </div>
         </div>
