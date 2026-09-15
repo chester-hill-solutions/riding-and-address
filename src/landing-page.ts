@@ -206,6 +206,19 @@ export function createLandingPage(baseUrl: string): string {
       font-size: 0.78rem; font-weight: 650;
     }
     .try-embed__query { margin: 1.15rem 0 0; color: rgb(210 228 245 / 72%); font-size: 0.86rem; }
+    .try-embed__json { margin: 1.15rem 0 0; }
+    .try-embed__json summary {
+      cursor: pointer; color: rgb(210 228 245 / 85%);
+      font-size: 0.82rem; font-weight: 650; letter-spacing: 0.02em;
+    }
+    .try-embed__json pre {
+      margin: 0.6rem 0 0; max-height: 340px; overflow: auto;
+      padding: 0.9rem 1rem;
+      border: 1px solid rgb(255 255 255 / 16%); border-radius: var(--radius-sm);
+      background: rgb(6 28 56 / 55%); color: #e8f3ff;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.78rem; line-height: 1.5; white-space: pre; tab-size: 2;
+    }
     .flow {
       display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.75rem 2rem;
       list-style: none;
@@ -275,6 +288,7 @@ export function createLandingPage(baseUrl: string): string {
         <a href="#product">Product</a>
         <a href="#pricing">Pricing</a>
         <a href="${baseUrl}/docs">Docs</a>
+        <a href="${baseUrl}/docs/embed">Widget</a>
         <a class="btn btn--compact" href="${baseUrl}/docs">API reference</a>
       </div>
     </nav>
@@ -412,6 +426,7 @@ export function createLandingPage(baseUrl: string): string {
       <span>CanCoder by Chester Hill Solutions</span>
       <div class="site-footer__links">
         <a href="${baseUrl}/docs">Docs</a>
+        <a href="${baseUrl}/docs/embed">Widget</a>
         <a href="${baseUrl}/health">Health</a>
         <a href="https://github.com/chester-hill-solutions/riding-and-address">GitHub</a>
       </div>
@@ -429,6 +444,14 @@ export function createLandingPage(baseUrl: string): string {
       var seq = 0;
       var timer = null;
       var DEBOUNCE_MS = 320;
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
 
       function ridingName(props) {
         if (!props) return null;
@@ -466,14 +489,19 @@ export function createLandingPage(baseUrl: string): string {
           return;
         }
         var chips = '';
-        if (payload.fedNum) chips += '<span class="try-embed__chip">FED ' + payload.fedNum + '</span>';
+        if (payload.fedNum) chips += '<span class="try-embed__chip">FED ' + escapeHtml(payload.fedNum) + '</span>';
+        var json = payload.raw != null
+          ? '<details class="try-embed__json"><summary>Full response</summary>' +
+            '<pre><code>' + escapeHtml(JSON.stringify(payload.raw, null, 2)) + '</code></pre></details>'
+          : '';
         resultEl.innerHTML =
           '<div class="try-embed__card">' +
           '<p class="try-embed__label">Federal electoral district</p>' +
-          '<p class="try-embed__riding">' + payload.federal + '</p>' +
+          '<p class="try-embed__riding">' + escapeHtml(payload.federal) + '</p>' +
           (chips ? '<div class="try-embed__meta">' + chips + '</div>' : '') +
-          '<p class="try-embed__query">' + payload.queryLabel + '</p>' +
-          '</div>';
+          '<p class="try-embed__query">' + escapeHtml(payload.queryLabel) + '</p>' +
+          '</div>' +
+          json;
       }
 
       function lookup(trimmed) {
@@ -510,7 +538,7 @@ export function createLandingPage(baseUrl: string): string {
               renderResult('empty', 'No riding found for that location.');
               return;
             }
-            renderResult('ok', { federal: federal, fedNum: fedNum, queryLabel: trimmed });
+            renderResult('ok', { federal: federal, fedNum: fedNum, queryLabel: trimmed, raw: body });
           })
           .catch(function () {
             if (my !== seq) return;

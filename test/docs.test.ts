@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createOpenAPISpec, createApiReference } from '../src/docs';
+import { createEmbedDocsPage } from '../src/embed-docs';
+import { EMBED_VERSION } from '../src/embed';
 import { createLandingPage } from '../src/landing-page';
 import { PROVINCIAL_DATASETS } from '../src/datasets';
 import pkg from '../package.json';
@@ -203,6 +205,50 @@ describe('keyless demo tier', () => {
   });
 });
 
+describe('embed widget docs page', () => {
+  it('shows the one-tag install snippet pointed at this deployment', () => {
+    const html = createEmbedDocsPage(BASE);
+    expect(html).toContain(`${BASE}/embed.js`);
+    expect(html).toContain('data-province="ON"');
+    expect(html).toContain('defer');
+  });
+
+  it('reports the widget version shipped by src/embed.ts', () => {
+    expect(createEmbedDocsPage(BASE)).toContain(EMBED_VERSION);
+  });
+
+  it('documents every script-tag attribute the widget reads', () => {
+    const html = createEmbedDocsPage(BASE);
+    for (const attribute of [
+      'data-province',
+      'data-key',
+      'data-limit',
+      'data-include-province',
+      'data-demo',
+      'data-endpoint',
+      'data-theme',
+      'data-auto',
+    ]) {
+      expect(html, `${attribute} is undocumented`).toContain(attribute);
+    }
+  });
+
+  it('documents the events integrators listen for', () => {
+    const html = createEmbedDocsPage(BASE);
+    for (const event of ['ridinglookup:select', 'ridinglookup:riding', 'ridinglookup:error']) {
+      expect(html, `${event} is undocumented`).toContain(event);
+    }
+  });
+
+  it('links back to the API reference', () => {
+    expect(createEmbedDocsPage(BASE)).toContain(`href="${BASE}/docs"`);
+  });
+
+  it('is linked from the landing page', () => {
+    expect(createLandingPage(BASE)).toContain(`${BASE}/docs/embed`);
+  });
+});
+
 describe('landing page', () => {
   it('lists every provincial route', () => {
     const html = createLandingPage(BASE);
@@ -213,6 +259,14 @@ describe('landing page', () => {
 
   it('points the API reference at the spec endpoint', () => {
     expect(createApiReference(BASE)).toContain(`${BASE}/api/docs`);
+  });
+
+  it('pretty-prints the full demo response payload', () => {
+    // The try-it box used to show only the riding name; integrators need the whole body to see
+    // every field the API returns.
+    const html = createLandingPage(BASE);
+    expect(html).toContain('try-embed__json');
+    expect(html).toContain('JSON.stringify(payload.raw, null, 2)');
   });
 
   it('loads the same Scalar version the devDependency pins', () => {
