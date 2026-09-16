@@ -7,7 +7,8 @@ import {
   type QueueStateSnapshot,
 } from '../src/queue-policy';
 import { QueueManagerDO } from '../src/queue-manager';
-import type { BatchLookupRequest, BatchLookupResponse, Env } from '../src/types';
+import type { BatchLookupRequest, Env } from '../src/types';
+import type { DeadLetterResult, ProcessJobsResult, QueueJob } from '../src/queue-types';
 
 /**
  * First tests for the Enterprise queue core.
@@ -368,6 +369,18 @@ describe('QueuePolicy stats', () => {
     expect(done.priorityDistribution).toEqual({});
   });
 
+  it('reads the clock once per stats pass so an empty queue reports no oldest job', () => {
+    // A clock that advances on every read: if `updateStats` called `now()`
+    // twice for the `oldestPendingJob === now` comparison it would see two
+    // different instants and report a spurious nonzero age for an empty queue.
+    let tick = 1000;
+    const now = () => tick++;
+    const { persistence } = createPersistence();
+    const policy = new QueuePolicy({ persistence, runJob: successRunner, now });
+
+    expect(policy.getStats().oldestPendingJob).toBe(0);
+  });
+
   it('reports queue lengths in the health envelope', async () => {
     const { policy } = createPolicy();
     await policy.submitBatch({ requests: [postalRequest('a')], priority: 1, tags: [] });
@@ -420,6 +433,42 @@ describe('QueueManagerDO adapter', () => {
     return { state, store };
   }
 
+  /** Submit one postal request (needs geocoding) and return its job id. */
+  async function submitPostal(manager: QueueManagerDO, id = 'r1'): Promise<string> {
+    const submit = await manager.fetch(
+      new Request('https://queue.local/queue/submit', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          requests: [{ id, query: { postal: 'M5V 2T6' }, pathname: '/api/federal' }],
+        }),
+      })
+    );
+    expect(submit.status).toBe(200);
+    const submitted = (await submit.json()) as { batchId: string };
+    return `${submitted.batchId}_job_0`;
+  }
+
+  async function processOnce(manager: QueueManagerDO): Promise<ProcessJobsResult> {
+    const response = await manager.fetch(
+      new Request('https://queue.local/queue/process', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ maxJobs: 10 }),
+      })
+    );
+    expect(response.status).toBe(200);
+    return (await response.json()) as ProcessJobsResult;
+  }
+
+  async function readJob(manager: QueueManagerDO, jobId: string): Promise<QueueJob> {
+    const response = await manager.fetch(
+      new Request(`https://queue.local/queue/job?id=${encodeURIComponent(jobId)}`)
+    );
+    expect(response.status).toBe(200);
+    return (await response.json()) as QueueJob;
+  }
+
   it('keeps the exported class name and delegates /queue/submit + /queue/status', async () => {
     expect(QueueManagerDO.name).toBe('QueueManager');
 
@@ -455,5 +504,50 @@ describe('QueueManagerDO adapter', () => {
 
     const wrongMethod = await manager.fetch(new Request('https://queue.local/queue/submit'));
     expect(wrongMethod.status).toBe(405);
+  });
+
+  it('rejects a genuine lookup failure through the real runner so the policy retries it', async () => {
+    const { state } = fakeState();
+    // An empty env has no geocoding budget, so this postal request cannot be
+    // resolved to coordinates and `performExpandedLookup` rejects. That is the
+    // production runner failing: the DO must surface it as a rejected promise
+    // (not a completed job carrying an error body), which is what retries.
+    const manager = new QueueManagerDO(state, {} as Env);
+    const jobId = await submitPostal(manager);
+
+    const result = await processOnce(manager);
+    expect(result.results[0]).toMatchObject({ jobId, status: 'failed', attempts: 1 });
+    expect(result.results[0].error).toContain('Coordinates required');
+
+    const job = await readJob(manager, jobId);
+    expect(job.status).toBe('retrying');
+    expect(typeof job.nextRetryAt).toBe('number');
+    expect(job.nextRetryAt).toBeGreaterThan(job.completedAt!);
+    expect(job.lastError).toContain('Coordinates required');
+  });
+
+  it('dead-letters a persistently failing lookup after maxAttempts', async () => {
+    const { state } = fakeState();
+    const manager = new QueueManagerDO(state, {} as Env);
+    const jobId = await submitPostal(manager);
+
+    // First pass is the initial attempt; the next four drain the retry queue.
+    // The fifth attempt exhausts maxAttempts and must dead-letter the job.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await processOnce(manager);
+    }
+
+    const dead = await readJob(manager, jobId);
+    expect(dead.status).toBe('dead_letter');
+    expect(dead.attempts).toBe(5);
+    expect(dead.lastError).toContain('Coordinates required');
+
+    const dlqResponse = await manager.fetch(
+      new Request('https://queue.local/queue/dead-letter?limit=50&offset=0')
+    );
+    expect(dlqResponse.status).toBe(200);
+    const dlq = (await dlqResponse.json()) as DeadLetterResult;
+    expect(dlq.total).toBe(1);
+    expect(dlq.deadLetterJobs[0]).toMatchObject({ id: jobId, attempts: 5 });
   });
 });

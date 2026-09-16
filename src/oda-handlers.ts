@@ -9,7 +9,6 @@ import {
   OdaGeocodeError,
 } from './oda-geocoding';
 import { searchSuggestions, SuggestError } from './oda-suggest';
-import { authorizeSearchRequest, httpStatusForKeyDenial } from './api-keys';
 import { consumeDailyQuota } from './api-key-usage-do';
 import { recordSuccessfulBillable } from './billing';
 import {
@@ -18,7 +17,7 @@ import {
   setCachedSuggestions,
 } from './cache';
 import { normalizeProvince } from './oda-normalize';
-import { parseQuery, badRequest, hasValidBasicAuth } from './utils';
+import { parseQuery, badRequest } from './utils';
 import { incrementMetric, recordTiming } from './metrics';
 import { normalizeAddressWithGoogle } from './geocoding';
 import { GoogleAddressComponents, CanadaPostStyleAddress } from './types';
@@ -171,30 +170,15 @@ export async function handleNormalizeAddressRoute(ctx: RouteContext): Promise<Re
  * existing lookup routes once the user selects one, which is why this path never touches R2.
  */
 export async function handleSearchRoute(ctx: RouteContext): Promise<Response> {
-  const { request, env, correlationId, startTime, corsHeaders: getCorsHeaders, deferTask } = ctx;
+  const { request, env, correlationId, startTime, corsHeaders: getCorsHeaders, deferTask, auth } = ctx;
   const origin = request.headers.get('Origin');
   const config = getOdaSuggestConfig(env);
   const url = ctx.url;
 
   incrementMetric('suggestRequests');
 
-  // Either credential: a server-held BASIC_AUTH secret (valid from any origin), or a public
-  // browser key bound to an origin allowlist. Skipped entirely when neither is configured.
-  const serverCredential = hasValidBasicAuth(request, env);
-  const auth = await authorizeSearchRequest(env, request, serverCredential);
-  if (!auth.ok) {
-    incrementMetric('suggestKeyDenials');
-    // No CORS headers on a denial: the origin is by definition not allowed, so echoing it back
-    // would let the page read the error and would undercut the check we just failed.
-    const status = auth.reason ? httpStatusForKeyDenial(auth.reason) : 401;
-    return new Response(
-      JSON.stringify({ error: auth.message, code: auth.reason, correlationId }),
-      {
-        status,
-        headers: { 'content-type': 'application/json; charset=UTF-8' },
-      }
-    );
-  }
+  // The browser-key/server gate and its denial already ran in the prelude; the accepted outcome
+  // is on `ctx.auth`. This handler owns only the quota and billing that follow an accepted request.
 
   // Post-auth CORS: when a browser key's origin allowlist just matched this Origin, echo the
   // origin (with Vary) instead of the env-level wildcard, so browsers and shared caches scope

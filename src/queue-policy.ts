@@ -564,6 +564,10 @@ export class QueuePolicy {
   }
 
   private updateStats(): void {
+    // Read the clock once: `oldestPendingJob` is initialised to "now" and later
+    // compared against "now" to detect "no pending jobs". Two reads could
+    // straddle a millisecond and make a pending job look stale by ~0ms.
+    const now = this.now();
     let totalJobs = 0;
     let pendingJobs = 0;
     let processingJobs = 0;
@@ -575,7 +579,7 @@ export class QueuePolicy {
     let completedCount = 0;
     let errorCount = 0;
     const priorityDistribution: Record<number, number> = {};
-    let oldestPendingJob = this.now();
+    let oldestPendingJob = now;
 
     for (const job of this.jobs.values()) {
       totalJobs++;
@@ -617,7 +621,7 @@ export class QueuePolicy {
 
     // Calculate throughput (jobs per minute)
     // Use a minimum time window of 1 second to avoid division by zero
-    const timeSinceLastProcessed = Math.max(this.now() - this.lastProcessedTime, 1000);
+    const timeSinceLastProcessed = Math.max(now - this.lastProcessedTime, 1000);
     const throughput = this.processedJobsCount > 0 && timeSinceLastProcessed > 0 ?
       (this.processedJobsCount * 60000) / timeSinceLastProcessed : 0;
 
@@ -634,7 +638,7 @@ export class QueuePolicy {
       priorityDistribution,
       errorRate: totalJobs > 0 ? (errorCount / totalJobs) * 100 : 0,
       throughput,
-      oldestPendingJob: oldestPendingJob === this.now() ? 0 : this.now() - oldestPendingJob,
+      oldestPendingJob: oldestPendingJob === now ? 0 : now - oldestPendingJob,
       deadLetterQueueSize: this.deadLetterQueue.length,
       retryQueueSize: this.retryQueue.length,
     };

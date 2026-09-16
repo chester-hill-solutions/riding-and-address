@@ -107,7 +107,10 @@ describe('OpenAPI document', () => {
       const label = Array.isArray(entry.path) ? entry.path.join(', ') : entry.path;
       expect(['api', 'portal'], label).toContain(entry.owner);
       expect(['public', 'internal'], label).toContain(entry.visibility);
-      expect(['public', 'admin', 'key', 'admin-optional'], label).toContain(entry.auth);
+      expect(
+        ['public', 'admin', 'admin-optional', 'key', 'search', 'batch', 'projection'],
+        label
+      ).toContain(entry.auth);
       expect(entry.methods.length, `${label} declares no methods`).toBeGreaterThan(0);
       if (entry.owner === 'api') {
         expect(entry.handler, `${label} is API-owned but carries no handler`).toBeDefined();

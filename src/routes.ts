@@ -36,11 +36,14 @@ import {
   unauthorizedResponse,
 } from './utils';
 import {
+  apiKeysEnabled,
   authorizeLookupRequest,
+  authorizeSearchRequest,
   extractApiKey,
   httpStatusForKeyDenial,
   type KeyAuthResult,
 } from './api-keys';
+import { checkProjectionAuth, projectionUnauthorizedResponse } from './projection-handlers';
 import { resolveCorsOrigin, securityHeaders } from './http-headers';
 import { billableDenialResponse, type BillableAuthContext } from './billing';
 import { isOdaSuggestEnabled } from './oda-config';
@@ -57,7 +60,31 @@ import type { LookupRidingFn } from './lookup-expansion';
 
 export type RouteOwner = 'api' | 'portal';
 export type RouteVisibility = 'public' | 'internal';
-export type RouteAuth = 'public' | 'admin' | 'key' | 'admin-optional';
+/**
+ * The real auth dialects this Worker serves. Every entry names the gate `runPrelude` actually runs
+ * for it, so the table is the authority for "what does this route require":
+ *
+ *  - `public`          no credential; the handler serves anyone.
+ *  - `admin`           operator `BASIC_AUTH` (fail-closed when unset); denial is 401.
+ *  - `admin-optional`  not a gate: serves everyone, extra detail to a valid operator credential.
+ *  - `key`             lookup auth: a Customer Server key (`Bearer sk_…`) or operator BASIC_AUTH,
+ *                      falling back to open/basic-only while `API_KEYS` is unbound. Delegates to
+ *                      `authorizeLookupRequest` and resolves the Billable Customer onto `billing`.
+ *  - `search`          autocomplete auth: operator/server credential OR an origin-bound Browser
+ *                      key. Delegates to `authorizeSearchRequest` — deliberately not `key`, which
+ *                      would reject Browser keys.
+ *  - `batch`           Enterprise batch: when `API_KEYS` is bound, operator BASIC_AUTH OR a Server
+ *                      key whose Customer has `batchEnabled`; otherwise an admin credential.
+ *  - `projection`      the portal→Worker ops Bearer secret (`PROJECTION_ADMIN_SECRET`).
+ */
+export type RouteAuth =
+  | 'public'
+  | 'admin'
+  | 'admin-optional'
+  | 'key'
+  | 'search'
+  | 'batch'
+  | 'projection';
 /** Declarative rate-limit bucket; `runPrelude` enforces it once per request. */
 export type RateLimitBucket =
   | 'none'
@@ -146,7 +173,7 @@ const DEMO_PATHS = [
 /** The lookup surface served by one handler; `/api` and `/api/combined` are aliases of federal. */
 const LOOKUP_PATHS = ['/api', '/api/federal', '/api/combined', ...getAllProvincialPaths()];
 
-function jsonHeaders(ctx: RouteContext): Record<string, string> {
+export function jsonHeaders(ctx: RouteContext): Record<string, string> {
   return {
     'content-type': 'application/json; charset=UTF-8',
     ...ctx.corsHeaders(ctx.request.headers.get('Origin')),
@@ -420,37 +447,45 @@ export const ROUTES: readonly RouteEntry[] = [
   { path: '/api/geocode', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: legacy },
   { path: '/api/reverse', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: legacy },
   { path: '/api/normalize-address', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: legacy },
-  { path: '/api/search', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'search', handler: legacy },
+  { path: '/api/search', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'search', rateLimit: 'search', handler: legacy },
   { path: '/api/oda/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleOdaInitRoute },
   { path: '/api/oda/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleOdaStatsRoute },
 
   // Batch / queue — declared, still legacy.
-  { path: '/batch', methods: ['POST'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'batch', handler: legacy },
-  { path: '/batch/:id', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'key', rateLimit: 'batch', handler: legacy },
-  { path: '/batch/*', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'key', rateLimit: 'batch', handler: legacy },
+  { path: '/batch', methods: ['POST'], owner: 'api', visibility: 'public', auth: 'batch', rateLimit: 'batch', handler: legacy },
+  { path: '/batch/:id', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'batch', rateLimit: 'batch', handler: legacy },
+  { path: '/batch/*', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'batch', rateLimit: 'batch', handler: legacy },
   { path: '/api/queue/submit', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
   { path: '/api/queue/status', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
   { path: '/api/queue/process', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
   { path: '/api/queue/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/api/queue/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
+  // Anything else under /api/queue falls through to the /api lookup catch-all in the legacy chain,
+  // so its real gate is the lookup key, not admin.
+  { path: '/api/queue/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'key', rateLimit: 'lookup', handler: legacy },
   { path: '/queue/process', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/queue/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
+  // Unclaimed: the legacy chain answers 404 with no credential, so the catch-all is public.
+  { path: '/queue/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
 
   // Operator surfaces — declared, still legacy.
   { path: '/api/database/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
   { path: '/api/database/sync', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
   { path: '/api/database/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
   { path: '/api/database/query', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/api/database/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
+  // Unknown database sub-paths are a 404 with no credential — not the admin gate the old table
+  // implied. The specific admin entries above carry their own declaration.
+  { path: '/api/database/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
   { path: '/api/boundaries/lookup', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
   { path: '/api/boundaries/all', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
   { path: '/api/boundaries/config', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
   { path: '/api/boundaries/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
   { path: '/api/geocoding/batch/status', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
   { path: '/api/cache/warm', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/api/oda/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/admin/projection/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'key', rateLimit: 'none', handler: legacy },
-  { path: '/admin/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
+  // `/api/oda/*` is not a surface: only the two admin entries above exist, and any other
+  // `/api/oda/…` path is served by the `/api/*` lookup catch-all (key auth), not admin.
+  { path: '/admin/projection/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'projection', rateLimit: 'none', handler: legacy },
+  // Unclaimed /admin paths answer 404 with no credential; the projection and circuit-breaker
+  // entries above are the real surfaces.
+  { path: '/admin/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
 
   // Ownership catches that preserve today's prefix decisions.
   { path: '/docs/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
@@ -585,6 +620,11 @@ function keyAuthFailureResponse(auth: KeyAuthResult, correlationId: string): Res
   return badRequest(auth.message || 'Unauthorized', status, auth.reason || 'UNAUTHORIZED', correlationId);
 }
 
+/** The Billable Customer a successful key auth resolves to; null for public/operator requests. */
+function billingFromAuth(auth: KeyAuthResult): BillableAuthContext | null {
+  return auth.key && auth.customer ? { key: auth.key, customer: auth.customer } : null;
+}
+
 /**
  * The one rate-limit seam, keyed by the entry's declared bucket. A valid operator credential is a
  * server-to-server secret used for bulk work, so it is never held to the per-IP bucket (a large
@@ -612,9 +652,10 @@ function enforceRateLimit(entry: RouteEntry, ctx: RouteContext): Response | null
     case 'search': {
       if (hasValidBasicAuth(request, env)) return null;
 
-      if (entry.rateLimit === 'search') {
+      if (entry.rateLimit === 'search' && isOdaSuggestEnabled(env)) {
         // The portal try-it key is public and shared, so hold it to the stricter per-IP demo
-        // bucket; every other caller keeps its own per-IP bucket.
+        // bucket; every other caller keeps its own per-IP bucket. While the suggest flag is off
+        // the path is the lookup catch-all, so it keeps the plain per-IP bucket.
         const isDemoKey =
           !!env.DEMO_BROWSER_API_KEY && extractApiKey(request) === env.DEMO_BROWSER_API_KEY;
         const clientId = isDemoKey ? `demo-search:${getClientId(request)}` : getClientId(request);
@@ -630,16 +671,16 @@ function enforceRateLimit(entry: RouteEntry, ctx: RouteContext): Response | null
 }
 
 /**
- * The shared prelude, run once per dispatched entry: rate limit, then auth, filling the auth
- * outcome onto the context. Legacy entries are skipped wholesale — the strangler fallback owns its
- * branch end to end, so gating here too would change its behaviour until it is ported.
+ * The one auth/rate-limit seam, run once per dispatched entry — legacy entries included. The
+ * declared bucket is applied, then the declared dialect, and the outcome lands on the context.
+ * Handlers (ported or legacy) never re-check what the table declares; `legacyFetch` keeps only
+ * body parsing and the store/lookup call.
  *
- * `key` delegates to `authorizeLookupRequest` and resolves the Billable Customer onto `ctx.billing`.
- * ADR-0005: denial statuses come only from `httpStatusForKeyDenial`.
+ * `key` and `search` delegate to their real dialects; `batch` resolves the Enterprise batch gate;
+ * `projection` checks the portal ops Bearer secret. ADR-0005: denial statuses come only from
+ * `httpStatusForKeyDenial`.
  */
 export async function runPrelude(entry: RouteEntry, ctx: RouteContext): Promise<Response | null> {
-  if (entry.handler === legacy) return null;
-
   const limited = enforceRateLimit(entry, ctx);
   if (limited) return limited;
 
@@ -666,9 +707,62 @@ export async function runPrelude(entry: RouteEntry, ctx: RouteContext): Promise<
         return keyAuthFailureResponse(auth, ctx.correlationId);
       }
       ctx.auth = auth;
-      ctx.billing = auth.key && auth.customer ? { key: auth.key, customer: auth.customer } : null;
+      ctx.billing = billingFromAuth(auth);
       return null;
     }
+
+    case 'search': {
+      // Autocomplete accepts an origin-bound Browser key, so this is not the `key` dialect. The
+      // ODA suggest flag is a runtime feature gate: while it is off (or ODA_DB is unbound) the
+      // path is the lookup catch-all, exactly as it was before the route existed, and takes the
+      // lookup gate. Both share the same per-IP bucket.
+      const serverCredential = hasValidBasicAuth(ctx.request, ctx.env);
+      const auth = isOdaSuggestEnabled(ctx.env)
+        ? await authorizeSearchRequest(ctx.env, ctx.request, serverCredential)
+        : await authorizeLookupRequest(ctx.env, ctx.request, serverCredential);
+      if (!auth.ok) {
+        return keyAuthFailureResponse(auth, ctx.correlationId);
+      }
+      ctx.auth = auth;
+      ctx.billing = billingFromAuth(auth);
+      return null;
+    }
+
+    case 'batch': {
+      // Enterprise batch: operator BASIC_AUTH OR a batch-enabled Customer Server key. While the
+      // key store is unbound the route stays operator-only, exactly as it did before keys existed.
+      if (apiKeysEnabled(ctx.env)) {
+        if (hasValidBasicAuth(ctx.request, ctx.env)) return null;
+
+        const auth = await authorizeLookupRequest(ctx.env, ctx.request, false);
+        if (!auth.ok) {
+          return keyAuthFailureResponse(auth, ctx.correlationId);
+        }
+        if (!auth.customer?.batchEnabled) {
+          return badRequest(
+            'Batch requires an Enterprise Customer with batchEnabled',
+            403,
+            'BATCH_NOT_ENABLED',
+            ctx.correlationId
+          );
+        }
+        ctx.auth = auth;
+        ctx.billing = billingFromAuth(auth);
+        return null;
+      }
+
+      if (!checkAdminAuth(ctx.request, ctx.env)) {
+        return unauthorizedResponse(ctx.correlationId);
+      }
+      ctx.isAdmin = true;
+      return null;
+    }
+
+    case 'projection':
+      if (!checkProjectionAuth(ctx.request, ctx.env)) {
+        return projectionUnauthorizedResponse();
+      }
+      return null;
   }
 }
 

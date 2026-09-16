@@ -21,7 +21,8 @@ import { peekCustomerUsage } from './billing';
 import { timingSafeEqual } from './utils';
 import type { RouteContext } from './routes';
 
-function unauthorized(): Response {
+/** The one 401 body for the projection Bearer gate; `runPrelude` returns it before dispatch. */
+export function projectionUnauthorizedResponse(): Response {
   return new Response(JSON.stringify({ error: 'Unauthorized', code: 'PROJECTION_UNAUTHORIZED' }), {
     status: 401,
     headers: { 'content-type': 'application/json; charset=UTF-8' },
@@ -131,7 +132,7 @@ export async function handleProjectionRequest(ctx: RouteContext): Promise<Respon
   const { request, env } = ctx;
   const pathname = ctx.url.pathname;
 
-  if (!checkProjectionAuth(request, env)) return unauthorized();
+  // The Bearer gate runs in `runPrelude` (entry auth: 'projection'); this wrapper only routes.
   if (!env.API_KEYS) {
     return json(ctx, { error: 'API_KEYS binding not configured', code: 'API_KEYS_MISSING' }, 503);
   }
