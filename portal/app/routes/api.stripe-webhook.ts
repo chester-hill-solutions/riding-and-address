@@ -1,10 +1,7 @@
-import { eq } from 'drizzle-orm';
 import type { Route } from './+types/api.stripe-webhook';
-import { getDb } from '~/lib/db.server';
-import { customerBilling } from '~/db/schema';
 import { env } from '~/lib/env.server';
 import { getStripe } from '~/lib/stripe.server';
-import { upsertCustomerProjection } from '~/lib/projection.server';
+import { activateMeteredPlan } from '~/lib/billing-mutations.server';
 
 /**
  * Activate metered plan only after Stripe confirms Checkout — not when Checkout starts.
@@ -43,36 +40,10 @@ export async function action({ request }: Route.ActionArgs) {
       return Response.json({ ok: true, skipped: 'no_customer' });
     }
 
-    const rows = await getDb()
-      .select()
-      .from(customerBilling)
-      .where(eq(customerBilling.stripeCustomerId, stripeCustomerId))
-      .limit(1);
-    const billing = rows[0];
+    const billing = await activateMeteredPlan(stripeCustomerId);
     if (!billing) {
       console.warn(`Stripe checkout completed for unknown customer ${stripeCustomerId}`);
       return Response.json({ ok: true, skipped: 'unknown_customer' });
-    }
-
-    await getDb()
-      .update(customerBilling)
-      .set({ plan: 'metered', updatedAt: new Date() })
-      .where(eq(customerBilling.workspaceId, billing.workspaceId));
-
-    try {
-      await upsertCustomerProjection({
-        id: billing.customerId,
-        plan: 'metered',
-        fuseLimit: billing.fuseLimit,
-        fuseSoftWarn: billing.fuseSoftWarn,
-        batchEnabled: billing.batchEnabled,
-        stripeCustomerId,
-      });
-    } catch (error) {
-      console.error(
-        `customer projection failed after checkout for ${billing.customerId}`,
-        error
-      );
     }
   }
 

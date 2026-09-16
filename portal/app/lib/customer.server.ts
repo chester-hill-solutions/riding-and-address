@@ -2,10 +2,9 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '~/lib/db.server';
 import { apiKeyMirror, customerBilling, workspaceMembers, workspaces } from '~/db/schema';
 import { requireSessionUserId } from '~/lib/auth.server';
-import { upsertCustomerProjection } from '~/lib/projection.server';
-import { DEFAULT_FREE_MONTHLY_ALLOWANCE } from '~/lib/pricing';
+import { provisionCustomer, type CustomerBilling } from '~/lib/billing-mutations.server';
 
-export type CustomerBilling = typeof customerBilling.$inferSelect;
+export type { CustomerBilling };
 export type WorkspaceMembership = typeof workspaceMembers.$inferSelect;
 
 export type CustomerContext = {
@@ -53,33 +52,7 @@ export async function ensureCustomerForUser(
     userId,
     roleId: 'owner',
   });
-  const inserted = await db
-    .insert(customerBilling)
-    .values({
-      workspaceId,
-      customerId,
-      plan: 'free',
-      fuseLimit: DEFAULT_FREE_MONTHLY_ALLOWANCE,
-      fuseSoftWarn: false,
-      batchEnabled: false,
-    })
-    .returning();
-  const billing = inserted[0] ?? null;
-  try {
-    await upsertCustomerProjection({
-      id: customerId,
-      plan: 'free',
-      fuseLimit: DEFAULT_FREE_MONTHLY_ALLOWANCE,
-      fuseSoftWarn: false,
-      batchEnabled: false,
-      label: orgName,
-    });
-  } catch (error) {
-    // The edge projection is eventually consistent (ADR 0001/0002); a Worker
-    // outage must not block signup. Fuse/settings saves re-run the upsert.
-    console.error(`customer projection failed during provisioning for ${customerId}`, error);
-  }
-  return billing;
+  return provisionCustomer({ workspaceId, customerId, label: orgName });
 }
 
 /** Membership + billing for the user's Customer, or null when the user has neither. */

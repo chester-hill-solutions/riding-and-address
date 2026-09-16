@@ -1,15 +1,13 @@
 import { Form, redirect } from 'react-router';
 import type { Route } from './+types/app.billing';
 import { isOwnerOrAdmin, requireCustomer, requireOwnerOrAdmin } from '~/lib/customer.server';
+import { linkStripeCustomer } from '~/lib/billing-mutations.server';
 import { env } from '~/lib/env.server';
 import {
   createBillingPortalSession,
   createMeteredCheckoutSession,
   getStripe,
 } from '~/lib/stripe.server';
-import { getDb } from '~/lib/db.server';
-import { customerBilling } from '~/db/schema';
-import { eq } from 'drizzle-orm';
 import { DEFAULT_FREE_MONTHLY_ALLOWANCE, formatMeteredUnitPrice } from '~/lib/pricing';
 import { Panel } from '~/components/Panel';
 import { FormFeedback } from '~/components/FormFeedback';
@@ -50,10 +48,7 @@ export async function action({ request }: Route.ActionArgs) {
         });
         stripeCustomerId = customer.id;
         // Keep plan free until checkout.session.completed (api.stripe-webhook).
-        await getDb()
-          .update(customerBilling)
-          .set({ stripeCustomerId, updatedAt: new Date() })
-          .where(eq(customerBilling.workspaceId, billing.workspaceId));
+        await linkStripeCustomer({ workspaceId: billing.workspaceId, stripeCustomerId });
       }
       const url = await createMeteredCheckoutSession({
         stripeCustomerId,

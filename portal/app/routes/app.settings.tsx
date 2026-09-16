@@ -1,10 +1,7 @@
 import { Form } from 'react-router';
 import type { Route } from './+types/app.settings';
 import { isOwnerOrAdmin, requireCustomer, requireOwnerOrAdmin } from '~/lib/customer.server';
-import { getDb } from '~/lib/db.server';
-import { customerBilling } from '~/db/schema';
-import { eq } from 'drizzle-orm';
-import { upsertCustomerProjection } from '~/lib/projection.server';
+import { setFuse } from '~/lib/billing-mutations.server';
 import { DEFAULT_FREE_MONTHLY_ALLOWANCE } from '~/lib/pricing';
 import { Panel } from '~/components/Panel';
 import { FormFeedback } from '~/components/FormFeedback';
@@ -35,19 +32,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   try {
-    await getDb()
-      .update(customerBilling)
-      .set({ fuseLimit, fuseSoftWarn, updatedAt: new Date() })
-      .where(eq(customerBilling.workspaceId, billing.workspaceId));
-
-    await upsertCustomerProjection({
-      id: billing.customerId,
-      plan: billing.plan,
-      fuseLimit,
-      fuseSoftWarn,
-      batchEnabled: billing.batchEnabled,
-      stripeCustomerId: billing.stripeCustomerId || undefined,
-    });
+    await setFuse({ workspaceId: billing.workspaceId, fuseLimit, fuseSoftWarn });
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'Could not save fuse settings' };
   }
