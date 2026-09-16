@@ -20,13 +20,6 @@ import type { RouteContext } from './route-context';
  */
 export const WEBHOOK_ADMIN_PREFIXES = ['/api/webhooks', '/webhooks'] as const;
 
-/** Matches either alias at a path-segment boundary. */
-export function isWebhookAdminPath(pathname: string): boolean {
-  return WEBHOOK_ADMIN_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-  );
-}
-
 /** `'/api/webhooks/events'` → `'/events'`; `'/webhooks'` → `''`. Null when neither prefix fits. */
 function routeSuffix(pathname: string): string | null {
   for (const prefix of WEBHOOK_ADMIN_PREFIXES) {
