@@ -3,14 +3,13 @@ import { createOpenAPISpec } from '../src/docs';
 import {
   ROUTES,
   compilePattern,
-  createRouteContext,
   legacy,
   matchRoute,
   ownerOf,
   runPrelude,
-  type RouteContext,
   type RouteEntry,
 } from '../src/routes';
+import { createRouteContext, type RouteContext } from '../src/route-context';
 import type { Env } from '../src/types';
 import { createLookupTestEnv, fetchLookup } from './helpers/lookup-test-env';
 

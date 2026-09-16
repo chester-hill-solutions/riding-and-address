@@ -5,6 +5,18 @@
  */
 
 import { EMBED_EVENTS, EMBED_SCRIPT_ATTRIBUTES, EMBED_VERSION } from './embed';
+import type { RouteContext } from './route-context';
+
+/** `/docs/embed` + `/embed/docs` — the widget guide. Wildcard CORS, kept separate from Scalar. */
+export function handleEmbedDocs(ctx: RouteContext): Response {
+  const baseUrl = `${ctx.url.protocol}//${ctx.url.host}`;
+  return new Response(createEmbedDocsPage(baseUrl), {
+    headers: {
+      'content-type': 'text/html; charset=UTF-8',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
 
 function escapeHtml(value: string): string {
   return value

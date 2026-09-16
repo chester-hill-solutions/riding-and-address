@@ -14,7 +14,7 @@ import {
   type NormalizedAddressContext,
 } from './lookup-expansion';
 import { cachedLookupRiding } from './riding-lookup';
-import type { RouteContext } from './routes';
+import type { RouteContext } from './route-context';
 import * as queueClient from './queue-client';
 
 export const BATCH_CONFIG = {
@@ -35,7 +35,7 @@ export async function processBatchLookupWithBatchGeocoding(
   requests: BatchLookupRequest[]
 ): Promise<BatchLookupResponse[]> {
   const { env, request } = ctx;
-  const lookupRiding = ctx.lookup ?? cachedLookupRiding;
+  const lookupRiding = ctx.deps?.lookup ?? cachedLookupRiding;
   const circuitBreaker = geocodingExecutor();
 
   if (requests.length > MAX_BATCH_SIZE) {
@@ -135,7 +135,7 @@ export async function processBatchLookupWithBatchGeocoding(
 
     if (geocodingNeeded.length > 0) {
       const queries = geocodingNeeded.map((item) => item.request.query);
-      const geocodingResults = await geocodeBatch(env, queries, request, undefined, circuitBreaker);
+      const geocodingResults = await geocodeBatch(env, queries, { request, circuitBreaker });
 
       for (let i = 0; i < geocodingNeeded.length; i++) {
         const { request: batchRequest, index } = geocodingNeeded[i];

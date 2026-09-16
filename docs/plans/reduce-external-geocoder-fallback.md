@@ -18,10 +18,10 @@ disagree with the local one — see the `M5V2T6` postal-vs-point divergence in
 
 ## What "fallback" means today
 
-`geocodeIfNeeded` (`geocoding.ts:733–907`) runs the local ODA stage first (`runOdaGeocodeStage`,
-`633–695`), then GeoGratis, then the configured provider (`GEOCODER`, `google` in prod).
+`geocodeIfNeeded` (`geocoding.ts`) runs the local ODA stage first (`runOdaGeocodeStage`),
+then GeoGratis, then the configured provider (`GEOCODER`, `google` in prod).
 
-Local methods, in order (`geocodeWithOdaInner`, `oda-geocoding.ts:574–761`):
+Local methods, in order (`geocodeWithOdaInner`, `oda-geocoding.ts`):
 
 | # | Method | Confidence | Gate that ends it |
 |---|---|---|---|
@@ -31,7 +31,7 @@ Local methods, in order (`geocodeWithOdaInner`, `oda-geocoding.ts:574–761`):
 | 4 | city centroid | 0.45 | inline `>= minConfidence` check (`733`), not `assertConfidence` |
 | 5 | nearest neighbour | 0.7 formula | needs a lat/lon hint; bbox expansion then haversine (`495–548`) |
 
-### Every condition that leaves local (`runOdaGeocodeStage:675–694` swallows all of these and falls
+### Every condition that leaves local (`runOdaGeocodeStage` swallows all of these and falls
 through to GeoGratis)
 
 1. `AMBIGUOUS_LOCATION` — street-only queries, alias matches spanning >1 former municipality
@@ -129,7 +129,8 @@ Ordered by expected payoff per unit of risk.
    city centroid can land in the wrong riding. Recommendation: **(b)** — reduces fallback and
    external spend on the geocoding product without risking riding accuracy.
 4. **Stop silently converting ambiguity into external spend on lookup routes.** `AMBIGUOUS_LOCATION`
-   is surfaced on `/api/geocode` but swallowed on lookup routes (`geocoding.ts:687–692`). At
+   is surfaced on `/api/geocode` but swallowed on lookup routes when `runOdaGeocodeStage` catches
+   it. At
    minimum, count it (Wave 0) so the volume is known; then prefer a local disambiguation (postal,
    province, then nearest of the candidate municipalities) over an external call.
 
@@ -191,8 +192,8 @@ fallback rate drop is attributed to the coverage change.
 
 ## Wave 4 — Make fallback visible to callers
 
-External results currently carry no `geocodeMethod`/`confidence`/`dataSource`
-(`geocoding.ts:817–830, 887`), so a caller cannot tell a local answer from a paid external one.
+External results currently carry no `geocodeMethod`/`confidence`/`dataSource` (the external result
+mapping in `geocoding.ts`), so a caller cannot tell a local answer from a paid external one.
 Attach `{ geocodeMethod: 'external', provider, confidence }` and surface `dataSource` on lookup
 responses. Add an optional "did you mean" from the fuzzy tier on misses. This is honesty, not
 recall, but it makes the metric meaningful to customers and is a prerequisite for any per-provider

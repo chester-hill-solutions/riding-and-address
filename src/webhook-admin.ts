@@ -1,4 +1,4 @@
-import type { Env, WebhookConfig } from './types';
+import type { WebhookConfig } from './types';
 import {
   createWebhook,
   getAllWebhooks,
@@ -11,6 +11,7 @@ import {
   internalErrorResponse,
   unauthorizedResponse,
 } from './utils';
+import type { RouteContext } from './route-context';
 
 /**
  * Both URI namespaces are kept: external callers of `/webhooks/*` are unknown, so it stays as an
@@ -18,16 +19,6 @@ import {
  * overlap.
  */
 export const WEBHOOK_ADMIN_PREFIXES = ['/api/webhooks', '/webhooks'] as const;
-
-/**
- * The slice of the Worker's per-request scope this surface needs. Structurally a subset of
- * `LookupRequestScope`, so the Worker passes its existing scope object unchanged.
- */
-export type WebhookAdminScope = {
-  env: Env;
-  correlationId: string;
-  corsHeaders: (origin?: string | null) => Record<string, string>;
-};
 
 /** Matches either alias at a path-segment boundary. */
 export function isWebhookAdminPath(pathname: string): boolean {
@@ -63,11 +54,11 @@ function toPublicWebhook(id: string, config: WebhookConfig) {
   };
 }
 
-function jsonResponse(body: unknown, scope: WebhookAdminScope, request: Request): Response {
+function jsonResponse(body: unknown, ctx: RouteContext): Response {
   return new Response(JSON.stringify(body), {
     headers: {
       'content-type': 'application/json; charset=UTF-8',
-      ...scope.corsHeaders(request.headers.get('Origin')),
+      ...ctx.corsHeaders(ctx.request.headers.get('Origin')),
     },
   });
 }
@@ -79,18 +70,14 @@ function jsonResponse(body: unknown, scope: WebhookAdminScope, request: Request)
  * unauthenticated 404 that would let callers probe which routes exist. Both aliases dispatch on the
  * same normalised suffix, so they cannot drift on redaction, field set, filters, or 404 behaviour.
  */
-export async function handleWebhookAdmin(
-  scope: WebhookAdminScope,
-  request: Request,
-  pathname: string
-): Promise<Response> {
-  const { env, correlationId } = scope;
+export async function handleWebhookAdmin(ctx: RouteContext): Promise<Response> {
+  const { request, env, correlationId } = ctx;
 
   if (!checkAdminAuth(request, env)) {
     return unauthorizedResponse(correlationId);
   }
 
-  const route = routeSuffix(pathname);
+  const route = routeSuffix(ctx.url.pathname);
   const method = request.method;
 
   if (route === '' && method === 'GET') {
@@ -98,7 +85,7 @@ export async function handleWebhookAdmin(
     const webhooks = Array.from(webhooksMap.entries()).map(([id, config]) =>
       toPublicWebhook(id, config)
     );
-    return jsonResponse({ webhooks }, scope, request);
+    return jsonResponse({ webhooks }, ctx);
   }
 
   if (route === '' && method === 'POST') {
@@ -110,7 +97,7 @@ export async function handleWebhookAdmin(
         secret: body.secret || '',
         active: true,
       });
-      return jsonResponse({ webhookId, message: 'Webhook created successfully' }, scope, request);
+      return jsonResponse({ webhookId, message: 'Webhook created successfully' }, ctx);
     } catch (error) {
       return internalErrorResponse(error, 'Failed to create webhook', correlationId);
     }
@@ -124,7 +111,7 @@ export async function handleWebhookAdmin(
     const events = await getWebhookEvents(env, webhookId || undefined);
     const filteredEvents = status ? events.filter((e) => e.status === status) : events;
 
-    return jsonResponse({ events: filteredEvents }, scope, request);
+    return jsonResponse({ events: filteredEvents }, ctx);
   }
 
   if (route === '/deliveries' && method === 'GET') {
@@ -135,7 +122,7 @@ export async function handleWebhookAdmin(
     const deliveries = await getWebhookDeliveries(env, webhookId || undefined);
     const filteredDeliveries = status ? deliveries.filter((d) => d.status === status) : deliveries;
 
-    return jsonResponse({ deliveries: filteredDeliveries }, scope, request);
+    return jsonResponse({ deliveries: filteredDeliveries }, ctx);
   }
 
   return badRequest('Webhook endpoint not found', 404, undefined, correlationId);

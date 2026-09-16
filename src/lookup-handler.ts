@@ -8,7 +8,12 @@ import { resolveLookupPath } from './return-selector';
 import { recordSuccessfulBillable } from './billing';
 import { cachedLookupRiding } from './riding-lookup';
 import { FEDERAL_DATASET, PROVINCIAL_DATASETS } from './datasets';
-import type { RouteContext } from './routes';
+import type { RouteContext } from './route-context';
+import {
+  handleGeocodeRoute,
+  handleNormalizeAddressRoute,
+  handleReverseRoute,
+} from './oda-handlers';
 
 function datasetMetaForPath(pathname: string): { id: string; year: number; name: string } {
   if (pathname === '/api' || pathname === '/api/federal' || pathname === '/api/combined') {
@@ -28,7 +33,7 @@ function datasetMetaForPath(pathname: string): { id: string; year: number; name:
  */
 export async function handleLookupRequest(ctx: RouteContext): Promise<Response> {
   const { request, env, correlationId, startTime, corsHeaders, deferTask, billing } = ctx;
-  const lookupRiding = ctx.lookup ?? cachedLookupRiding;
+  const lookupRiding = ctx.deps?.lookup ?? cachedLookupRiding;
   const pathname = ctx.url.pathname;
   const { lookupPathname } = resolveLookupPath(pathname);
   const { validation } = parseQuery(request);
@@ -100,4 +105,23 @@ export async function handleLookupRequest(ctx: RouteContext): Promise<Response> 
     // instead of being sent to the client.
     return internalErrorResponse(error, 'Lookup error', correlationId, 'LOOKUP_ERROR');
   }
+}
+
+/** A copy of `ctx` whose `url.pathname` is the real route the demo path mirrors. */
+function withLookupPath(ctx: RouteContext, pathname: string): RouteContext {
+  const url = new URL(ctx.url.toString());
+  url.pathname = pathname;
+  return { ...ctx, url };
+}
+
+/**
+ * Keyless demo mirrors. Re-pointed at the real route, never inheriting its policy: a demo request
+ * is public, per-IP rate-limited, and never a Billable unit (so `billing` stays null).
+ */
+export function handleDemoRoute(ctx: RouteContext): Promise<Response> {
+  const demoPath = ctx.url.pathname.replace(/^\/api\/demo/, '/api') || '/api';
+  if (demoPath === '/api/geocode') return handleGeocodeRoute(ctx);
+  if (demoPath === '/api/reverse') return handleReverseRoute(ctx);
+  if (demoPath === '/api/normalize-address') return handleNormalizeAddressRoute(ctx);
+  return handleLookupRequest(withLookupPath(ctx, demoPath === '/api' ? '/api/federal' : demoPath));
 }

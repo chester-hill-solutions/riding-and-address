@@ -12,8 +12,9 @@ import type { LookupRidingFn } from './lookup-expansion';
  * validate + index build). Callers get one interface; retries, circuit breaking, timeouts,
  * metrics and cache fill live behind the `DatasetSource` port.
  *
- * D1-first → LRU → R2 ordering is preserved: the D1 fast path runs first (when the source
- * exposes one), then `source.getSpatialIndex` serves from the LRU or loads from R2 on a miss.
+ * D1-first → LRU → R2 ordering is preserved: the D1 fast path always runs first, then
+ * `source.getSpatialIndex` serves from the LRU or loads from R2 on a miss. Sources without a
+ * spatial database answer the fast path with `null`.
  */
 export async function lookupRidingFromSource(
   source: DatasetSource,
@@ -28,19 +29,17 @@ export async function lookupRidingFromSource(
   const lookupPromise = (async () => {
     const { r2Key } = pickDataset(pathname);
 
-    // Try spatial database first if the source is wired with a D1 fast path.
-    if (source.querySpatial) {
-      try {
-        const properties = await source.querySpatial(r2Key, lon, lat);
-        if (properties) {
-          return {
-            riding: ridingNameFromProperties(properties) ?? 'Unknown',
-            properties,
-          };
-        }
-      } catch (error) {
-        console.warn('Database lookup failed, falling back to spatial index:', error);
+    // D1 fast path first; a no-op source returns null and we fall through.
+    try {
+      const properties = await source.querySpatial(r2Key, lon, lat);
+      if (properties) {
+        return {
+          riding: ridingNameFromProperties(properties) ?? 'Unknown',
+          properties,
+        };
       }
+    } catch (error) {
+      console.warn('Database lookup failed, falling back to spatial index:', error);
     }
 
     // LRU-backed spatial index; a miss loads the GeoJSON from R2 and indexes it.
