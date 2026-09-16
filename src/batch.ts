@@ -3,18 +3,18 @@ import {
   BatchLookupRequest,
   BatchLookupResponse,
   BatchJob,
-  QueryParams,
-  CircuitBreakerExecutor,
 } from './types';
 import { parseBatchLookupRequests } from './validation';
-import { type GeocodeBatchResult, type GeocodeIfNeededFn } from './geocoding';
+import { geocodeBatch } from './geocoding';
+import { geocodingExecutor } from './circuit-breaker';
 import { incrementMetric, recordTiming } from './metrics';
 import {
   performExpandedLookup,
   expandedLookupResponseFields,
   type NormalizedAddressContext,
-  type LookupRidingFn,
 } from './lookup-expansion';
+import { cachedLookupRiding } from './riding-lookup';
+import type { RouteContext } from './routes';
 import * as queueClient from './queue-client';
 
 export const BATCH_CONFIG = {
@@ -31,19 +31,13 @@ export const MAX_REQUEST_BODY_SIZE = 10 * 1024 * 1024; // 10MB
 
 // Process batch lookup with batch geocoding (GeoGratis-first). Optional normalization via Google when key configured.
 export async function processBatchLookupWithBatchGeocoding(
-  env: Env,
-  requests: BatchLookupRequest[],
-  geocodeIfNeeded: GeocodeIfNeededFn,
-  lookupRiding: LookupRidingFn,
-  geocodeBatchFn: (
-    env: Env,
-    queries: QueryParams[],
-    request?: Request,
-    circuitBreaker?: CircuitBreakerExecutor
-  ) => Promise<GeocodeBatchResult[]>,
-  request?: Request,
-  circuitBreaker?: CircuitBreakerExecutor
+  ctx: RouteContext,
+  requests: BatchLookupRequest[]
 ): Promise<BatchLookupResponse[]> {
+  const { env, request } = ctx;
+  const lookupRiding = ctx.lookup ?? cachedLookupRiding;
+  const circuitBreaker = geocodingExecutor();
+
   if (requests.length > MAX_BATCH_SIZE) {
     throw new Error(`Batch size exceeds maximum of ${MAX_BATCH_SIZE} requests`);
   }
@@ -141,7 +135,7 @@ export async function processBatchLookupWithBatchGeocoding(
 
     if (geocodingNeeded.length > 0) {
       const queries = geocodingNeeded.map((item) => item.request.query);
-      const geocodingResults = await geocodeBatchFn(env, queries, request, circuitBreaker);
+      const geocodingResults = await geocodeBatch(env, queries, request, undefined, circuitBreaker);
 
       for (let i = 0; i < geocodingNeeded.length; i++) {
         const { request: batchRequest, index } = geocodingNeeded[i];
@@ -197,6 +191,22 @@ export async function processBatchLookupWithBatchGeocoding(
     recordTiming('totalBatchTime', Date.now() - startTime);
     throw error;
   }
+}
+
+/**
+ * The one Fuse-denial dialect for a batch item. A batch cannot return the billing shaper's HTTP
+ * response per item, so it applies the same wire body (`billableDenialBody`) as the lookup and
+ * search routes: redact the payload and carry the shaper's error text.
+ */
+export function redactFuseDeniedResult(
+  item: BatchLookupResponse,
+  denialBody: Record<string, unknown>
+): void {
+  item.properties = null;
+  item.riding = undefined;
+  item.province_data = undefined;
+  item.error =
+    typeof denialBody.error === 'string' ? denialBody.error : 'Monthly usage fuse exceeded';
 }
 
 // Queue-based batch processing using Durable Objects

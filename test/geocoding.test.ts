@@ -4,8 +4,16 @@ import {
   generateReverseGeocodingCacheKey,
   parseGoogleAddressComponents,
   geocodeIfNeeded,
+  stageLimit,
+  runGeocodeStages,
+  runOdaGeocodeStage,
+  runExternalFallbackStage,
+  buildGeocodeStages,
+  OdaGeocodeError,
+  type GeocodeStage,
+  type GeocodeStageContext,
 } from '../src/geocoding';
-import { Env } from '../src/types';
+import { Env, QueryParams } from '../src/types';
 import { CircuitBreakerOpenError } from '../src/circuit-breaker';
 
 const nullKv = () =>
@@ -16,6 +24,17 @@ const nullKv = () =>
     list: async () => ({ keys: [], list_complete: true, cacheStatus: null }),
     getWithMetadata: async () => ({ value: null, metadata: null, cacheStatus: null }),
   }) as unknown as KVNamespace;
+
+/** ODA D1 double that misses every query (returns no rows). */
+const missOdaDb = () =>
+  ({
+    prepare: () => ({
+      bind: () => ({
+        first: async () => null,
+        all: async () => ({ results: [] }),
+      }),
+    }),
+  }) as unknown as D1Database;
 
 
 describe('generateGeocodingCacheKey', () => {
@@ -468,5 +487,302 @@ describe('geocodeIfNeeded with ODA enabled', () => {
       expect.any(Function),
       expect.objectContaining({ shouldCountFailure: expect.any(Function) })
     );
+  });
+});
+
+function stageContext(overrides: Partial<GeocodeStageContext> = {}): GeocodeStageContext {
+  return {
+    env: {} as Env,
+    qp: { address: '123 Main St' },
+    query: '123 Main St',
+    budgetMs: 10000,
+    startTime: Date.now(),
+    stages: { oda: 3000, geogratis: 5000, fallback: 5000 },
+    ...overrides,
+  };
+}
+
+describe('geocode stage contract', () => {
+  it('runs stages in order and stops at the first hit', async () => {
+    const calls: string[] = [];
+    const first: GeocodeStage = async () => {
+      calls.push('first');
+      return null;
+    };
+    const second: GeocodeStage = async () => {
+      calls.push('second');
+      return { lon: 1, lat: 2 };
+    };
+    const third: GeocodeStage = async () => {
+      calls.push('third');
+      return { lon: 3, lat: 4 };
+    };
+
+    const result = await runGeocodeStages(stageContext(), [first, second, third]);
+
+    expect(result).toEqual({ lon: 1, lat: 2 });
+    expect(calls).toEqual(['first', 'second']);
+  });
+
+  it('treats order as data — a swapped list changes call order', async () => {
+    const calls: string[] = [];
+    const a: GeocodeStage = async () => {
+      calls.push('a');
+      return { lon: 1, lat: 1 };
+    };
+    const b: GeocodeStage = async () => {
+      calls.push('b');
+      return { lon: 2, lat: 2 };
+    };
+
+    const result = await runGeocodeStages(stageContext(), [b, a]);
+
+    expect(result).toEqual({ lon: 2, lat: 2 });
+    expect(calls).toEqual(['b']);
+  });
+
+  it('stops at a terminal throw and does not run later stages', async () => {
+    const calls: string[] = [];
+    const terminal: GeocodeStage = async () => {
+      calls.push('terminal');
+      throw new Error('terminal stage failure');
+    };
+    const later: GeocodeStage = async () => {
+      calls.push('later');
+      return { lon: 0, lat: 0 };
+    };
+
+    await expect(runGeocodeStages(stageContext(), [terminal, later])).rejects.toThrow(
+      'terminal stage failure'
+    );
+    expect(calls).toEqual(['terminal']);
+  });
+
+  it('throws when every stage misses', async () => {
+    const miss: GeocodeStage = async () => null;
+    await expect(runGeocodeStages(stageContext(), [miss])).rejects.toThrow(
+      'All geocoding stages missed'
+    );
+  });
+
+  it('builds the default cascade as data — ODA only when enabled', () => {
+    const off = buildGeocodeStages({ ODA_GEOCODING_ENABLED: 'false' } as Env);
+    expect(off.map((s) => s.name)).toEqual(['runGeoGratisStage', 'runExternalFallbackStage']);
+
+    const on = buildGeocodeStages({
+      ODA_GEOCODING_ENABLED: 'true',
+      ODA_DB: {} as D1Database,
+    } as Env);
+    expect(on.map((s) => s.name)).toEqual([
+      'runOdaGeocodeStage',
+      'runGeoGratisStage',
+      'runExternalFallbackStage',
+    ]);
+  });
+});
+
+describe('stageLimit budget', () => {
+  it('caps at the configured stage ceiling when budget remains', () => {
+    const now = Date.now();
+    expect(stageLimit(10000, now, 3000)).toBe(3000);
+    expect(stageLimit(10000, now, 5000)).toBe(5000);
+  });
+
+  it('shrinks to the remaining budget below the stage ceiling', () => {
+    const start = Date.now() - 8000;
+    // ~2000ms left: below the 3000ms ceiling but above the 500ms floor.
+    const limit = stageLimit(10000, start, 3000);
+    expect(limit).toBeGreaterThan(500);
+    expect(limit).toBeLessThan(3000);
+  });
+
+  it('floors at 500ms even when the budget is exhausted', () => {
+    expect(stageLimit(10000, Date.now() - 60000, 5000)).toBe(500);
+  });
+});
+
+describe('stage cache ownership', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('keeps one provider-scoped key per stage (ODA miss writes GeoGratis only)', async () => {
+    const reads: string[] = [];
+    const writes: string[] = [];
+    const kv = {
+      get: async (key: string) => {
+        reads.push(key);
+        return null;
+      },
+      put: async (key: string) => {
+        writes.push(key);
+      },
+      delete: async () => {},
+      list: async () => ({ keys: [], list_complete: true, cacheStatus: null }),
+      getWithMetadata: async () => ({ value: null, metadata: null, cacheStatus: null }),
+    } as unknown as KVNamespace;
+
+    globalThis.fetch = vi.fn(async (url: string | URL) => {
+      if (String(url).includes('geolocator.api.geo.ca')) {
+        return new Response(
+          JSON.stringify([
+            {
+              geometry: { type: 'Point', coordinates: [-79.3124, 43.6891] },
+              qualifier: 'GEOMETRIC_CENTER',
+              score: 0.9,
+            },
+          ]),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      throw new Error(`Unexpected fetch: ${String(url)}`);
+    }) as typeof fetch;
+
+    const qp: QueryParams = { address: '757 Victoria Park', city: 'Toronto', state: 'ON' };
+    const env: Env = {
+      RIDINGS: {} as R2Bucket,
+      ODA_DB: missOdaDb(),
+      ODA_GEOCODING_ENABLED: 'true',
+      ODA_PROVINCES: 'ON,QC',
+      GEOCODING_CACHE: kv,
+    };
+
+    await geocodeIfNeeded(env, qp);
+
+    const odaKey = generateGeocodingCacheKey(qp, 'oda');
+    const geogratisKey = generateGeocodingCacheKey(qp, 'geogratis');
+    expect(reads).toContain(odaKey);
+    expect(reads).toContain(geogratisKey);
+    // Only the winning stage writes, and it writes under its own provider key.
+    expect(writes).toEqual([geogratisKey]);
+  });
+
+  it('names the external stage cache by the configured provider', async () => {
+    const reads: string[] = [];
+    const writes: string[] = [];
+    const kv = {
+      get: async (key: string) => {
+        reads.push(key);
+        return null;
+      },
+      put: async (key: string) => {
+        writes.push(key);
+      },
+      delete: async () => {},
+      list: async () => ({ keys: [], list_complete: true, cacheStatus: null }),
+      getWithMetadata: async () => ({ value: null, metadata: null, cacheStatus: null }),
+    } as unknown as KVNamespace;
+
+    globalThis.fetch = vi.fn(async (url: string | URL) => {
+      const target = String(url);
+      if (target.includes('geolocator.api.geo.ca')) {
+        // GeoGratis returns nothing -> the external stage owns the resolution.
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (target.includes('nominatim.openstreetmap.org')) {
+        return new Response(JSON.stringify([{ lat: '43.7', lon: '-79.3' }]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${target}`);
+    }) as typeof fetch;
+
+    const qp: QueryParams = { address: '757 Victoria Park', city: 'Toronto', state: 'ON' };
+    const env: Env = {
+      RIDINGS: {} as R2Bucket,
+      ODA_GEOCODING_ENABLED: 'false',
+      GEOCODING_CACHE: kv,
+    };
+
+    await geocodeIfNeeded(env, qp);
+
+    const geogratisKey = generateGeocodingCacheKey(qp, 'geogratis');
+    const nominatimKey = generateGeocodingCacheKey(qp, 'nominatim');
+    expect(reads).toContain(geogratisKey);
+    expect(reads).toContain(nominatimKey);
+    expect(writes).toEqual([nominatimKey]);
+  });
+});
+
+describe('stage miss/throw semantics', () => {
+  it('ODA stage returns null when its circuit breaker is open', async () => {
+    const env: Env = {
+      RIDINGS: {} as R2Bucket,
+      ODA_DB: missOdaDb(),
+      ODA_GEOCODING_ENABLED: 'true',
+      ODA_PROVINCES: 'ON,QC',
+    };
+    const circuitBreaker = {
+      execute: vi.fn(async () => {
+        throw new CircuitBreakerOpenError('geocoding:oda');
+      }),
+    };
+
+    await expect(
+      runOdaGeocodeStage(
+        stageContext({
+          env,
+          qp: { address: '1 Main St', city: 'Toronto', state: 'ON' },
+          circuitBreaker,
+        })
+      )
+    ).resolves.toBeNull();
+
+    expect(circuitBreaker.execute).toHaveBeenCalledWith(
+      'geocoding:oda',
+      expect.any(Function),
+      expect.objectContaining({ shouldCountFailure: expect.any(Function) })
+    );
+  });
+
+  it('external stage throws when its circuit breaker is open', async () => {
+    const env: Env = { RIDINGS: {} as R2Bucket, ODA_GEOCODING_ENABLED: 'false' };
+    const circuitBreaker = {
+      execute: vi.fn(async () => {
+        throw new CircuitBreakerOpenError('geocoding:nominatim');
+      }),
+    };
+
+    await expect(
+      runExternalFallbackStage(stageContext({ env, circuitBreaker }))
+    ).rejects.toBeInstanceOf(CircuitBreakerOpenError);
+  });
+
+  it('postal-centroid-only queries stay terminal (throw)', async () => {
+    const env: Env = {
+      RIDINGS: {} as R2Bucket,
+      ODA_DB: missOdaDb(),
+      ODA_GEOCODING_ENABLED: 'true',
+      ODA_PROVINCES: 'ON,QC',
+    };
+
+    await expect(
+      runOdaGeocodeStage(
+        stageContext({
+          env,
+          qp: { postal: 'M5V2T6', state: 'ON', geocodeMethod: 'postal_centroid' },
+        })
+      )
+    ).rejects.toBeInstanceOf(OdaGeocodeError);
+  });
+
+  it('postal-centroid-only is terminal through the whole cascade', async () => {
+    const env: Env = {
+      RIDINGS: {} as R2Bucket,
+      ODA_DB: missOdaDb(),
+      ODA_GEOCODING_ENABLED: 'true',
+      ODA_PROVINCES: 'ON,QC',
+      GEOCODING_CACHE: nullKv(),
+    };
+
+    await expect(
+      geocodeIfNeeded(env, { postal: 'M5V2T6', state: 'ON', geocodeMethod: 'postal_centroid' })
+    ).rejects.toBeInstanceOf(OdaGeocodeError);
   });
 });

@@ -22,44 +22,7 @@ function odaEnv(db: D1Database = fixtureD1): Env {
   };
 }
 
-/**
- * A fake D1 that awaits `hook` before every statement resolves, so a test can pause a
- * query mid-flight and let another request interleave. The read is recorded by the tracker
- * before the statement runs, so counts include the paused query.
- */
-function hookD1(inner: D1Database, hook: () => void | Promise<void>): D1Database {
-  const source = inner as unknown as {
-    prepare: (sql: string) => {
-      bind: (...params: unknown[]) => {
-        first: () => Promise<unknown>;
-        all: () => Promise<unknown>;
-      };
-    };
-  };
-  return {
-    prepare: (sql: string) => {
-      const statement = source.prepare(sql);
-      return {
-        bind: (...params: unknown[]) => {
-          const bound = statement.bind(...params);
-          return {
-            first: async () => {
-              await hook();
-              return bound.first();
-            },
-            all: async () => {
-              await hook();
-              return bound.all();
-            },
-          };
-        },
-      };
-    },
-    batch: async () => [],
-  } as unknown as D1Database;
-}
-
-/** Releases every waiter once `arrivals` statements have reached it. */
+/** Releases every waiter once `arrivals` reads have reached it. */
 function barrier(arrivals: number): { hook: () => Promise<void> } {
   let count = 0;
   let release!: () => void;
@@ -103,10 +66,9 @@ describe('ODA D1 tracker', () => {
   });
 
   it('keeps two interleaved requests from observing each other\u2019s reads', async () => {
-    const { d1 } = createOdaFixtureEnv();
     const gate = barrier(2);
-    const db = hookD1(d1, gate.hook);
-    const env = odaEnv(db);
+    const { d1 } = createOdaFixtureEnv(undefined, { beforeRead: gate.hook });
+    const env = odaEnv(d1);
 
     const trackerA = createOdaD1Tracker();
     const trackerB = createOdaD1Tracker();
@@ -125,26 +87,28 @@ describe('ODA D1 tracker', () => {
   });
 
   it('a nested geocodeWithOda does not zero the outer request count', async () => {
-    const { d1: raw } = createOdaFixtureEnv();
+    const inner = createOdaFixtureEnv();
     let injectInner = true;
     let innerCount = -1;
     const outerTracker = createOdaD1Tracker();
 
-    const db = hookD1(raw, async () => {
-      if (!injectInner) return;
-      injectInner = false;
-      const innerTracker = createOdaD1Tracker();
-      await geocodeWithOda(
-        odaEnv(raw),
-        { address: '123 Main St', city: 'Toronto', state: 'ON' },
-        innerTracker
-      );
-      innerCount = innerTracker.count();
+    const outer = createOdaFixtureEnv(undefined, {
+      beforeRead: async () => {
+        if (!injectInner) return;
+        injectInner = false;
+        const innerTracker = createOdaD1Tracker();
+        await geocodeWithOda(
+          odaEnv(inner.d1),
+          { address: '123 Main St', city: 'Toronto', state: 'ON' },
+          innerTracker
+        );
+        innerCount = innerTracker.count();
+      },
     });
 
     await expect(
       geocodeWithOda(
-        odaEnv(db),
+        odaEnv(outer.d1),
         { address: '1 Nowhere Rd', city: 'Toronto', state: 'ON' },
         outerTracker
       )

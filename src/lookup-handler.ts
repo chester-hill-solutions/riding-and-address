@@ -1,19 +1,14 @@
-import { Env, DeferTaskFn } from './types';
 import { geocodeIfNeeded } from './geocoding';
 import { geocodingExecutor } from './circuit-breaker';
 import { incrementMetric, recordTiming } from './metrics';
-import { resolveCorsOrigin, securityHeaders } from './http-headers';
 import { parseQuery, badRequest, internalErrorResponse } from './utils';
 import { getTimeoutConfig } from './config';
-import {
-  performExpandedLookup,
-  expandedLookupResponseFields,
-  type LookupRidingFn,
-} from './lookup-expansion';
+import { performExpandedLookup, expandedLookupResponseFields } from './lookup-expansion';
 import { resolveLookupPath } from './return-selector';
-import { BillableAuthContext, billableDenialResponse, recordSuccessfulBillable } from './billing';
+import { recordSuccessfulBillable } from './billing';
 import { cachedLookupRiding } from './riding-lookup';
 import { FEDERAL_DATASET, PROVINCIAL_DATASETS } from './datasets';
+import type { RouteContext } from './routes';
 
 function datasetMetaForPath(pathname: string): { id: string; year: number; name: string } {
   if (pathname === '/api' || pathname === '/api/federal' || pathname === '/api/combined') {
@@ -27,57 +22,14 @@ function datasetMetaForPath(pathname: string): { id: string; year: number; name:
 }
 
 /**
- * Per-request environment assembled once in the Worker fetch handler.
- * Handlers take this instead of threading env/correlationId/timing/CORS/defer
- * individually — the interface is one object, not five parameters.
+ * The lookup handler. Auth, rate limiting and the response-header policy have already run in the
+ * dispatcher prelude; this reads everything it needs — request, env, correlation id, timing, CORS,
+ * defer seam and the resolved Billable Customer — from the one `RouteContext`.
  */
-export type LookupRequestScope = {
-  env: Env;
-  correlationId: string;
-  startTime: number;
-  corsHeaders: (origin?: string | null) => Record<string, string>;
-  deferTask?: DeferTaskFn;
-  /** Test seam: override the riding lookup. Production uses the cached core. */
-  lookup?: LookupRidingFn;
-};
-
-export function createLookupRequestScope(
-  env: Env,
-  request: Request,
-  ctx: ExecutionContext | undefined,
-  correlationId: string,
-  startTime: number
-): LookupRequestScope {
-  return {
-    env,
-    correlationId,
-    startTime,
-    corsHeaders: (origin?: string | null) => {
-      const cors = resolveCorsOrigin(env, origin);
-      return {
-        'Access-Control-Allow-Origin': cors.allowOrigin,
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers':
-          'Content-Type, Authorization, X-Api-Key, X-Google-API-Key, X-Correlation-ID, X-Request-ID',
-        'Access-Control-Max-Age': '86400',
-        // Credentials only for an origin explicitly matched against the configured allowlist.
-        ...(cors.allowCredentials ? { 'Access-Control-Allow-Credentials': 'true' } : {}),
-        'X-Correlation-ID': correlationId,
-        ...securityHeaders(),
-      };
-    },
-    deferTask: ctx ? (task: Promise<unknown>) => { ctx.waitUntil(task); } : undefined,
-  };
-}
-
-export async function handleLookupRequest(
-  scope: LookupRequestScope,
-  request: Request,
-  pathname: string,
-  billing?: BillableAuthContext | null
-): Promise<Response> {
-  const { env, correlationId, startTime, corsHeaders: getCorsHeaders, deferTask } = scope;
-  const lookupRiding = scope.lookup ?? cachedLookupRiding;
+export async function handleLookupRequest(ctx: RouteContext): Promise<Response> {
+  const { request, env, correlationId, startTime, corsHeaders, deferTask, billing } = ctx;
+  const lookupRiding = ctx.lookup ?? cachedLookupRiding;
+  const pathname = ctx.url.pathname;
   const { lookupPathname } = resolveLookupPath(pathname);
   const { validation } = parseQuery(request);
 
@@ -87,8 +39,7 @@ export async function handleLookupRequest(
 
   const sanitizedQuery = validation.sanitized!;
   const origin = request.headers.get('Origin');
-  const url = new URL(request.url);
-  const pin = url.searchParams.get('dataset') || url.searchParams.get('pin');
+  const pin = ctx.url.searchParams.get('dataset') || ctx.url.searchParams.get('pin');
   const datasetMeta = datasetMetaForPath(lookupPathname);
 
   if (pin && pin !== datasetMeta.id && pin !== String(datasetMeta.year)) {
@@ -118,12 +69,12 @@ export async function handleLookupRequest(
 
     recordTiming('totalLookupTime', Date.now() - startTime);
 
-    if (billing?.customer && billing.key) {
+    if (billing) {
       const billed = await recordSuccessfulBillable(env, billing, {
         waitUntil: deferTask,
       });
       if (!billed.allowed) {
-        return billableDenialResponse(billed, correlationId, getCorsHeaders(origin));
+        return ctx.billableDenial(billed);
       }
     }
 
@@ -139,7 +90,7 @@ export async function handleLookupRequest(
         headers: {
           'content-type': 'application/json; charset=UTF-8',
           'X-Cache-Status': expanded.cacheStatus,
-          ...getCorsHeaders(origin),
+          ...corsHeaders(origin),
         },
       }
     );

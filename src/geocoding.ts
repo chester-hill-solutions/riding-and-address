@@ -11,7 +11,7 @@ import {
   CircuitBreakerExecutor,
   CanadaPostStyleAddress,
 } from './types';
-import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS, TIME_CONSTANTS_SECONDS, QUALITY_THRESHOLDS, GEOCODING_STAGE_TIMEOUTS } from './config';
+import { getTimeoutConfig, getRetryConfig, TIME_CONSTANTS, TIME_CONSTANTS_SECONDS, QUALITY_THRESHOLDS, GeocodingStageTimeouts } from './config';
 import { runOrDefer } from './utils';
 import { readTimestampedEntry, writeTimestampedEntry } from './kv-cache';
 import { withRetry, withTimeout, NonRetriableError } from './utils';
@@ -389,7 +389,7 @@ export async function normalizeAddressWithGoogle(
       region: 'ca'
     });
     const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
-    const resp = await fetch(url, { headers: { 'User-Agent': 'riding-lookup/1.0' }, signal: AbortSignal.timeout(Math.min(getTimeoutConfig(env).geocoding, 10000)) });
+    const resp = await fetch(url, { headers: { 'User-Agent': 'riding-lookup/1.0' }, signal: AbortSignal.timeout(getTimeoutConfig(env).geocoding) });
     if (!resp.ok) throw new Error(`Google reverse geocode HTTP error: ${resp.status}`);
     const rawData = await resp.json();
     const validation = safeValidateGoogleGeocode(rawData);
@@ -417,7 +417,8 @@ export async function normalizeAddressWithGoogle(
 
   try {
     const timeoutConfig = getTimeoutConfig(env);
-    const timeoutMs = Math.min(timeoutConfig.geocoding, 5000);
+    // Reverse geocoding borrows the fallback stage ceiling; the abort above uses the overall budget.
+    const timeoutMs = Math.min(timeoutConfig.geocoding, timeoutConfig.stages.fallback);
     const retryConfig = getRetryConfig();
     const fn = () => withRetry(() => withTimeout(doReverse(), timeoutMs, 'Google reverse geocode'), retryConfig, 'Google reverse geocode');
     const out = circuitBreaker
@@ -447,9 +448,8 @@ export async function normalizeAddressWithGoogle(
  * - Requests score and component data via expand parameter for quality assessment
  * - Returns null on API errors, empty results, or invalid coordinates
  */
-async function geocodeWithGeoGratis(qp: QueryParams, env: Env): Promise<{ lon: number; lat: number; qualifier?: string; score?: number } | null> {
+async function geocodeWithGeoGratis(qp: QueryParams, fetchTimeoutMs: number): Promise<{ lon: number; lat: number; qualifier?: string; score?: number } | null> {
   const retryConfig = getRetryConfig();
-  const fetchTimeoutMs = getTimeoutConfig(env).geocoding;
   try {
     return await withRetry(async () => {
       const queryString = buildGeocodeQueryString(qp);
@@ -515,7 +515,7 @@ async function geocodeWithGeoGratis(qp: QueryParams, env: Env): Promise<{ lon: n
  * Geocodes an address using the Google Geocoding API.
  * Falls back to Nominatim on ZERO_RESULTS, REQUEST_DENIED, or INVALID_REQUEST.
  */
-async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, request?: Request, fetchTimeoutMs: number = getTimeoutConfig(env).geocoding): Promise<GeocodeResult> {
+async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, request: Request | undefined, fetchTimeoutMs: number): Promise<GeocodeResult> {
   const headerKey = request?.headers.get("X-Google-API-Key");
   const key = headerKey || env.GOOGLE_MAPS_KEY;
   if (!key) throw new NonRetriableError("Google API key not provided. Set X-Google-API-Key header or configure GOOGLE_MAPS_KEY environment variable");
@@ -543,7 +543,7 @@ async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, reque
   const data = validation.data;
   if (data.status === 'ZERO_RESULTS' || data.status === 'REQUEST_DENIED' || data.status === 'INVALID_REQUEST' || !data.results?.length) {
     console.error(`[GEOCODING] Google API failed (${data.status || 'no results'}), falling back to Nominatim`);
-    return await geocodeWithNominatim(qp, query, { notFoundMessage: 'No results from Google' });
+    return await geocodeWithNominatim(qp, query, { notFoundMessage: 'No results from Google', fetchTimeoutMs });
   }
   if (data.status === 'OVER_QUERY_LIMIT' || data.status === 'UNKNOWN_ERROR') {
     throw new Error(`Google API error: ${data.status}`);
@@ -554,7 +554,7 @@ async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, reque
   const components = parseGoogleAddressComponents(result);
   if (!googleResultMatchesRegion(qp, components, typeof fmt === 'string' ? fmt : undefined)) {
     console.warn('[GEOCODING] Google result outside requested region, falling back to Nominatim');
-    return await geocodeWithNominatim(qp, buildGeocodeQueryString(qp), { notFoundMessage: 'No results from Google' });
+    return await geocodeWithNominatim(qp, buildGeocodeQueryString(qp), { notFoundMessage: 'No results from Google', fetchTimeoutMs });
   }
   return {
     lon: loc.lng,
@@ -572,9 +572,9 @@ async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, reque
 async function geocodeWithNominatim(
   qp: QueryParams,
   query: string,
-  opts?: { notFoundMessage?: string; fetchTimeoutMs?: number }
+  opts: { notFoundMessage?: string; fetchTimeoutMs: number }
 ): Promise<GeocodeResult> {
-  const notFoundMessage = opts?.notFoundMessage ?? 'No results from Nominatim';
+  const notFoundMessage = opts.notFoundMessage ?? 'No results from Nominatim';
   const nominatimParams = new URLSearchParams({ format: 'jsonv2', limit: '1', country: 'canada' });
   const street = qp.address ? expandStreetAddress(qp.address) : undefined;
   if (street) nominatimParams.set('street', street);
@@ -589,8 +589,8 @@ async function geocodeWithNominatim(
     nominatimParams.set("q", query);
   }
   const nominatimUrl = `https://nominatim.openstreetmap.org/search?${nominatimParams.toString()}`;
-  const resp = await fetch(nominatimUrl, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(opts?.fetchTimeoutMs ?? 10000) });
-  if (!resp.ok && !opts?.notFoundMessage) throw new Error(`Nominatim error: ${resp.status}`);
+  const resp = await fetch(nominatimUrl, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(opts.fetchTimeoutMs) });
+  if (!resp.ok && !opts.notFoundMessage) throw new Error(`Nominatim error: ${resp.status}`);
   const rawResults = await resp.json();
   const nomValidation = safeValidateNominatim(rawResults);
   if (!nomValidation.success) {
@@ -600,7 +600,7 @@ async function geocodeWithNominatim(
   const results = nomValidation.data;
   const first = results?.[0];
   if (!first) {
-    console.error(`[GEOCODING] Nominatim returned no results${opts?.notFoundMessage ? ' after fallback' : ''}`);
+    console.error(`[GEOCODING] Nominatim returned no results${opts.notFoundMessage ? ' after fallback' : ''}`);
     throw new NonRetriableError(notFoundMessage);
   }
   return { lon: Number(first.lon), lat: Number(first.lat) };
@@ -609,12 +609,12 @@ async function geocodeWithNominatim(
 /**
  * Geocodes an address using the Mapbox Geocoding API.
  */
-async function geocodeWithMapbox(qp: QueryParams, query: string, env: Env): Promise<GeocodeResult> {
+async function geocodeWithMapbox(qp: QueryParams, query: string, env: Env, fetchTimeoutMs: number): Promise<GeocodeResult> {
   const token = env.MAPBOX_TOKEN;
   if (!token) throw new NonRetriableError("MAPBOX_TOKEN not configured");
   const resp = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?limit=1&proximity=ca&access_token=${token}`, {
     headers: { "User-Agent": "riding-lookup/1.0" },
-    signal: AbortSignal.timeout(getTimeoutConfig(env).geocoding)
+    signal: AbortSignal.timeout(fetchTimeoutMs)
   });
   if (!resp.ok) throw new Error(`Mapbox error: ${resp.status}`);
   const data = await resp.json() as MapboxResponse;
@@ -645,22 +645,35 @@ function remainingMs(budgetMs: number, startTime: number): number {
   return Math.max(0, budgetMs - (Date.now() - startTime));
 }
 
-function stageLimit(budgetMs: number, startTime: number, stageDefault: number): number {
+export function stageLimit(budgetMs: number, startTime: number, stageDefault: number): number {
   return Math.max(500, Math.min(stageDefault, remainingMs(budgetMs, startTime)));
 }
 
-async function runOdaGeocodeStage(
-  env: Env,
-  qp: QueryParams,
-  circuitBreaker: CircuitBreakerExecutor | undefined,
-  deferTask: DeferTaskFn | undefined,
-  budgetMs: number,
-  startTime: number,
-  metrics?: {
-    incrementMetric: (key: keyof Metrics, value?: number) => void;
-    recordTiming: (key: keyof Metrics, duration: number) => void;
-  }
-): Promise<GeocodeResult | null> {
+export type GeocodeStageContext = {
+  env: Env;
+  qp: QueryParams;
+  query: string;
+  request?: Request;
+  metrics?: GeocodingMetricsSink;
+  circuitBreaker?: CircuitBreakerExecutor;
+  deferTask?: DeferTaskFn;
+  /** Overall geocoding budget for this request (ms). */
+  budgetMs: number;
+  /** Epoch ms when the cascade started; stage limits are derived from the remaining budget. */
+  startTime: number;
+  /** Per-stage ceilings within the overall budget, from `getTimeoutConfig().stages`. */
+  stages: GeocodingStageTimeouts;
+};
+
+/**
+ * One step of the geocoding cascade. Returning `null` means "miss, try the next stage"; throwing
+ * is terminal. Each stage owns its own cache key and write, so ordering is data, not control flow.
+ */
+export type GeocodeStage = (ctx: GeocodeStageContext) => Promise<GeocodeResult | null>;
+
+export async function runOdaGeocodeStage(ctx: GeocodeStageContext): Promise<GeocodeResult | null> {
+  const { env, qp, circuitBreaker, deferTask, metrics, budgetMs, startTime, stages } = ctx;
+
   const odaCacheKey = generateGeocodingCacheKey(qp, 'oda');
   const odaCached = await getCachedGeocoding(env, odaCacheKey);
   if (odaCached) {
@@ -669,7 +682,7 @@ async function runOdaGeocodeStage(
   }
 
   metrics?.incrementMetric('geocodingCacheMisses');
-  const odaStageMs = stageLimit(budgetMs, startTime, GEOCODING_STAGE_TIMEOUTS.oda);
+  const odaStageMs = stageLimit(budgetMs, startTime, stages.oda);
   const odaStarted = Date.now();
 
   const runPostalCentroid = wantsPostalCentroidOnly(qp) || isPostalOnlyQuery(qp);
@@ -690,6 +703,7 @@ async function runOdaGeocodeStage(
     recordTiming('geocodingOdaTime', Date.now() - odaStarted);
     await runOrDefer(deferTask, setCachedGeocoding(env, odaCacheKey, odaResult, 'oda'));
     metrics?.incrementMetric('geocodingSuccesses');
+    metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
     return odaResult;
   } catch (error) {
     recordTiming('geocodingOdaTime', Date.now() - odaStarted);
@@ -701,17 +715,197 @@ async function runOdaGeocodeStage(
         `[GEOCODING] ODA circuit breaker open, falling back to GeoGratis/${env.GEOCODER || 'nominatim'}`
       );
       metrics?.incrementMetric('geocodingCircuitBreakerTrips');
-      return null;
-    }
-    if (error instanceof OdaGeocodeError) {
+    } else if (error instanceof OdaGeocodeError) {
       console.warn(
         `[GEOCODING] ODA miss (${error.code}), falling back to GeoGratis/${env.GEOCODER || 'nominatim'}`
       );
       metrics?.incrementMetric(ODA_MISS_METRIC[error.code] ?? 'geocodingOdaMissOther');
-      return null;
+    } else {
+      throw error;
+    }
+  }
+
+  // A postal-only query gets one local attempt; if the ODA stage spent the whole budget, fail
+  // rather than make an external call. (Postal-centroid-only already threw above.)
+  if (isPostalOnlyQuery(qp) && remainingMs(budgetMs, startTime) <= 0) {
+    throw new Error('Geocoding timeout after ' + budgetMs + 'ms');
+  }
+  return null;
+}
+
+export async function runGeoGratisStage(ctx: GeocodeStageContext): Promise<GeocodeResult | null> {
+  const { env, qp, deferTask, metrics, budgetMs, startTime, stages } = ctx;
+
+  const geogratisCacheKey = generateGeocodingCacheKey(qp, 'geogratis');
+  const geogratisCached = await getGeocodingCacheEntry(env, geogratisCacheKey);
+
+  if (geogratisCached) {
+    const isInterpolated = geogratisCached.qualifier === 'INTERPOLATED_POSITION';
+    const hasPoorScore =
+      geogratisCached.score !== undefined && geogratisCached.score < GEOGRATIS_MIN_SCORE;
+    const hasRegionHints = !!(qp.state || qp.city);
+
+    if ((!isInterpolated || hasRegionHints) && !hasPoorScore) {
+      metrics?.incrementMetric('geocodingCacheHits');
+      metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
+      return { lon: geogratisCached.lon, lat: geogratisCached.lat };
+    } else {
+      console.warn(
+        `[GEOCODING] Cached GeoGratis result was ${isInterpolated ? 'interpolated' : 'poor quality'}, fetching fresh result`
+      );
+    }
+  }
+
+  // Try GeoGratis API
+  const geogratisStarted = Date.now();
+  try {
+    const geogratisStageMs = stageLimit(budgetMs, startTime, stages.geogratis);
+    metrics?.incrementMetric('geocodingExternalCalls');
+    metrics?.incrementMetric('geocodingExternalGeogratis');
+    const geogratisResult = await withTimeout(
+      geocodeWithGeoGratis(qp, geogratisStageMs),
+      geogratisStageMs,
+      'GeoGratis geocoding'
+    );
+    recordTiming('geocodingGeoGratisTime', Date.now() - geogratisStarted);
+
+    if (geogratisResult) {
+      const isInterpolated = geogratisResult.qualifier === 'INTERPOLATED_POSITION';
+      const hasPoorScore =
+        geogratisResult.score !== undefined && geogratisResult.score < GEOGRATIS_MIN_SCORE;
+      const hasRegionHints = !!(qp.state || qp.city);
+
+      if (isInterpolated && !hasRegionHints) {
+        console.warn(
+          `[GEOCODING] GeoGratis returned INTERPOLATED_POSITION without region hints, falling back to ${env.GEOCODER || 'nominatim'}`
+        );
+      } else if (hasPoorScore) {
+        console.warn(
+          `[GEOCODING] GeoGratis returned poor score (${geogratisResult.score}), falling back to ${env.GEOCODER || 'nominatim'}`
+        );
+      } else {
+        await runOrDefer(
+          deferTask,
+          setCachedGeocoding(
+            env,
+            geogratisCacheKey,
+            { lon: geogratisResult.lon, lat: geogratisResult.lat },
+            'geogratis',
+            geogratisResult.qualifier,
+            geogratisResult.score
+          )
+        );
+        metrics?.incrementMetric('geocodingSuccesses');
+        metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
+        return { lon: geogratisResult.lon, lat: geogratisResult.lat } as GeocodeResult;
+      }
+    } else {
+      // GeoGratis failed
+      console.warn(`[GEOCODING] GeoGratis failed, falling back to ${env.GEOCODER || 'nominatim'}`);
+    }
+  } catch (error) {
+    recordTiming('geocodingGeoGratisTime', Date.now() - geogratisStarted);
+    // GeoGratis threw an error
+    console.warn(`[GEOCODING] GeoGratis error, falling back to ${env.GEOCODER || 'nominatim'}:`, error instanceof Error ? error.message : 'Unknown error');
+  }
+
+  return null;
+}
+
+export async function runExternalFallbackStage(ctx: GeocodeStageContext): Promise<GeocodeResult | null> {
+  const { env, qp, query, request, metrics, circuitBreaker, deferTask, budgetMs, startTime, stages } = ctx;
+
+  const fallbackStarted = Date.now();
+  const provider = (env.GEOCODER || "nominatim").toLowerCase();
+
+  // Check cache for fallback provider
+  const cacheKey = generateGeocodingCacheKey(qp, provider);
+  const cached = await getCachedGeocoding(env, cacheKey);
+  if (cached) {
+    const regionOk =
+      provider !== 'google' ||
+      googleResultMatchesRegion(qp, cached.addressComponents, cached.normalizedAddress);
+    if (regionOk) {
+      metrics?.incrementMetric('geocodingCacheHits');
+      metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
+      return { lon: cached.lon, lat: cached.lat } as GeocodeResult;
+    }
+    console.warn('[GEOCODING] Cached Google result outside requested region, fetching fresh result');
+  }
+
+  metrics?.incrementMetric('geocodingCacheMisses');
+
+  // Use circuit breaker and retry for geocoding
+  metrics?.incrementMetric('geocodingExternalCalls');
+  const providerMetric = EXTERNAL_PROVIDER_METRIC[provider];
+  if (providerMetric) metrics?.incrementMetric(providerMetric);
+
+  let result: GeocodeResult;
+  try {
+    const fallbackStageMs = stageLimit(budgetMs, startTime, stages.fallback);
+    const geocodeFn = async (): Promise<GeocodeResult> => {
+      if (provider === "google") {
+        return await geocodeWithGoogle(qp, query, env, request, fallbackStageMs);
+      } else if (provider === "mapbox") {
+        return await geocodeWithMapbox(qp, query, env, fallbackStageMs);
+      } else {
+        return await geocodeWithNominatim(qp, query, { fetchTimeoutMs: fallbackStageMs });
+      }
+    };
+
+    const retryConfig = getRetryConfig();
+    const fallbackPromise = circuitBreaker
+      ? circuitBreaker.execute(`geocoding:${provider}`, async () => {
+          return await withRetry(geocodeFn, retryConfig, `Geocoding ${provider}`);
+        })
+      : withRetry(geocodeFn, retryConfig, `Geocoding ${provider}`);
+
+    result = (await withTimeout(fallbackPromise, fallbackStageMs, 'Fallback geocoding')) as GeocodeResult;
+    recordTiming('geocodingFallbackTime', Date.now() - fallbackStarted);
+
+    metrics?.incrementMetric('geocodingSuccesses');
+  } catch (error) {
+    recordTiming('geocodingFallbackTime', Date.now() - fallbackStarted);
+    console.error(`[GEOCODING] Geocoding failed after ${Date.now() - startTime}ms:`, error instanceof Error ? error.message : 'Unknown error');
+    metrics?.incrementMetric('geocodingFailures');
+    if (error instanceof CircuitBreakerOpenError) {
+      console.error(`[GEOCODING] Circuit breaker is OPEN for provider: ${provider}`);
+      metrics?.incrementMetric('geocodingCircuitBreakerTrips');
     }
     throw error;
   }
+
+  // Cache the result
+  await runOrDefer(deferTask, setCachedGeocoding(env, cacheKey, result, provider));
+
+  metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
+  return result;
+}
+
+/**
+ * Executes stages in order. The first stage that returns a result wins; `null` falls through and a
+ * throw is terminal. Order is data, so callers and tests can rearrange or stub the sequence.
+ */
+export async function runGeocodeStages(
+  ctx: GeocodeStageContext,
+  stages: readonly GeocodeStage[]
+): Promise<GeocodeResult> {
+  for (const stage of stages) {
+    const result = await stage(ctx);
+    if (result) return result;
+  }
+  throw new Error('All geocoding stages missed');
+}
+
+/** The cascade, in order: local ODA (when enabled), then GeoGratis, then the configured provider. */
+export function buildGeocodeStages(env: Env): GeocodeStage[] {
+  const stages: GeocodeStage[] = [];
+  if (isOdaEnabled(env)) {
+    stages.push(runOdaGeocodeStage);
+  }
+  stages.push(runGeoGratisStage);
+  stages.push(runExternalFallbackStage);
+  return stages;
 }
 
 // Main geocoding function
@@ -765,171 +959,22 @@ export async function geocodeIfNeeded(
 
   const timeoutConfig = getTimeoutConfig(env);
   const timeoutMs = timeoutConfig.geocoding;
-  
-  const geocodePromise = (async () => {
-    const startTime = Date.now();
-    metrics?.incrementMetric('geocodingRequests');
+  const ctx: GeocodeStageContext = {
+    env,
+    qp,
+    query,
+    request,
+    metrics,
+    circuitBreaker,
+    deferTask,
+    budgetMs: timeoutMs,
+    startTime: Date.now(),
+    stages: timeoutConfig.stages,
+  };
 
-    if (isOdaEnabled(env)) {
-      const odaResult = await runOdaGeocodeStage(
-        env,
-        qp,
-        circuitBreaker,
-        deferTask,
-        timeoutMs,
-        startTime,
-        metrics
-      );
-      if (odaResult) {
-        metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
-        return odaResult;
-      }
-      if (wantsPostalCentroidOnly(qp)) {
-        throw new OdaGeocodeError('Postal centroid not found', 'ADDRESS_NOT_FOUND', 404);
-      }
-      if (isPostalOnlyQuery(qp) && remainingMs(timeoutMs, startTime) <= 0) {
-        throw new Error('Geocoding timeout after ' + timeoutMs + 'ms');
-      }
-    }
-    
-    const geogratisCacheKey = generateGeocodingCacheKey(qp, 'geogratis');
-    const geogratisCached = await getGeocodingCacheEntry(env, geogratisCacheKey);
-    
-    if (geogratisCached) {
-      const isInterpolated = geogratisCached.qualifier === 'INTERPOLATED_POSITION';
-      const hasPoorScore =
-        geogratisCached.score !== undefined && geogratisCached.score < GEOGRATIS_MIN_SCORE;
-      const hasRegionHints = !!(qp.state || qp.city);
+  metrics?.incrementMetric('geocodingRequests');
 
-      if ((!isInterpolated || hasRegionHints) && !hasPoorScore) {
-        metrics?.incrementMetric('geocodingCacheHits');
-        metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
-        return { lon: geogratisCached.lon, lat: geogratisCached.lat };
-      } else {
-        console.warn(
-          `[GEOCODING] Cached GeoGratis result was ${isInterpolated ? 'interpolated' : 'poor quality'}, fetching fresh result`
-        );
-      }
-    }
-    
-    // Try GeoGratis API
-    const geogratisStarted = Date.now();
-    try {
-      const geogratisStageMs = stageLimit(timeoutMs, startTime, GEOCODING_STAGE_TIMEOUTS.geogratis);
-      metrics?.incrementMetric('geocodingExternalCalls');
-      metrics?.incrementMetric('geocodingExternalGeogratis');
-      const geogratisResult = await withTimeout(geocodeWithGeoGratis(qp, env), geogratisStageMs, 'GeoGratis geocoding');
-      recordTiming('geocodingGeoGratisTime', Date.now() - geogratisStarted);
-      
-      if (geogratisResult) {
-        const isInterpolated = geogratisResult.qualifier === 'INTERPOLATED_POSITION';
-        const hasPoorScore =
-          geogratisResult.score !== undefined && geogratisResult.score < GEOGRATIS_MIN_SCORE;
-        const hasRegionHints = !!(qp.state || qp.city);
-
-        if (isInterpolated && !hasRegionHints) {
-          console.warn(
-            `[GEOCODING] GeoGratis returned INTERPOLATED_POSITION without region hints, falling back to ${env.GEOCODER || 'nominatim'}`
-          );
-        } else if (hasPoorScore) {
-          console.warn(
-            `[GEOCODING] GeoGratis returned poor score (${geogratisResult.score}), falling back to ${env.GEOCODER || 'nominatim'}`
-          );
-        } else {
-          await runOrDefer(
-            deferTask,
-            setCachedGeocoding(
-              env,
-              geogratisCacheKey,
-              { lon: geogratisResult.lon, lat: geogratisResult.lat },
-              'geogratis',
-              geogratisResult.qualifier,
-              geogratisResult.score
-            )
-          );
-          metrics?.incrementMetric('geocodingSuccesses');
-          metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
-          return { lon: geogratisResult.lon, lat: geogratisResult.lat } as GeocodeResult;
-        }
-      } else {
-        // GeoGratis failed
-        console.warn(`[GEOCODING] GeoGratis failed, falling back to ${env.GEOCODER || 'nominatim'}`);
-      }
-    } catch (error) {
-      recordTiming('geocodingGeoGratisTime', Date.now() - geogratisStarted);
-      // GeoGratis threw an error
-      console.warn(`[GEOCODING] GeoGratis error, falling back to ${env.GEOCODER || 'nominatim'}:`, error instanceof Error ? error.message : 'Unknown error');
-    }
-    
-    // Fallback to existing provider logic
-    const fallbackStarted = Date.now();
-    const provider = (env.GEOCODER || "nominatim").toLowerCase();
-    
-    // Check cache for fallback provider
-    const cacheKey = generateGeocodingCacheKey(qp, provider);
-    const cached = await getCachedGeocoding(env, cacheKey);
-    if (cached) {
-      const regionOk =
-        provider !== 'google' ||
-        googleResultMatchesRegion(qp, cached.addressComponents, cached.normalizedAddress);
-      if (regionOk) {
-        metrics?.incrementMetric('geocodingCacheHits');
-        metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
-        return { lon: cached.lon, lat: cached.lat } as GeocodeResult;
-      }
-      console.warn('[GEOCODING] Cached Google result outside requested region, fetching fresh result');
-    }
-    
-    metrics?.incrementMetric('geocodingCacheMisses');
-    
-    // Use circuit breaker and retry for geocoding
-    metrics?.incrementMetric('geocodingExternalCalls');
-    const providerMetric = EXTERNAL_PROVIDER_METRIC[provider];
-    if (providerMetric) metrics?.incrementMetric(providerMetric);
-
-    let result: GeocodeResult;
-    try {
-      const fallbackStageMs = stageLimit(timeoutMs, startTime, GEOCODING_STAGE_TIMEOUTS.fallback);
-      const geocodeFn = async (): Promise<GeocodeResult> => {
-        if (provider === "google") {
-          return await geocodeWithGoogle(qp, query, env, request);
-        } else if (provider === "mapbox") {
-          return await geocodeWithMapbox(qp, query, env);
-        } else {
-          return await geocodeWithNominatim(qp, query);
-        }
-      };
-
-      const retryConfig = getRetryConfig();
-      const fallbackPromise = circuitBreaker
-        ? circuitBreaker.execute(`geocoding:${provider}`, async () => {
-            return await withRetry(geocodeFn, retryConfig, `Geocoding ${provider}`);
-          })
-        : withRetry(geocodeFn, retryConfig, `Geocoding ${provider}`);
-
-      result = (await withTimeout(fallbackPromise, fallbackStageMs, 'Fallback geocoding')) as GeocodeResult;
-      recordTiming('geocodingFallbackTime', Date.now() - fallbackStarted);
-      
-      metrics?.incrementMetric('geocodingSuccesses');
-    } catch (error) {
-      recordTiming('geocodingFallbackTime', Date.now() - fallbackStarted);
-      console.error(`[GEOCODING] Geocoding failed after ${Date.now() - startTime}ms:`, error instanceof Error ? error.message : 'Unknown error');
-      metrics?.incrementMetric('geocodingFailures');
-      if (error instanceof CircuitBreakerOpenError) {
-        console.error(`[GEOCODING] Circuit breaker is OPEN for provider: ${provider}`);
-        metrics?.incrementMetric('geocodingCircuitBreakerTrips');
-      }
-      throw error;
-    }
-    
-    // Cache the result
-    await runOrDefer(deferTask, setCachedGeocoding(env, cacheKey, result, provider));
-    
-    metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
-    return result;
-  })();
-
-  return withTimeout(geocodePromise, timeoutMs, "Geocoding");
+  return withTimeout(runGeocodeStages(ctx, buildGeocodeStages(env)), timeoutMs, "Geocoding");
 }
 
 // Batch geocoding with Google

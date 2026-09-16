@@ -12,7 +12,7 @@
  * beats `:param` beats `*`, longer wins, declaration order breaks remaining ties.
  */
 
-import type { Env } from './types';
+import type { DeferTaskFn, Env } from './types';
 import { createApiReference, createOpenAPISpec } from './docs';
 import { createEmbedDocsPage } from './embed-docs';
 import { getCacheWarmingStatus } from './cache';
@@ -29,20 +29,36 @@ import { handleWebhookAdmin } from './webhook-admin';
 import {
   badRequest,
   checkAdminAuth,
+  checkRateLimit,
+  getClientId,
   hasValidBasicAuth,
+  rateLimitExceededResponse,
   unauthorizedResponse,
 } from './utils';
 import {
   authorizeLookupRequest,
+  extractApiKey,
   httpStatusForKeyDenial,
   type KeyAuthResult,
 } from './api-keys';
-import type { LookupRequestScope } from './lookup-handler';
+import { resolveCorsOrigin, securityHeaders } from './http-headers';
+import { billableDenialResponse, type BillableAuthContext } from './billing';
+import { isOdaSuggestEnabled } from './oda-config';
+import { createEmbedScript, EMBED_VERSION } from './embed';
+import {
+  handleGeocodeRoute,
+  handleNormalizeAddressRoute,
+  handleOdaInit,
+  handleOdaStats,
+  handleReverseRoute,
+} from './oda-handlers';
+import { handleLookupRequest } from './lookup-handler';
+import type { LookupRidingFn } from './lookup-expansion';
 
 export type RouteOwner = 'api' | 'portal';
 export type RouteVisibility = 'public' | 'internal';
 export type RouteAuth = 'public' | 'admin' | 'key' | 'admin-optional';
-/** Declarative rate-limit bucket; enforcement lands with the request-lifecycle ticket (#70). */
+/** Declarative rate-limit bucket; `runPrelude` enforces it once per request. */
 export type RateLimitBucket =
   | 'none'
   | 'lookup'
@@ -51,9 +67,19 @@ export type RateLimitBucket =
   | 'search'
   | 'batch';
 
+/** The outcome of a Billable-unit decision, as returned by `recordSuccessfulBillable`. */
+export type BillableDecision = {
+  allowed: boolean;
+  status: number;
+  body?: Record<string, unknown>;
+};
+
 /**
- * Every handler receives one context object. `scope` is today's `LookupRequestScope`, nested
- * unchanged so existing handler bodies adapt thinly; it folds in as handlers are touched.
+ * The complete per-request context: everything a handler needs, assembled once by the lifecycle.
+ *
+ * It carries the raw request/env/ctx, the resolved route (`url`, `params`), the request-scoped
+ * timing + header policy, and the auth outcome (`isAdmin`, `billing`). Handlers never re-derive
+ * the correlation id, rebuild an `ExecutionContext`, or re-run auth/rate limiting.
  */
 export type RouteContext = {
   request: Request;
@@ -61,9 +87,32 @@ export type RouteContext = {
   ctx: ExecutionContext;
   url: URL;
   params: Record<string, string>;
-  scope: LookupRequestScope;
-  /** Set by `authorize`: true when `auth: 'admin-optional'` and valid credentials were presented. */
+  /** Derived once by the lifecycle; handler logs and error bodies reuse it verbatim. */
+  correlationId: string;
+  /** Request start timestamp, for the timing metrics. */
+  startTime: number;
+  /** The one response-header policy: CORS + security + correlation id. */
+  corsHeaders: (origin?: string | null) => Record<string, string>;
+  /** Defer background work past the response; undefined when no ExecutionContext is available. */
+  deferTask?: DeferTaskFn;
+  /** Set by the prelude: true when the entry required or accepted admin credentials. */
   isAdmin: boolean;
+  /** Resolved Billable Customer for a key entry; null for public/operator requests. */
+  billing: BillableAuthContext | null;
+  /** Full key-auth outcome, so a handler can branch on the accepted key (e.g. browser vs server). */
+  auth: KeyAuthResult;
+  /** Test seam: override the riding lookup. Production uses the cached core. */
+  lookup?: LookupRidingFn;
+  /**
+   * The single Fuse-denial dialect: `recordSuccessfulBillable`'s wire body, minus the HTTP
+   * envelope. Batch redaction applies this to one item instead of returning a Response.
+   */
+  billableDenialBody: (billed: BillableDecision) => Record<string, unknown>;
+  /**
+   * The single Fuse-denial dialect as a Response, with this request's correlation id and headers.
+   * `headers` overrides the default CORS policy for routes with origin-aware CORS.
+   */
+  billableDenial: (billed: BillableDecision, headers?: Record<string, string>) => Response;
 };
 
 export type RouteHandler = (ctx: RouteContext) => Promise<Response> | Response;
@@ -100,7 +149,70 @@ const LOOKUP_PATHS = ['/api', '/api/federal', '/api/combined', ...getAllProvinci
 function jsonHeaders(ctx: RouteContext): Record<string, string> {
   return {
     'content-type': 'application/json; charset=UTF-8',
-    ...ctx.scope.corsHeaders(ctx.request.headers.get('Origin')),
+    ...ctx.corsHeaders(ctx.request.headers.get('Origin')),
+  };
+}
+
+/** Build the header policy once: CORS for this origin, security headers, and the correlation id. */
+function responseHeaderPolicy(
+  env: Env,
+  correlationId: string
+): (origin?: string | null) => Record<string, string> {
+  return (origin?: string | null) => {
+    const cors = resolveCorsOrigin(env, origin);
+    return {
+      'Access-Control-Allow-Origin': cors.allowOrigin,
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers':
+        'Content-Type, Authorization, X-Api-Key, X-Google-API-Key, X-Correlation-ID, X-Request-ID',
+      'Access-Control-Max-Age': '86400',
+      // Credentials only for an origin explicitly matched against the configured allowlist.
+      ...(cors.allowCredentials ? { 'Access-Control-Allow-Credentials': 'true' } : {}),
+      'X-Correlation-ID': correlationId,
+      ...securityHeaders(),
+    };
+  };
+}
+
+export type RouteContextInput = {
+  request: Request;
+  env: Env;
+  ctx: ExecutionContext;
+  correlationId: string;
+  startTime: number;
+  lookup?: LookupRidingFn;
+};
+
+/**
+ * Assemble the complete request context once, before dispatch. Auth fields start empty and are
+ * filled by `runPrelude`; `params` is filled by `dispatch` once the route resolves.
+ */
+export function createRouteContext(input: RouteContextInput): RouteContext {
+  const { request, env, ctx, correlationId, startTime, lookup } = input;
+  const url = new URL(request.url);
+  const corsHeaders = responseHeaderPolicy(env, correlationId);
+
+  return {
+    request,
+    env,
+    ctx,
+    url,
+    params: {},
+    correlationId,
+    startTime,
+    corsHeaders,
+    deferTask: (task: Promise<unknown>) => { ctx.waitUntil(task); },
+    isAdmin: false,
+    billing: null,
+    auth: { ok: true },
+    lookup,
+    billableDenialBody: (billed) => ({ ...(billed.body ?? {}) }),
+    billableDenial: (billed, headers) =>
+      billableDenialResponse(
+        billed,
+        correlationId,
+        headers ?? corsHeaders(request.headers.get('Origin'))
+      ),
   };
 }
 
@@ -120,7 +232,7 @@ function handleApiReference(ctx: RouteContext): Response {
   return new Response(createApiReference(baseUrl), {
     headers: {
       'content-type': 'text/html; charset=UTF-8',
-      ...ctx.scope.corsHeaders(ctx.request.headers.get('Origin')),
+      ...ctx.corsHeaders(ctx.request.headers.get('Origin')),
     },
   });
 }
@@ -171,12 +283,12 @@ async function handleHealth(ctx: RouteContext): Promise<Response> {
   );
 }
 
-/** `/metrics` — operator summary; admin gate runs in `authorize`. */
+/** `/metrics` — operator summary; admin gate runs in `runPrelude`. */
 function handleMetrics(ctx: RouteContext): Response {
   return new Response(JSON.stringify(getMetricsSummary()), { headers: jsonHeaders(ctx) });
 }
 
-/** `/cache-warming` — last-warming status; admin gate runs in `authorize`. */
+/** `/cache-warming` — last-warming status; admin gate runs in `runPrelude`. */
 function handleCacheWarming(ctx: RouteContext): Response {
   const status = getCacheWarmingStatus();
   return new Response(
@@ -216,7 +328,64 @@ async function handleCircuitBreakerReset(ctx: RouteContext): Promise<Response> {
 
 /** `/webhooks/*` + `/api/webhooks/*` — the existing single webhook-admin adapter. */
 function handleWebhookAdminRoute(ctx: RouteContext): Promise<Response> {
-  return handleWebhookAdmin(ctx.scope, ctx.request, ctx.url.pathname);
+  return handleWebhookAdmin(ctx, ctx.request, ctx.url.pathname);
+}
+
+// ── Ported data surface: lookup, demo mirrors, ODA admin, embed ─────────────
+
+/**
+ * The lookup surface. The prelude has already run auth, rate limiting and the header policy, and
+ * filled `billing`; this handler only resolves the riding.
+ */
+function handleLookupRoute(ctx: RouteContext): Promise<Response> {
+  return handleLookupRequest(ctx);
+}
+
+/** A copy of `ctx` whose `url.pathname` is the real route the demo path mirrors. */
+function withLookupPath(ctx: RouteContext, pathname: string): RouteContext {
+  const url = new URL(ctx.url.toString());
+  url.pathname = pathname;
+  return { ...ctx, url };
+}
+
+/**
+ * Keyless demo mirrors. Re-pointed at the real route, never inheriting its policy: a demo request
+ * is public, per-IP rate-limited, and never a Billable unit (so `billing` stays null).
+ */
+function handleDemoRoute(ctx: RouteContext): Promise<Response> {
+  const demoPath = ctx.url.pathname.replace(/^\/api\/demo/, '/api') || '/api';
+  if (demoPath === '/api/geocode') return handleGeocodeRoute(ctx);
+  if (demoPath === '/api/reverse') return handleReverseRoute(ctx);
+  if (demoPath === '/api/normalize-address') return handleNormalizeAddressRoute(ctx);
+  return handleLookupRequest(withLookupPath(ctx, demoPath === '/api' ? '/api/federal' : demoPath));
+}
+
+/** `/api/oda/init` — admin gate runs in the prelude. */
+function handleOdaInitRoute(ctx: RouteContext): Promise<Response> {
+  return handleOdaInit(ctx);
+}
+
+/** `/api/oda/stats` — admin gate runs in the prelude. */
+function handleOdaStatsRoute(ctx: RouteContext): Promise<Response> {
+  return handleOdaStats(ctx);
+}
+
+/**
+ * `/embed.js` — the drop-in widget. Gated on the same flag as `/api/search`: a widget whose only
+ * data source is unregistered would fail silently on the integrator's page, worse than a 404.
+ */
+function handleEmbedScript(ctx: RouteContext): Response {
+  if (!isOdaSuggestEnabled(ctx.env)) {
+    return badRequest('Address autocomplete is not enabled', 404, 'NOT_FOUND', ctx.correlationId);
+  }
+  return new Response(createEmbedScript(ctx.url.origin), {
+    headers: {
+      'content-type': 'application/javascript; charset=UTF-8',
+      'Cache-Control': 'public, max-age=300, s-maxage=3600',
+      'X-Embed-Version': EMBED_VERSION,
+      ...ctx.corsHeaders(ctx.request.headers.get('Origin')),
+    },
+  });
 }
 
 // ── The table ────────────────────────────────────────────────────────────────
@@ -240,15 +409,20 @@ export const ROUTES: readonly RouteEntry[] = [
   { path: ['/webhooks', '/api/webhooks'], methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleWebhookAdminRoute },
   { path: ['/webhooks/*', '/api/webhooks/*'], methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleWebhookAdminRoute },
 
-  // Lookup surface — declared, still legacy.
-  { path: LOOKUP_PATHS, methods: ALL_METHODS, owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'lookup', handler: legacy },
+  // Lookup surface — ported; auth + rate limit run once in the prelude.
+  { path: LOOKUP_PATHS, methods: ALL_METHODS, owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'lookup', handler: handleLookupRoute },
+  { path: '/embed.js', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'none', handler: handleEmbedScript },
+  { path: DEMO_PATHS, methods: ['GET'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'demo', handler: handleDemoRoute },
+  { path: '/api/demo/*', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'demo', handler: handleDemoRoute },
+
+  // ODA geocoding surface — geocode/reverse/normalize stay legacy (see billing-invariants gate);
+  // the admin pair is ported.
   { path: '/api/geocode', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: legacy },
   { path: '/api/reverse', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: legacy },
   { path: '/api/normalize-address', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: legacy },
   { path: '/api/search', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'search', handler: legacy },
-  { path: '/embed.js', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: DEMO_PATHS, methods: ['GET'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'demo', handler: legacy },
-  { path: '/api/demo/*', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'demo', handler: legacy },
+  { path: '/api/oda/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleOdaInitRoute },
+  { path: '/api/oda/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleOdaStatsRoute },
 
   // Batch / queue — declared, still legacy.
   { path: '/batch', methods: ['POST'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'batch', handler: legacy },
@@ -274,8 +448,6 @@ export const ROUTES: readonly RouteEntry[] = [
   { path: '/api/boundaries/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
   { path: '/api/geocoding/batch/status', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
   { path: '/api/cache/warm', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/api/oda/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/api/oda/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
   { path: '/api/oda/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
   { path: '/admin/projection/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'key', rateLimit: 'none', handler: legacy },
   { path: '/admin/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
@@ -414,15 +586,62 @@ function keyAuthFailureResponse(auth: KeyAuthResult, correlationId: string): Res
 }
 
 /**
- * The single authorization seam, run for every dispatched entry. Legacy entries keep their own
- * inline policy until they are ported: the strangler fallback owns its branch end to end, so
- * gating here too would change its behaviour.
- *
- * `key` delegates to the existing `authorizeLookupRequest`; allowance/billing wiring for a ported
- * key route is the request-lifecycle ticket (#70), so today only the gateway's policy runs.
+ * The one rate-limit seam, keyed by the entry's declared bucket. A valid operator credential is a
+ * server-to-server secret used for bulk work, so it is never held to the per-IP bucket (a large
+ * import would otherwise fail with 429 partway through).
  */
-export async function authorize(entry: RouteEntry, ctx: RouteContext): Promise<Response | null> {
+function enforceRateLimit(entry: RouteEntry, ctx: RouteContext): Response | null {
+  const { request, env, correlationId } = ctx;
+  const demoRateEnv = { ...env, RATE_LIMIT: parseInt(env.DEMO_RATE_LIMIT || '30', 10) };
+
+  switch (entry.rateLimit) {
+    case 'none':
+    case 'batch':
+      return null;
+
+    // Keyless demo mirrors are always per-IP throttled — the demo bucket is the abuse control,
+    // so even an operator credential does not skip it.
+    case 'demo':
+      if (checkRateLimit(demoRateEnv, `demo:${getClientId(request)}`)) return null;
+      return rateLimitExceededResponse(correlationId);
+
+    // A valid operator credential is a server-to-server secret used for bulk work; throttling it
+    // with the public per-IP bucket would fail a large import with 429 partway through.
+    case 'lookup':
+    case 'geocode':
+    case 'search': {
+      if (hasValidBasicAuth(request, env)) return null;
+
+      if (entry.rateLimit === 'search') {
+        // The portal try-it key is public and shared, so hold it to the stricter per-IP demo
+        // bucket; every other caller keeps its own per-IP bucket.
+        const isDemoKey =
+          !!env.DEMO_BROWSER_API_KEY && extractApiKey(request) === env.DEMO_BROWSER_API_KEY;
+        const clientId = isDemoKey ? `demo-search:${getClientId(request)}` : getClientId(request);
+        const rateEnv = isDemoKey ? demoRateEnv : env;
+        if (checkRateLimit(rateEnv, clientId)) return null;
+        return rateLimitExceededResponse(correlationId);
+      }
+
+      if (checkRateLimit(env, getClientId(request))) return null;
+      return rateLimitExceededResponse(correlationId);
+    }
+  }
+}
+
+/**
+ * The shared prelude, run once per dispatched entry: rate limit, then auth, filling the auth
+ * outcome onto the context. Legacy entries are skipped wholesale — the strangler fallback owns its
+ * branch end to end, so gating here too would change its behaviour until it is ported.
+ *
+ * `key` delegates to `authorizeLookupRequest` and resolves the Billable Customer onto `ctx.billing`.
+ * ADR-0005: denial statuses come only from `httpStatusForKeyDenial`.
+ */
+export async function runPrelude(entry: RouteEntry, ctx: RouteContext): Promise<Response | null> {
   if (entry.handler === legacy) return null;
+
+  const limited = enforceRateLimit(entry, ctx);
+  if (limited) return limited;
 
   switch (entry.auth) {
     case 'public':
@@ -430,7 +649,7 @@ export async function authorize(entry: RouteEntry, ctx: RouteContext): Promise<R
 
     case 'admin':
       if (!checkAdminAuth(ctx.request, ctx.env)) {
-        return unauthorizedResponse(ctx.scope.correlationId);
+        return unauthorizedResponse(ctx.correlationId);
       }
       ctx.isAdmin = true;
       return null;
@@ -444,54 +663,38 @@ export async function authorize(entry: RouteEntry, ctx: RouteContext): Promise<R
       const basicAuth = hasValidBasicAuth(ctx.request, ctx.env);
       const auth = await authorizeLookupRequest(ctx.env, ctx.request, basicAuth);
       if (!auth.ok) {
-        return keyAuthFailureResponse(auth, ctx.scope.correlationId);
+        return keyAuthFailureResponse(auth, ctx.correlationId);
       }
+      ctx.auth = auth;
+      ctx.billing = auth.key && auth.customer ? { key: auth.key, customer: auth.customer } : null;
       return null;
     }
   }
 }
 
-export type DispatchDeps = {
-  scope: LookupRequestScope;
-  /** Runs the old `fetch` guard-chain for entries still marked `legacy`. */
-  legacyHandler: RouteHandler;
-};
-
 /**
- * Resolves the request against the API-owned table and runs the one `authorize` seam before the
- * handler. Unclaimed paths (and portal-owned paths, which never reach the API worker in the
- * combined deploy) return the Worker's not-found response.
+ * Resolves the request against the API-owned table, runs the one shared prelude, then the handler.
+ * Unclaimed paths (and portal-owned paths, which never reach the API worker in the combined deploy)
+ * return the Worker's not-found response.
  */
 export async function dispatch(
-  request: Request,
-  env: Env,
-  ctx: ExecutionContext,
-  deps: DispatchDeps
+  ctx: RouteContext,
+  legacyHandler: RouteHandler
 ): Promise<Response> {
-  const url = new URL(request.url);
-  const match = matchRoute(request.method, url.pathname);
+  const match = matchRoute(ctx.request.method, ctx.url.pathname);
 
   if (!match || match.entry.owner !== 'api') {
-    return badRequest('Not found', 404, 'NOT_FOUND', deps.scope.correlationId);
+    return badRequest('Not found', 404, 'NOT_FOUND', ctx.correlationId);
   }
 
-  const routeCtx: RouteContext = {
-    request,
-    env,
-    ctx,
-    url,
-    params: match.params,
-    scope: deps.scope,
-    isAdmin: false,
-  };
+  const routeCtx: RouteContext = { ...ctx, params: match.params };
 
-  // The seam runs for every entry; it no-ops for legacy entries, which own their policy end to end.
-  const denial = await authorize(match.entry, routeCtx);
+  const denial = await runPrelude(match.entry, routeCtx);
   if (denial) return denial;
 
-  const handler = match.entry.handler === legacy ? deps.legacyHandler : match.entry.handler;
+  const handler = match.entry.handler === legacy ? legacyHandler : match.entry.handler;
   if (!handler) {
-    return badRequest('Not found', 404, 'NOT_FOUND', deps.scope.correlationId);
+    return badRequest('Not found', 404, 'NOT_FOUND', routeCtx.correlationId);
   }
   return handler(routeCtx);
 }
