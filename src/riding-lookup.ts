@@ -1,129 +1,41 @@
 import { Env, GeoJSONFeature, GeoJSONFeatureCollection, LookupResult, SpatialIndex } from './types';
-import {
-  geoCacheLRU,
-  setCachedGeoJSON,
-  setCachedSpatialIndex,
-  spatialIndexCacheLRU,
-} from './cache';
-import {
-  createSpatialIndex,
-  findCandidateFeatures,
-  getSpatialDbConfig,
-  isPointInBoundingBox,
-  queryRidingFromDatabase,
-} from './spatial';
-import { isPointInPolygon, ridingNameFromProperties, withRetry, withTimeout } from './utils';
-import { getRetryConfig, getTimeoutConfig } from './config';
+import { isPointInPolygon, ridingNameFromProperties, withTimeout } from './utils';
+import { findCandidateFeatures, isPointInBoundingBox } from './spatial';
+import { getTimeoutConfig } from './config';
 import { incrementMetric, recordTiming } from './metrics';
-import { CircuitBreakerOpenError, r2CircuitBreaker } from './circuit-breaker';
 import { pickDataset } from './datasets';
+import { r2DatasetSource, type DatasetSource } from './dataset-source';
+import type { LookupRidingFn } from './lookup-expansion';
 
 /**
- * The Riding lookup core: D1 first, then the per-isolate spatial-index LRU,
- * then R2 (fetch + validate + index build). Callers get one interface;
- * retries, circuit breaking, timeouts, metrics and cache fill are hidden.
+ * The Riding lookup core: D1 first, then the per-isolate spatial-index LRU, then R2 (fetch +
+ * validate + index build). Callers get one interface; retries, circuit breaking, timeouts,
+ * metrics and cache fill live behind the `DatasetSource` port.
  *
- * Works in any isolate: when the R2 circuit breaker has not been initialised
- * (e.g. inside a Durable Object), fetches proceed without it rather than
- * crashing on the singleton.
+ * D1-first → LRU → R2 ordering is preserved: the D1 fast path runs first (when the source
+ * exposes one), then `source.getSpatialIndex` serves from the LRU or loads from R2 on a miss.
  */
-
-function withR2Breaker<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  if (!r2CircuitBreaker) return fn();
-  return r2CircuitBreaker.execute(`r2:${key}`, fn);
-}
-
-export async function loadGeo(env: Env, key: string): Promise<GeoJSONFeatureCollection> {
-  const startTime = Date.now();
-  incrementMetric('r2Requests');
-
-  // Check LRU cache
-  const cached = geoCacheLRU.get(key);
-  if (cached) {
-    incrementMetric('r2CacheHits');
-    recordTiming('totalR2Time', Date.now() - startTime);
-    return cached;
-  }
-
-  incrementMetric('r2CacheMisses');
-
-  try {
-    const geo = await withR2Breaker(`r2:${key}`, async () => {
-      const retryConfig = getRetryConfig();
-      return await withRetry(async () => {
-        const obj = await env.RIDINGS.get(key);
-        if (!obj) throw new Error(`R2 object not found: ${key}`);
-        const text = await obj.text();
-        const parsed = JSON.parse(text) as GeoJSONFeatureCollection;
-
-        // Validate GeoJSON structure
-        if (!parsed || typeof parsed !== 'object') {
-          throw new Error(`Invalid GeoJSON: not an object`);
-        }
-        if (parsed.type !== 'FeatureCollection') {
-          throw new Error(`Invalid GeoJSON: expected FeatureCollection, got ${parsed.type}`);
-        }
-        if (!Array.isArray(parsed.features)) {
-          throw new Error(`Invalid GeoJSON: features must be an array`);
-        }
-
-        // Validate features structure
-        for (let i = 0; i < Math.min(parsed.features.length, 10); i++) {
-          const feature = parsed.features[i];
-          if (!feature || typeof feature !== 'object') {
-            throw new Error(`Invalid GeoJSON: feature ${i} is not an object`);
-          }
-          if (feature.type !== 'Feature') {
-            throw new Error(`Invalid GeoJSON: feature ${i} type is not 'Feature'`);
-          }
-          if (!feature.geometry || typeof feature.geometry !== 'object') {
-            throw new Error(`Invalid GeoJSON: feature ${i} missing or invalid geometry`);
-          }
-          if (!feature.geometry.coordinates || !Array.isArray(feature.geometry.coordinates)) {
-            throw new Error(`Invalid GeoJSON: feature ${i} missing or invalid coordinates`);
-          }
-        }
-
-        return parsed;
-      }, retryConfig, `R2 fetch ${key}`);
-    });
-
-    // Cache the result
-    setCachedGeoJSON(key, geo);
-
-    // Create spatial index
-    const spatialIndex = createSpatialIndex(geo);
-    setCachedSpatialIndex(key, spatialIndex);
-
-    incrementMetric('r2Successes');
-    recordTiming('totalR2Time', Date.now() - startTime);
-    return geo;
-  } catch (error) {
-    incrementMetric('r2Failures');
-    if (error instanceof CircuitBreakerOpenError) {
-      incrementMetric('r2CircuitBreakerTrips');
-    }
-    recordTiming('totalR2Time', Date.now() - startTime);
-    throw error;
-  }
-}
-
-export async function cachedLookupRiding(env: Env, pathname: string, lon: number, lat: number): Promise<LookupResult> {
+export async function lookupRidingFromSource(
+  source: DatasetSource,
+  env: Env,
+  pathname: string,
+  lon: number,
+  lat: number
+): Promise<LookupResult> {
   const timeoutConfig = getTimeoutConfig(env);
   const timeoutMs = timeoutConfig.lookup;
 
   const lookupPromise = (async () => {
     const { r2Key } = pickDataset(pathname);
 
-    // Try spatial database first if enabled
-    const dbConfig = getSpatialDbConfig(env);
-    if (dbConfig.ENABLED && env.RIDING_DB) {
+    // Try spatial database first if the source is wired with a D1 fast path.
+    if (source.querySpatial) {
       try {
-        const dbResult = await queryRidingFromDatabase(env, r2Key, lon, lat);
-        if (dbResult) {
+        const properties = await source.querySpatial(r2Key, lon, lat);
+        if (properties) {
           return {
-            riding: ridingNameFromProperties(dbResult.properties) ?? 'Unknown',
-            properties: dbResult.properties || {}
+            riding: ridingNameFromProperties(properties) ?? 'Unknown',
+            properties,
           };
         }
       } catch (error) {
@@ -131,22 +43,35 @@ export async function cachedLookupRiding(env: Env, pathname: string, lon: number
       }
     }
 
-    // Check LRU cache
-    let spatialIndex = spatialIndexCacheLRU.get(r2Key);
-
-    if (!spatialIndex) {
-      // Load GeoJSON to create spatial index
-      await loadGeo(env, r2Key);
-      spatialIndex = spatialIndexCacheLRU.get(r2Key);
-      if (!spatialIndex) throw new Error(`Failed to create spatial index for ${r2Key}`);
-    }
-
+    // LRU-backed spatial index; a miss loads the GeoJSON from R2 and indexes it.
+    const spatialIndex = await source.getSpatialIndex(r2Key);
     return lookupRidingWithIndex(spatialIndex, lon, lat);
   })();
 
   return withTimeout(lookupPromise, timeoutMs, "Riding lookup");
 }
 
+/**
+ * Bind a `DatasetSource` to the `LookupRidingFn` shape the lookup core threads around. Used by
+ * the queue DO so each isolate holds its own source rather than a shared module singleton.
+ */
+export function createLookupRiding(source: DatasetSource): LookupRidingFn {
+  return (env, pathname, lon, lat) => lookupRidingFromSource(source, env, pathname, lon, lat);
+}
+
+/**
+ * The production `LookupRidingFn`: one R2-backed source over the isolate's shared LRUs.
+ */
+export const cachedLookupRiding: LookupRidingFn = (env, pathname, lon, lat) =>
+  lookupRidingFromSource(r2DatasetSource(env), env, pathname, lon, lat);
+
+/**
+ * Load and cache a dataset's GeoJSON. Kept as a thin `DatasetSource` adapter for the cache
+ * warming job and the operator cache-warm route.
+ */
+export function loadGeo(env: Env, key: string): Promise<GeoJSONFeatureCollection> {
+  return r2DatasetSource(env).load(key);
+}
 
 // Lookup riding using spatial index
 function lookupRidingWithIndex(spatialIndex: SpatialIndex, lon: number, lat: number): LookupResult {

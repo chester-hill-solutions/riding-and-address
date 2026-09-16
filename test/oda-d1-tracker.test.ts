@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   geocodeWithOda,
   geocodePostalCentroidWithOda,
@@ -129,5 +129,48 @@ describe('ODA D1 tracker', () => {
     expect(metrics.odaD1Reads).toBeGreaterThan(0);
     expect(metrics.odaD1QueriesMaxPerRequest).toBe(0);
     expect(getOdaD1QueryCountForRequest()).toBe(legacyCountBefore);
+  });
+
+  it('routes read counts and the request maximum to an injected sink', () => {
+    resetMetrics();
+    const sink = {
+      incrementMetric: vi.fn(),
+      recordTiming: vi.fn(),
+      updateOdaD1QueriesMaxPerRequest: vi.fn(),
+    };
+
+    const tracker = createOdaD1Tracker(sink);
+    tracker.record();
+    tracker.record();
+    expect(sink.incrementMetric).toHaveBeenCalledTimes(2);
+    expect(sink.incrementMetric).toHaveBeenCalledWith('odaD1Reads');
+    expect(tracker.end()).toBe(2);
+    expect(sink.updateOdaD1QueriesMaxPerRequest).toHaveBeenCalledWith(2);
+
+    // The module global is untouched.
+    expect(getMetrics().odaD1Reads).toBe(0);
+    expect(getMetrics().odaD1QueriesMaxPerRequest).toBe(0);
+  });
+
+  it('geocodeWithOda routes D1 reads to an injected sink, not the global', async () => {
+    resetMetrics();
+    const sink = {
+      incrementMetric: vi.fn(),
+      recordTiming: vi.fn(),
+      updateOdaD1QueriesMaxPerRequest: vi.fn(),
+    };
+
+    await geocodeWithOda(
+      odaEnv(),
+      { address: '123 Main St', city: 'Toronto', state: 'ON' },
+      undefined,
+      sink
+    );
+
+    expect(sink.incrementMetric).toHaveBeenCalledWith('odaD1Reads');
+    expect(sink.incrementMetric).toHaveBeenCalledWith('geocodingOdaMethodExact');
+    expect(sink.updateOdaD1QueriesMaxPerRequest).toHaveBeenCalledWith(1);
+    expect(getMetrics().odaD1Reads).toBe(0);
+    expect(getMetrics().odaD1QueriesMaxPerRequest).toBe(0);
   });
 });

@@ -2,8 +2,9 @@
 
 import { BatchLookupRequest, BatchLookupResponse, Env } from './types';
 import { parseBatchLookupRequests } from './validation';
-import { performExpandedLookup, expandedLookupResponseFields } from './lookup-expansion';
-import { cachedLookupRiding } from './riding-lookup';
+import { performExpandedLookup, expandedLookupResponseFields, type LookupRidingFn } from './lookup-expansion';
+import { createLookupRiding } from './riding-lookup';
+import { r2DatasetSource, createDatasetCaches, type DatasetSource } from './dataset-source';
 import { geocodeIfNeeded } from './geocoding';
 import { QueuePolicy, type QueueStateSnapshot } from './queue-policy';
 import type { QueueJob } from './queue-types';
@@ -30,6 +31,13 @@ export class QueueManager {
   private state: DurableObjectState;
   private env: Env;
   private policy: QueuePolicy;
+  /**
+   * The DO's own dataset source and LRUs, built once per isolate. The Worker's module-global LRUs
+   * are a different copy, so the queue's spatial cache is explicitly isolated rather than an
+   * implicit share of whatever the Worker happened to warm.
+   */
+  private datasetSource: DatasetSource;
+  private lookupRiding: LookupRidingFn;
   private stateLoadPromise: Promise<void> | null = null;
   private stateLoaded: boolean = false;
   private stateLoadError: Error | null = null;
@@ -37,6 +45,8 @@ export class QueueManager {
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
+    this.datasetSource = r2DatasetSource(env, createDatasetCaches());
+    this.lookupRiding = createLookupRiding(this.datasetSource);
     this.policy = new QueuePolicy({
       persistence: {
         load: () => this.state.storage.get<QueueStateSnapshot>(QUEUE_STATE_KEY),
@@ -367,7 +377,7 @@ export class QueueManager {
         this.env,
         job.request.pathname,
         job.request.query,
-        cachedLookupRiding,
+        this.lookupRiding,
         {
           geocodeIfNeeded: geocodeIfNeeded,
         }

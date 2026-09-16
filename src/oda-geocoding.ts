@@ -1,6 +1,5 @@
 import {
   Env,
-  Metrics,
   QueryParams,
   OdaAddressComponents,
   OdaDataSource,
@@ -25,12 +24,11 @@ import {
 } from './oda-normalize';
 import { expandCityCandidates } from './oda-city-aliases';
 import { withCitySource } from './oda-source';
-import { incrementMetric } from './metrics';
+import { metricsSink, ODA_METHOD_METRIC, type MetricsSink } from './metrics';
 import { expandStreetAddress } from './geocode-region';
 import { formatFromOdaRow } from './canada-post-format';
 import {
   createOdaD1Tracker,
-  recordOdaD1Query,
   type OdaD1Tracker,
 } from './oda-d1-tracker';
 import { getAddressStore, type AddressStore } from './address-store';
@@ -103,25 +101,16 @@ function rowToComponents(row: OdaAddressRow): OdaAddressComponents {
   };
 }
 
-/** Per-method usage counter, so the local resolution mix is visible. */
-const ODA_METHOD_METRIC: Record<OdaGeocodeMethod, keyof Metrics> = {
-  exact: 'geocodingOdaMethodExact',
-  postal_street: 'geocodingOdaMethodPostalStreet',
-  postal_centroid: 'geocodingOdaMethodPostalCentroid',
-  street_interpolated: 'geocodingOdaMethodStreetInterpolated',
-  city_centroid: 'geocodingOdaMethodCityCentroid',
-  nearest_neighbor: 'geocodingOdaMethodNearest',
-};
-
 function buildResult(
   row: Partial<OdaAddressRow> & { lat: number; lon: number; province: string },
   method: OdaGeocodeMethod,
   config: ReturnType<typeof getOdaConfig>,
   matchedFields: string[],
+  sink: MetricsSink,
   distanceMeters?: number,
   confidenceOverride?: number
 ): OdaGeocodeResult {
-  incrementMetric(ODA_METHOD_METRIC[method]);
+  sink.incrementMetric(ODA_METHOD_METRIC[method]);
   const mailingAddress = formatFromOdaRow({
     civic_number: row.civic_number,
     street_name: row.street_name,
@@ -203,9 +192,11 @@ function buildStreetKeyVariants(parsed: ReturnType<typeof parseAddressQuery>): s
   );
 }
 
-/** Resolve the ODA read store for a request, attributing each read to its tracker. */
-function storeFor(env: Env, tracker?: OdaD1Tracker): AddressStore {
-  const record = tracker ? () => tracker.record() : () => recordOdaD1Query();
+/** Resolve the ODA read store for a request, attributing each read to its tracker and sink. */
+function storeFor(env: Env, tracker: OdaD1Tracker | undefined, sink: MetricsSink): AddressStore {
+  const record = tracker
+    ? () => tracker.record()
+    : () => sink.incrementMetric('odaD1Reads');
   return getAddressStore(env.ODA_DB!, record);
 }
 
@@ -513,7 +504,8 @@ function postalCentroidWithinHintDistance(
 export async function geocodeWithOda(
   env: Env,
   qp: QueryParams,
-  tracker?: OdaD1Tracker
+  tracker?: OdaD1Tracker,
+  sink: MetricsSink = metricsSink
 ): Promise<OdaGeocodeResult> {
   const config = getOdaConfig(env);
   if (!env.ODA_DB) {
@@ -523,12 +515,12 @@ export async function geocodeWithOda(
   // A caller-supplied tracker is owned (and ended) by that caller; otherwise this call
   // creates its own so no state is shared with a concurrent request.
   if (tracker) {
-    return geocodeWithOdaInner(env, qp, config, tracker);
+    return geocodeWithOdaInner(env, qp, config, tracker, sink);
   }
 
-  const owned = createOdaD1Tracker();
+  const owned = createOdaD1Tracker(sink);
   try {
-    return await geocodeWithOdaInner(env, qp, config, owned);
+    return await geocodeWithOdaInner(env, qp, config, owned, sink);
   } finally {
     owned.end();
   }
@@ -538,9 +530,10 @@ async function geocodeWithOdaInner(
   env: Env,
   qp: QueryParams,
   config: ReturnType<typeof getOdaConfig>,
-  tracker: OdaD1Tracker
+  tracker: OdaD1Tracker,
+  sink: MetricsSink
 ): Promise<OdaGeocodeResult> {
-  const store = storeFor(env, tracker);
+  const store = storeFor(env, tracker, sink);
   const parsed = parseAddressQuery({
     address: qp.address ? expandStreetAddress(qp.address) : undefined,
     postal: qp.postal,
@@ -635,7 +628,7 @@ async function geocodeWithOdaInner(
     return withCitySource(
       env,
       assertConfidence(
-        buildResult(exact, 'exact', config, ['civic', 'street', 'city', 'province']),
+        buildResult(exact, 'exact', config, ['civic', 'street', 'city', 'province'], sink),
         config.minConfidence
       ),
       exact.city,
@@ -650,7 +643,7 @@ async function geocodeWithOdaInner(
       return withCitySource(
         env,
         assertConfidence(
-          buildResult(street, 'street_interpolated', config, ['street', 'city']),
+          buildResult(street, 'street_interpolated', config, ['street', 'city'], sink),
           config.minConfidence
         ),
         street.city,
@@ -668,7 +661,7 @@ async function geocodeWithOdaInner(
       return withCitySource(
         env,
         assertConfidence(
-          buildResult(byPostal, 'postal_street', config, ['civic', 'street', 'postal']),
+          buildResult(byPostal, 'postal_street', config, ['civic', 'street', 'postal'], sink),
           config.minConfidence
         ),
         byPostal.city,
@@ -701,7 +694,8 @@ async function geocodeWithOdaInner(
             },
             'postal_centroid',
             config,
-            ['postal']
+            ['postal'],
+            sink
           ),
           config.minConfidence
         );
@@ -732,7 +726,8 @@ async function geocodeWithOdaInner(
         },
         'city_centroid',
         config,
-        ['city', 'province']
+        ['city', 'province'],
+        sink
       );
       if ((result.confidence ?? 0) >= config.minConfidence) {
         return withCitySource(env, result, cityCentroid.city, cityCentroid.province);
@@ -757,7 +752,7 @@ async function geocodeWithOdaInner(
       return withCitySource(
         env,
         assertConfidence(
-          buildResult(nearest.row, 'nearest_neighbor', config, ['nearest_neighbor'], nearest.distance),
+          buildResult(nearest.row, 'nearest_neighbor', config, ['nearest_neighbor'], sink, nearest.distance),
           config.minConfidence
         ),
         nearest.row.city,
@@ -776,7 +771,8 @@ async function geocodeWithOdaInner(
 export async function geocodePostalCentroidWithOda(
   env: Env,
   qp: QueryParams,
-  tracker?: OdaD1Tracker
+  tracker?: OdaD1Tracker,
+  sink: MetricsSink = metricsSink
 ): Promise<OdaGeocodeResult> {
   const config = getOdaConfig(env);
   if (!env.ODA_DB) {
@@ -797,7 +793,7 @@ export async function geocodePostalCentroidWithOda(
     throw new OdaGeocodeError('Invalid postal code', 'INVALID_QUERY', 400);
   }
 
-  const centroid = await findPostalCentroid(storeFor(env, tracker), postal, provinces);
+  const centroid = await findPostalCentroid(storeFor(env, tracker, sink), postal, provinces);
   if (!centroid) {
     throw new OdaGeocodeError('Postal code not found in ODA database', 'ADDRESS_NOT_FOUND', 404);
   }
@@ -818,7 +814,8 @@ export async function geocodePostalCentroidWithOda(
       },
       'postal_centroid',
       config,
-      ['postal']
+      ['postal'],
+      sink
     ),
     config.minConfidence
   );
@@ -839,7 +836,8 @@ export type OdaBatchGeocodeItem = {
  */
 export async function geocodeBatchPostalCentroidsWithOda(
   env: Env,
-  queries: QueryParams[]
+  queries: QueryParams[],
+  sink: MetricsSink = metricsSink
 ): Promise<OdaBatchGeocodeItem[]> {
   const results: OdaBatchGeocodeItem[] = queries.map(() => ({
     lon: 0,
@@ -874,7 +872,7 @@ export async function geocodeBatchPostalCentroidsWithOda(
   for (const [postal, indices] of postalToIndices) {
     const sample = queries[indices[0]];
     try {
-      const geocoded = await geocodePostalCentroidWithOda(env, { ...sample, postal });
+      const geocoded = await geocodePostalCentroidWithOda(env, { ...sample, postal }, undefined, sink);
       const item: OdaBatchGeocodeItem = {
         lon: geocoded.lon,
         lat: geocoded.lat,
@@ -904,7 +902,8 @@ export async function geocodeBatchPostalCentroidsWithOda(
 
 export async function geocodeBatchWithOda(
   env: Env,
-  queries: QueryParams[]
+  queries: QueryParams[],
+  sink: MetricsSink = metricsSink
 ): Promise<OdaBatchGeocodeItem[]> {
   const results: OdaBatchGeocodeItem[] = [];
 
@@ -915,7 +914,7 @@ export async function geocodeBatchWithOda(
     }
     if (isPostalOnlyQuery(qp) || qp.geocodeMethod === 'postal_centroid') {
       try {
-        const geocoded = await geocodePostalCentroidWithOda(env, qp);
+        const geocoded = await geocodePostalCentroidWithOda(env, qp, undefined, sink);
         results.push({
           lon: geocoded.lon,
           lat: geocoded.lat,
@@ -935,7 +934,7 @@ export async function geocodeBatchWithOda(
       continue;
     }
     try {
-      const geocoded = await geocodeWithOda(env, qp);
+      const geocoded = await geocodeWithOda(env, qp, undefined, sink);
       results.push({
         lon: geocoded.lon,
         lat: geocoded.lat,
@@ -961,14 +960,15 @@ export async function reverseGeocodeWithOda(
   env: Env,
   lat: number,
   lon: number,
-  tracker?: OdaD1Tracker
+  tracker?: OdaD1Tracker,
+  sink: MetricsSink = metricsSink
 ): Promise<OdaGeocodeResult> {
   const config = getOdaConfig(env);
   if (!env.ODA_DB) {
     throw new OdaGeocodeError('ODA database not configured', 'ODA_NOT_CONFIGURED', 503);
   }
 
-  const nearest = await findNearestNeighbor(storeFor(env, tracker), lon, lat, config);
+  const nearest = await findNearestNeighbor(storeFor(env, tracker, sink), lon, lat, config);
   if (!nearest) {
     throw new OdaGeocodeError('No nearby address found', 'NO_NEARBY_ADDRESS', 404);
   }
@@ -984,7 +984,7 @@ export async function reverseGeocodeWithOda(
   return withCitySource(
     env,
     assertConfidence(
-      buildResult(nearest.row, 'nearest_neighbor', config, ['reverse'], nearest.distance),
+      buildResult(nearest.row, 'nearest_neighbor', config, ['reverse'], sink, nearest.distance),
       config.minConfidence
     ),
     nearest.row.city,
@@ -994,9 +994,10 @@ export async function reverseGeocodeWithOda(
 
 export async function normalizeAddressWithOda(
   env: Env,
-  qp: QueryParams
+  qp: QueryParams,
+  sink: MetricsSink = metricsSink
 ): Promise<OdaGeocodeResult> {
-  return geocodeWithOda(env, qp);
+  return geocodeWithOda(env, qp, undefined, sink);
 }
 
 export { haversineMeters };

@@ -61,6 +61,7 @@ import {
 import { handleProjectionRequest } from './projection-handlers';
 import { getStats as getQueueStats } from './queue-client';
 import { cachedLookupRiding as lookupRiding, loadGeo } from './riding-lookup';
+import { r2DatasetSource } from './dataset-source';
 import { recordSuccessfulBillable, type BillableAuthContext } from './billing';
 
 function keyAuthFailureResponse(auth: KeyAuthResult, correlationId: string): Response {
@@ -170,7 +171,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
         const body = await request.json() as { dataset?: string };
         const dataset = body.dataset || 'federalridings-2024.geojson';
 
-        const result = await syncGeoJSONToDatabase(env, dataset, loadGeo);
+        const result = await syncGeoJSONToDatabase(env, dataset, r2DatasetSource(env));
         return new Response(JSON.stringify({
           success: result.success,
           inserted: result.inserted,

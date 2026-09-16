@@ -1,4 +1,4 @@
-import { incrementMetric, updateOdaD1QueriesMaxPerRequest } from './metrics';
+import { metricsSink, type MetricsSink } from './metrics';
 
 /**
  * Counts the D1 reads a single ODA request makes.
@@ -9,24 +9,25 @@ import { incrementMetric, updateOdaD1QueriesMaxPerRequest } from './metrics';
  * cleared the tracking flag. A tracker is created per request and threaded explicitly
  * through the ODA call chain, so concurrent requests cannot observe each other.
  *
- * The only global side effect is `updateOdaD1QueriesMaxPerRequest`, the 24h-window maximum.
+ * Every side effect goes to the tracker's sink — the module-global sink by default, or an
+ * injected one so a single run can be observed in isolation.
  */
 export interface OdaD1Tracker {
-  /** Count one D1 read for this request and increment the global `odaD1Reads` metric. */
+  /** Count one D1 read for this request and increment `odaD1Reads` on the sink. */
   record(): void;
-  /** Stop tracking, publish the request count to the 24h maximum, and return the count. */
+  /** Stop tracking, publish the request count to the sink's 24h maximum, and return the count. */
   end(): number;
   /** Reads recorded for this request so far. Does not stop tracking. */
   count(): number;
 }
 
-export function createOdaD1Tracker(): OdaD1Tracker {
+export function createOdaD1Tracker(sink: MetricsSink = metricsSink): OdaD1Tracker {
   let requestQueryCount = 0;
   let trackingEnabled = true;
 
   return {
     record(): void {
-      incrementMetric('odaD1Reads');
+      sink.incrementMetric('odaD1Reads');
       if (trackingEnabled) {
         requestQueryCount++;
       }
@@ -34,7 +35,7 @@ export function createOdaD1Tracker(): OdaD1Tracker {
     end(): number {
       const count = requestQueryCount;
       trackingEnabled = false;
-      updateOdaD1QueriesMaxPerRequest(count);
+      sink.updateOdaD1QueriesMaxPerRequest?.(count);
       return count;
     },
     count(): number {
@@ -62,7 +63,7 @@ export function recordOdaD1Query(): void {
   } else {
     // No request tracker is active: count the read globally without attributing it to a
     // request. Paths that are not request-bracketed (postal-centroid, reverse) land here.
-    incrementMetric('odaD1Reads');
+    metricsSink.incrementMetric('odaD1Reads');
   }
 }
 
