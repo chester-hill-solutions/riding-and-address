@@ -1,15 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import {
+  DEFAULT_STREET_TYPES,
   buildSearchKey,
   buildStreetKey,
   foldAccents,
   formatStreetLabel,
+  leadingCivicNumber,
   normalizeOdaCsvRow,
   normalizeProvince,
   normalizeSearchToken,
   normalizeStreetDirection,
   normalizeStreetType,
   parseAddressQuery,
+  parseCivicNumber,
   parseFreeformAddress,
   parseStreetKey,
   buildCityKey,
@@ -237,6 +240,41 @@ describe('formatStreetLabel', () => {
 
   it('keeps hyphenated names capitalised on both sides', () => {
     expect(formatStreetLabel('STE-CATHERINE|RUE')).toBe('Ste-Catherine Rue');
+  });
+});
+
+describe('civic-number grammar', () => {
+  it('parses the same civic forms the free-form parser extracts', () => {
+    for (const raw of ['123', '123A', '123 1/2']) {
+      const parsed = parseCivicNumber(raw);
+      expect(parsed?.numeric).not.toBeNull();
+      const freeform = parseFreeformAddress(`${raw} Main St`);
+      expect(freeform.civic).toBe(raw);
+      expect(parseCivicNumber(freeform.civic)?.numeric).toBe(parsed?.numeric);
+    }
+  });
+
+  it('rejects a string that is not a whole civic number', () => {
+    expect(parseCivicNumber('Main St')?.numeric).toBeNull();
+    expect(parseCivicNumber('')).toBeUndefined();
+  });
+});
+
+describe('leadingCivicNumber', () => {
+  it('reads the same leading digits the grammar defines', () => {
+    expect(leadingCivicNumber('  123A Main St')).toBe('123');
+    expect(leadingCivicNumber('757 Victoria Park')).toBe('757');
+    expect(leadingCivicNumber('Main St')).toBeUndefined();
+    expect(leadingCivicNumber(undefined)).toBeUndefined();
+  });
+});
+
+describe('DEFAULT_STREET_TYPES', () => {
+  it('contains only canonical street-type values', () => {
+    for (const type of DEFAULT_STREET_TYPES) {
+      if (!type) continue;
+      expect(normalizeStreetType(type)).toBe(type);
+    }
   });
 });
 

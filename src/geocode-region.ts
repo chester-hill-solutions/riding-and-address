@@ -1,5 +1,11 @@
 import { QueryParams, GoogleAddressComponents } from './types';
-import { normalizeProvince, normalizeSearchToken } from './oda-normalize';
+import {
+  leadingCivicNumber,
+  normalizeProvince,
+  normalizeSearchToken,
+  STREET_TYPE_QUERY_TOKENS,
+} from './oda-normalize';
+import { joinAddressLines } from './canada-post-format';
 
 const PROVINCE_CODE_TO_NAME: Record<string, string> = {
   NL: 'Newfoundland',
@@ -17,8 +23,10 @@ const PROVINCE_CODE_TO_NAME: Record<string, string> = {
   NU: 'Nunavut',
 };
 
-const STREET_TYPE_SUFFIX =
-  /\b(ST|STREET|AVE|AV|AVENUE|RD|ROAD|BLVD|BOULEVARD|DR|DRIVE|CRES|CRESCENT|CRT|COURT|PL|PLACE|PKY|PARKWAY|HWY|HIGHWAY|RUE|CH|CHEMIN|WAY|LANE|LN|TRAIL|TL|CIR|CIRCLE)\b\.?$/i;
+// Both patterns are generated from the same canonical vocabulary, so they can never disagree
+// about what counts as a street type.
+const STREET_TYPE_PATTERN = STREET_TYPE_QUERY_TOKENS.join('|');
+const STREET_TYPE_SUFFIX = new RegExp(`\\b(${STREET_TYPE_PATTERN})\\b\\.?$`, 'i');
 
 /** Tokens used to match geocoder results against requested province/city. */
 export function regionHintTokens(qp: QueryParams): string[] {
@@ -82,8 +90,7 @@ export function googleResultMatchesRegion(
   return geocodeLabelMatchesRegion(qp, label);
 }
 
-const STREET_TYPE_ANY =
-  /\b(ST|STREET|AVE|AV|AVENUE|RD|ROAD|BLVD|BOULEVARD|DR|DRIVE|CRES|CRESCENT|CRT|COURT|PL|PLACE|PKY|PARKWAY|HWY|HIGHWAY|RUE|CH|CHEMIN|WAY|LANE|LN|TRAIL|TL|CIR|CIRCLE|CIRCL|CRCL)\b/i;
+const STREET_TYPE_ANY = new RegExp(`\\b(${STREET_TYPE_PATTERN})\\b`, 'i');
 
 /** Append a street type when users omit one (e.g. "757 Victoria Park"). */
 export function expandStreetAddress(address: string): string {
@@ -106,7 +113,7 @@ export function buildGeocodeQueryString(qp: QueryParams): string {
     parts.push(code ? PROVINCE_CODE_TO_NAME[code] || qp.state : qp.state);
   }
   parts.push(qp.country || 'Canada');
-  return parts.filter(Boolean).join(', ');
+  return joinAddressLines(parts);
 }
 
 export function provinceNameForGoogleComponent(state: string | undefined): string | undefined {
@@ -128,7 +135,7 @@ function geogratisResultScore(qp: QueryParams, result: GeoGratisCandidate): numb
   const title = (result.title || '').toUpperCase();
 
   if (qp.address) {
-    const civic = qp.address.trim().match(/^(\d+)/)?.[1];
+    const civic = leadingCivicNumber(qp.address);
     if (civic && title.includes(civic)) score += 20;
 
     const streetPart = expandStreetAddress(qp.address).replace(/^\d+\s*/, '');

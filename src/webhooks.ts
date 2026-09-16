@@ -22,9 +22,6 @@ const WEBHOOK_INDEX_KEY = 'webhook:index';
 const WEBHOOK_EVENT_INDEX_KEY = 'webhook:event:index';
 const WEBHOOK_DELIVERY_INDEX_KEY = 'webhook:delivery:index';
 
-// Track if webhook processing has been initialized
-let webhookProcessingInitialized = false;
-
 // ID generation functions
 export function generateWebhookId(): string {
   return `webhook_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -337,25 +334,6 @@ export async function cleanupWebhookData(env: Env): Promise<void> {
   // Update index
   const newDeliveryIndex = deliveryIndex.filter(id => !deliveriesToDelete.includes(id));
   await writeJsonEntry(env.WEBHOOKS, WEBHOOK_DELIVERY_INDEX_KEY, newDeliveryIndex);
-}
-
-// Initialize webhook processing
-export function initializeWebhookProcessing(_env: Env): void {
-  // Guard: only initialize once
-  if (webhookProcessingInitialized) {
-    return;
-  }
-  
-  if (!WEBHOOK_CONFIG.ENABLED) {
-    return;
-  }
-  
-  // Mark as initialized
-  webhookProcessingInitialized = true;
-  
-  // Note: Webhook processing and cleanup are now handled via Cron Triggers
-  // in the scheduled handler rather than setInterval, which is more reliable
-  // in Cloudflare Workers and avoids keeping isolates alive.
 }
 
 // Trigger webhook for batch completion

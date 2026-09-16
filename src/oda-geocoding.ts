@@ -14,6 +14,7 @@ import {
 } from './oda-config';
 import { isPostalOnlyQuery } from './geocode-query';
 import {
+  DEFAULT_STREET_TYPES,
   buildCityKey,
   buildSearchKey,
   buildStreetKey,
@@ -190,8 +191,6 @@ function isStreetOnlyAmbiguous(parsed: ReturnType<typeof parseAddressQuery>): bo
   const hasContext = !!(parsed.city || parsed.province || parsed.postal);
   return hasStreet && !hasContext;
 }
-
-const DEFAULT_STREET_TYPES = ['', 'AVE', 'ST', 'RD', 'DR', 'BLVD', 'CRES'] as const;
 
 function streetTypeCandidates(parsed: ReturnType<typeof parseAddressQuery>): string[] {
   return parsed.streetType ? [parsed.streetType] : [...DEFAULT_STREET_TYPES];

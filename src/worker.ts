@@ -43,14 +43,10 @@ import {
   queryRidingFromDatabase
 } from './spatial';
 import { 
-  initializeWebhookProcessing, 
-  getAllWebhooks,
-  getWebhookEvents,
-  getWebhookDeliveries,
-  createWebhook,
   processWebhookEvents,
   cleanupWebhookData
 } from './webhooks';
+import { handleWebhookAdmin, isWebhookAdminPath } from './webhook-admin';
 import { 
   processBatchLookupWithBatchGeocoding,
   submitBatchToQueue,
@@ -155,9 +151,6 @@ export default {
     
     // Note: Cache warming is now handled by Cloudflare Cron Triggers
     // See wrangler.jsonc for cron configuration
-    
-    // Initialize webhook processing
-    initializeWebhookProcessing(env);
     
     try {
       const url = new URL(request.url);
@@ -304,51 +297,9 @@ export default {
         });
       }
 
-      // Webhook management endpoints
-      if (pathname.startsWith('/webhooks')) {
-        if (!checkAdminAuth(request, env)) {
-          return unauthorizedResponse(correlationId);
-        }
-        
-        if (pathname === '/webhooks' && request.method === 'GET') {
-          const webhooksMap = await getAllWebhooks(env);
-          const webhooks = Array.from(webhooksMap.entries()).map(([id, config]) => ({
-            id,
-            url: config.url,
-            events: config.events,
-            active: config.active,
-            createdAt: config.createdAt,
-            lastDelivery: config.lastDelivery,
-            failureCount: config.failureCount
-          }));
-          
-          return new Response(JSON.stringify({ webhooks }), {
-            headers: { 
-              "content-type": "application/json; charset=UTF-8",
-              ...scope.corsHeaders(request.headers.get('Origin'))
-            }
-          });
-        }
-        
-        if (pathname === '/webhooks/events' && request.method === 'GET') {
-          const events = await getWebhookEvents(env);
-          return new Response(JSON.stringify({ events }), {
-            headers: { 
-              "content-type": "application/json; charset=UTF-8",
-              ...scope.corsHeaders(request.headers.get('Origin'))
-            }
-          });
-        }
-        
-        if (pathname === '/webhooks/deliveries' && request.method === 'GET') {
-          const deliveries = await getWebhookDeliveries(env);
-          return new Response(JSON.stringify({ deliveries }), {
-            headers: { 
-              "content-type": "application/json; charset=UTF-8",
-              ...scope.corsHeaders(request.headers.get('Origin'))
-            }
-          });
-        }
+      // Webhook management — one adapter serves both /webhooks/* and /api/webhooks/*.
+      if (isWebhookAdminPath(pathname)) {
+        return handleWebhookAdmin(scope, request, pathname);
       }
       
       // Cache warming status endpoint
@@ -594,105 +545,6 @@ export default {
         } else {
           return badRequest("Method not allowed", 405);
         }
-      }
-      
-      // Handle webhook management endpoints
-      if (pathname.startsWith('/api/webhooks')) {
-        if (pathname === '/api/webhooks' && request.method === 'GET') {
-          if (!checkAdminAuth(request, env)) {
-            return unauthorizedResponse(correlationId);
-          }
-          
-          const webhooksMap = await getAllWebhooks(env);
-          const webhooks = Array.from(webhooksMap.entries()).map(([id, config]) => ({
-            id,
-            url: config.url,
-            events: config.events,
-            secret: config.secret ? '***' : undefined,
-            createdAt: config.createdAt,
-            lastDelivery: config.lastDelivery,
-            failureCount: config.failureCount,
-            maxFailures: config.maxFailures,
-            active: config.active
-          }));
-          
-          return new Response(JSON.stringify({ webhooks }), {
-            headers: { 
-              "content-type": "application/json; charset=UTF-8",
-              ...scope.corsHeaders(request.headers.get('Origin'))
-            }
-          });
-        }
-        
-        if (pathname === '/api/webhooks' && request.method === 'POST') {
-          if (!checkAdminAuth(request, env)) {
-            return unauthorizedResponse(correlationId);
-          }
-          
-          try {
-            const body = await request.json() as { url: string; events: string[]; secret?: string };
-            const webhookId = await createWebhook(env, {
-              url: body.url,
-              events: body.events,
-              secret: body.secret || '',
-              active: true
-            });
-            
-            return new Response(JSON.stringify({
-              webhookId,
-              message: "Webhook created successfully"
-            }), {
-              headers: { 
-                "content-type": "application/json; charset=UTF-8",
-                ...scope.corsHeaders(request.headers.get('Origin'))
-              }
-            });
-          } catch (error) {
-            return internalErrorResponse(error, 'Failed to create webhook', correlationId);
-          }
-        }
-        
-        if (pathname === '/api/webhooks/events' && request.method === 'GET') {
-          if (!checkAdminAuth(request, env)) {
-            return unauthorizedResponse(correlationId);
-          }
-          
-          const url = new URL(request.url);
-          const status = url.searchParams.get('status');
-          const webhookId = url.searchParams.get('webhookId');
-          
-          const events = await getWebhookEvents(env, webhookId || undefined);
-          const filteredEvents = status ? events.filter(e => e.status === status) : events;
-          
-          return new Response(JSON.stringify({ events: filteredEvents }), {
-            headers: { 
-              "content-type": "application/json; charset=UTF-8",
-              ...scope.corsHeaders(request.headers.get('Origin'))
-            }
-          });
-        }
-        
-        if (pathname === '/api/webhooks/deliveries' && request.method === 'GET') {
-          if (!checkAdminAuth(request, env)) {
-            return unauthorizedResponse(correlationId);
-          }
-          
-          const url = new URL(request.url);
-          const webhookId = url.searchParams.get('webhookId');
-          const status = url.searchParams.get('status');
-          
-          const deliveries = await getWebhookDeliveries(env, webhookId || undefined);
-          const filteredDeliveries = status ? deliveries.filter(d => d.status === status) : deliveries;
-          
-          return new Response(JSON.stringify({ deliveries: filteredDeliveries }), {
-            headers: { 
-              "content-type": "application/json; charset=UTF-8",
-              ...scope.corsHeaders(request.headers.get('Origin'))
-            }
-          });
-        }
-        
-        return badRequest("Webhook endpoint not found", 404);
       }
       
       // Batch processing endpoints

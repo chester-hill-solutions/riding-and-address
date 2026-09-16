@@ -6,6 +6,7 @@ import {
   getOdaSuggestConfig,
 } from './oda-config';
 import {
+  buildStreetKey,
   formatStreetLabel,
   normalizeSearchToken,
   normalizeStreetDirection,
@@ -14,6 +15,7 @@ import {
   parseFreeformAddress,
   parseStreetKey,
 } from './oda-normalize';
+import { formatFromOdaRow } from './canada-post-format';
 import { haversineMeters } from './oda-geocoding';
 
 /**
@@ -779,9 +781,11 @@ function toContainerSuggestion(
 }
 
 function toLeafSuggestion(row: AddressRow, score: number, distanceMeters?: number): Suggestion {
-  const streetKey = [row.street_name, row.street_type, row.street_direction]
-    .filter(Boolean)
-    .join('|');
+  const streetKey = buildStreetKey(
+    row.street_name || '',
+    row.street_type || '',
+    row.street_direction || ''
+  );
   const streetLabel = formatStreetLabel(streetKey);
   const unitPrefix = row.unit ? `${row.unit}-` : '';
   const mainText = `${unitPrefix}${row.civic_number} ${streetLabel}`.trim();
@@ -801,7 +805,7 @@ function toLeafSuggestion(row: AddressRow, score: number, distanceMeters?: numbe
     location: { lat: row.lat, lon: row.lon },
     cursor: mainText.length,
     score,
-    addressComponents: toAddressComponents(row, streetLabel),
+    addressComponents: toAddressComponents(row),
     ...(distanceMeters === undefined ? {} : { distanceMeters: Math.round(distanceMeters) }),
   };
 }
@@ -818,9 +822,11 @@ function buildingSuggestion(
   score: number,
   distanceMeters?: number
 ): Suggestion {
-  const streetKey = [sample.street_name, sample.street_type, sample.street_direction]
-    .filter(Boolean)
-    .join('|');
+  const streetKey = buildStreetKey(
+    sample.street_name || '',
+    sample.street_type || '',
+    sample.street_direction || ''
+  );
   const streetLabel = formatStreetLabel(streetKey || ref.streetKey);
   const mainText = `${civic} ${streetLabel}`;
   const secondary = [sample.city, sample.province, sample.postal_code].filter(Boolean).join(', ');
@@ -915,7 +921,20 @@ function toRangedSuggestion(
   };
 }
 
-function toAddressComponents(row: AddressRow, streetLabel: string): OdaAddressComponents {
+function toAddressComponents(row: AddressRow): OdaAddressComponents {
+  // Render the formatted address through the same Canada Post formatter the geocode path uses,
+  // so a street cannot be spelled one way in suggestions and another in geocoding output.
+  const mailing = formatFromOdaRow({
+    civic_number: row.civic_number,
+    street_name: row.street_name || undefined,
+    street_type: row.street_type || undefined,
+    street_direction: row.street_direction || undefined,
+    unit: row.unit || undefined,
+    city: row.city || undefined,
+    province: row.province,
+    postal_code: row.postal_code || undefined,
+  });
+
   return {
     civic_number: row.civic_number,
     street_name: row.street_name || undefined,
@@ -926,9 +945,7 @@ function toAddressComponents(row: AddressRow, streetLabel: string): OdaAddressCo
     administrative_area_level_1: row.province,
     postal_code: row.postal_code || undefined,
     country: 'CA',
-    formatted_address:
-      row.full_address ||
-      `${row.civic_number} ${streetLabel}, ${[row.city, row.province, row.postal_code].filter(Boolean).join(', ')}`,
+    formatted_address: row.full_address || mailing.formattedSingleLine,
   };
 }
 
