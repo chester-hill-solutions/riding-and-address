@@ -3,11 +3,16 @@ import { createOpenAPISpec } from '../src/docs';
 import {
   ROUTES,
   compilePattern,
+  createRouteContext,
   legacy,
   matchRoute,
   ownerOf,
+  runPrelude,
+  type RouteContext,
   type RouteEntry,
 } from '../src/routes';
+import type { Env } from '../src/types';
+import { createLookupTestEnv, fetchLookup } from './helpers/lookup-test-env';
 
 /**
  * Unit tests for the route table itself. Dispatch is a pure function of the table, so these pin
@@ -162,7 +167,10 @@ describe('table completeness', () => {
       const label = pathsOf(entry).join(', ');
       expect(['api', 'portal'], label).toContain(entry.owner);
       expect(['public', 'internal'], label).toContain(entry.visibility);
-      expect(['public', 'admin', 'key', 'admin-optional'], label).toContain(entry.auth);
+      expect(
+        ['public', 'admin', 'admin-optional', 'key', 'search', 'batch', 'projection'],
+        label
+      ).toContain(entry.auth);
       expect(entry.rateLimit.length, label).toBeGreaterThan(0);
       expect(entry.methods.length, label).toBeGreaterThan(0);
       if (entry.owner === 'api') {
@@ -199,5 +207,114 @@ describe('table completeness', () => {
       expect(entryWithPath(path).handler, `${path} is still legacy`).not.toBe(legacy);
       expect(entryWithPath(path).handler).toBeTypeOf('function');
     }
+  });
+});
+
+const MOCK_EXECUTION_CTX = {
+  waitUntil: () => {},
+  passThroughOnException: () => {},
+  props: {},
+} as unknown as ExecutionContext;
+
+function contextFor(env: Env, request: Request): RouteContext {
+  return createRouteContext({
+    request,
+    env,
+    ctx: MOCK_EXECUTION_CTX,
+    correlationId: 'test-correlation',
+    startTime: Date.now(),
+  });
+}
+
+/**
+ * The defect this pins: ~30 legacy entries declared `auth`/`rateLimit` that nothing read, because
+ * `runPrelude` returned early for `handler: legacy`. These assert the declared policy is the one
+ * actually enforced — not merely present in the table.
+ */
+describe('declared policy is enforced', () => {
+  it('401s an admin-only legacy entry without credentials (fail closed)', async () => {
+    const entry = entryWithPath('/api/cache/warm');
+    expect(entry.handler).toBe(legacy);
+
+    const ctx = contextFor(
+      {} as Env,
+      new Request('https://lookup.test/api/cache/warm', { method: 'POST' })
+    );
+    const denial = await runPrelude(entry, ctx);
+
+    expect(denial?.status).toBe(401);
+    expect(ctx.isAdmin).toBe(false);
+  });
+
+  it('admits an admin-only legacy entry with the operator credential', async () => {
+    const entry = entryWithPath('/api/cache/warm');
+    const env = { BASIC_AUTH: 'admin:secret' } as Env;
+    const request = new Request('https://lookup.test/api/cache/warm', {
+      method: 'POST',
+      headers: { Authorization: `Basic ${btoa('admin:secret')}` },
+    });
+
+    const ctx = contextFor(env, request);
+    expect(await runPrelude(entry, ctx)).toBeNull();
+    expect(ctx.isAdmin).toBe(true);
+  });
+
+  it('gates that legacy entry through the real worker + dispatch path', async () => {
+    const response = await fetchLookup(createLookupTestEnv(), '/api/cache/warm', { method: 'POST' });
+    expect(response.status).toBe(401);
+  });
+
+  it('applies the search bucket exactly once per request', async () => {
+    const entry = entryWithPath('/api/search');
+    const env = { RATE_LIMIT: 1 } as Env;
+    const request = new Request('https://lookup.test/api/search?q=main', {
+      headers: { 'CF-Connecting-IP': '203.0.113.9' },
+    });
+
+    // With RATE_LIMIT=1, a second application inside one request would already deny the first.
+    expect(await runPrelude(entry, contextFor(env, request))).toBeNull();
+    const denial = await runPrelude(entry, contextFor(env, request));
+    expect(denial?.status).toBe(429);
+  });
+
+  it('enforces the projection Bearer gate and names its dialect', async () => {
+    const entry = entryWithPath('/admin/projection/*');
+    expect(entry.auth).toBe('projection');
+
+    const denied = await runPrelude(
+      entry,
+      contextFor(
+        {} as Env,
+        new Request('https://lookup.test/admin/projection/customers', { method: 'PUT' })
+      )
+    );
+    expect(denied?.status).toBe(401);
+    expect(((await denied!.json()) as { code?: string }).code).toBe('PROJECTION_UNAUTHORIZED');
+
+    const env = { PROJECTION_ADMIN_SECRET: 'ops-secret' } as Env;
+    const admitted = await runPrelude(
+      entry,
+      contextFor(
+        env,
+        new Request('https://lookup.test/admin/projection/customers', {
+          method: 'PUT',
+          headers: { Authorization: 'Bearer ops-secret' },
+        })
+      )
+    );
+    expect(admitted).toBeNull();
+  });
+
+  it('names the real dialect for the routes the old table misdescribed', () => {
+    expect(entryWithPath('/api/search').auth).toBe('search');
+    expect(entryWithPath('/api/queue/*').auth).toBe('key');
+    expect(entryWithPath('/api/queue/*').rateLimit).toBe('lookup');
+    expect(entryWithPath('/api/database/*').auth).toBe('public');
+    expect(entryWithPath('/admin/*').auth).toBe('public');
+    expect(entryWithPath('/queue/*').auth).toBe('public');
+
+    // `/api/oda/*` was declared admin but served as a key lookup; there is no such surface.
+    expect(ROUTES.some((entry) => pathsOf(entry).includes('/api/oda/*'))).toBe(false);
+    expect(matchRoute('GET', '/api/oda/anything')?.entry).toBe(entryWithPath('/api/*'));
   });
 });

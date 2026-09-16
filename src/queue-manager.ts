@@ -364,40 +364,36 @@ export class QueueManager {
 
   /**
    * The injected job runner. Binds the concrete lookup/geocode functions and
-   * `this.env` here — the policy never imports them. Errors are folded into a
-   * failed `BatchLookupResponse` exactly as before, so a lookup failure still
-   * completes the job; the policy's retry/dead-letter path is reached when a
-   * runner rejects (exercised by tests with a fake runner).
+   * `this.env` here — the policy never imports them.
+   *
+   * A genuine lookup failure rejects this promise; only a resolved
+   * `BatchLookupResponse` is a completed job. `performExpandedLookup` throws on
+   * failure (missing coordinates, lookup timeout, R2/geocoder errors) and
+   * resolves `properties: null` for a legitimate "no riding found", so letting
+   * the throw propagate is exactly the policy's failure signal: it records
+   * `error.message` as `lastError`, retries with backoff, and dead-letters on
+   * exhaustion. Swallowing the throw here would record a failed lookup as
+   * `completed` and make that engine unreachable in production.
    */
   private async runJob(job: QueueJob): Promise<BatchLookupResponse> {
     const started = job.startedAt ?? Date.now();
 
-    try {
-      const expanded = await performExpandedLookup(
-        this.env,
-        job.request.pathname,
-        job.request.query,
-        this.lookupRiding,
-        {
-          geocodeIfNeeded: geocodeIfNeeded,
-        }
-      );
-      return {
-        id: job.request.id,
-        query: job.request.query,
-        point: expanded.point,
-        ...expandedLookupResponseFields(expanded),
-        processingTime: Date.now() - started,
-      };
-    } catch (error) {
-      return {
-        id: job.request.id,
-        query: job.request.query,
-        properties: null,
-        error: error instanceof Error ? error.message : 'Lookup failed',
-        processingTime: Date.now() - started,
-      };
-    }
+    const expanded = await performExpandedLookup(
+      this.env,
+      job.request.pathname,
+      job.request.query,
+      this.lookupRiding,
+      {
+        geocodeIfNeeded: geocodeIfNeeded,
+      }
+    );
+    return {
+      id: job.request.id,
+      query: job.request.query,
+      point: expanded.point,
+      ...expandedLookupResponseFields(expanded),
+      processingTime: Date.now() - started,
+    };
   }
 }
 
