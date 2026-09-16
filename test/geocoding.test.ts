@@ -10,6 +10,15 @@ import {
   runExternalFallbackStage,
   buildGeocodeStages,
   OdaGeocodeError,
+  getGeocoderProvider,
+  registerGeocoderProvider,
+  unregisterGeocoderProvider,
+  buildExternalProviderChain,
+  runProviderChain,
+  ProviderUnavailableError,
+  NoResultsError,
+  type GeocoderProvider,
+  type GeocoderProviderInput,
   type GeocodeStage,
   type GeocodeStageContext,
 } from '../src/geocoding';
@@ -784,5 +793,273 @@ describe('stage miss/throw semantics', () => {
     await expect(
       geocodeIfNeeded(env, { postal: 'M5V2T6', state: 'ON', geocodeMethod: 'postal_centroid' })
     ).rejects.toBeInstanceOf(OdaGeocodeError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GeocoderProvider contract suite
+//
+// One fixture set, run against every adapter, plus a stub provider registered at
+// runtime and exercised through the real fallback chain.
+// ---------------------------------------------------------------------------
+
+type ProviderFixture = {
+  name: string;
+  provider: GeocoderProvider;
+  env: Env;
+  response: unknown;
+  emptyResponse: unknown;
+  expected: { lon: number; lat: number; normalizedAddress?: string };
+};
+
+const CONTRACT_QUERY: QueryParams = { address: '123 Main St', city: 'Ottawa', state: 'ON', country: 'CA' };
+
+function providerFixtures(): ProviderFixture[] {
+  return [
+    {
+      name: 'google',
+      provider: getGeocoderProvider('google')!,
+      env: { RIDINGS: {} as R2Bucket, GOOGLE_MAPS_KEY: 'test-key' } as Env,
+      response: {
+        status: 'OK',
+        results: [
+          {
+            geometry: { location: { lat: 45.4215, lng: -75.6972 } },
+            formatted_address: '123 Main St, Ottawa, Ontario, Canada',
+            address_components: [
+              { long_name: 'Ottawa', short_name: 'Ottawa', types: ['locality'] },
+              { long_name: 'Ontario', short_name: 'ON', types: ['administrative_area_level_1'] },
+            ],
+          },
+        ],
+      },
+      emptyResponse: { status: 'ZERO_RESULTS', results: [] },
+      expected: {
+        lon: -75.6972,
+        lat: 45.4215,
+        normalizedAddress: '123 Main St, Ottawa, Ontario, Canada',
+      },
+    },
+    {
+      name: 'nominatim',
+      provider: getGeocoderProvider('nominatim')!,
+      env: { RIDINGS: {} as R2Bucket } as Env,
+      response: [{ lat: '45.4215', lon: '-75.6972', display_name: '123 Main St, Ottawa' }],
+      emptyResponse: [],
+      expected: { lon: -75.6972, lat: 45.4215 },
+    },
+    {
+      name: 'mapbox',
+      provider: getGeocoderProvider('mapbox')!,
+      env: { RIDINGS: {} as R2Bucket, MAPBOX_TOKEN: 'test-token' } as Env,
+      response: {
+        type: 'FeatureCollection',
+        features: [{ type: 'Feature', center: [-75.6972, 45.4215], place_name: '123 Main St, Ottawa' }],
+      },
+      emptyResponse: { type: 'FeatureCollection', features: [] },
+      expected: { lon: -75.6972, lat: 45.4215 },
+    },
+    {
+      name: 'geogratis',
+      provider: getGeocoderProvider('geogratis')!,
+      env: { RIDINGS: {} as R2Bucket } as Env,
+      response: [
+        {
+          title: '123 Main St, Ottawa, Ontario',
+          qualifier: 'GEOMETRIC_CENTER',
+          score: 0.9,
+          geometry: { type: 'Point', coordinates: [-75.6972, 45.4215] },
+        },
+      ],
+      emptyResponse: [],
+      expected: { lon: -75.6972, lat: 45.4215 },
+    },
+  ];
+}
+
+describe('GeocoderProvider contract', () => {
+  const originalFetch = globalThis.fetch;
+  const input = (env: Env): GeocoderProviderInput => ({
+    env,
+    qp: CONTRACT_QUERY,
+    query: '123 Main St',
+    timeoutMs: 2000,
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  for (const fixture of providerFixtures()) {
+    describe(fixture.name, () => {
+      const json = (body: unknown) =>
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+      it('resolves a canonical response to a typed candidate', async () => {
+        globalThis.fetch = vi.fn(async () => json(fixture.response)) as typeof fetch;
+        const candidates = await fixture.provider.geocode(input(fixture.env));
+        expect(candidates).toHaveLength(1);
+        expect(candidates[0].lon).toBeCloseTo(fixture.expected.lon, 3);
+        expect(candidates[0].lat).toBeCloseTo(fixture.expected.lat, 3);
+        if (fixture.expected.normalizedAddress) {
+          expect(candidates[0].normalizedAddress).toBe(fixture.expected.normalizedAddress);
+        }
+      });
+
+      it('fails unavailable on a non-OK status', async () => {
+        globalThis.fetch = vi.fn(async () => new Response('down', { status: 503 })) as typeof fetch;
+        await expect(fixture.provider.geocode(input(fixture.env))).rejects.toBeInstanceOf(
+          ProviderUnavailableError
+        );
+      });
+
+      it('fails with NoResultsError on an empty result set', async () => {
+        globalThis.fetch = vi.fn(async () => json(fixture.emptyResponse)) as typeof fetch;
+        await expect(fixture.provider.geocode(input(fixture.env))).rejects.toBeInstanceOf(
+          NoResultsError
+        );
+      });
+    });
+  }
+});
+
+describe('GeocoderProvider registry and chain', () => {
+  const chainInput: GeocoderProviderInput = {
+    env: { RIDINGS: {} as R2Bucket } as Env,
+    qp: { address: '1 Main St' },
+    query: '1 Main St',
+    timeoutMs: 2000,
+  };
+
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('derives fallback order from data', () => {
+    expect(buildExternalProviderChain({ GEOCODER: 'google' } as Env).map((p) => p.name)).toEqual([
+      'google',
+      'nominatim',
+    ]);
+    expect(buildExternalProviderChain({ GEOCODER: 'mapbox' } as Env).map((p) => p.name)).toEqual([
+      'mapbox',
+    ]);
+    expect(buildExternalProviderChain({} as Env).map((p) => p.name)).toEqual(['nominatim']);
+  });
+
+  it('falls through NoResultsError but stops at ProviderUnavailableError', async () => {
+    const miss: GeocoderProvider = {
+      name: 'miss',
+      geocode: async () => {
+        throw new NoResultsError('miss', 'none');
+      },
+    };
+    const down: GeocoderProvider = {
+      name: 'down',
+      geocode: async () => {
+        throw new ProviderUnavailableError('down', 'down');
+      },
+    };
+    const hit: GeocoderProvider = {
+      name: 'hit',
+      geocode: async () => [{ lon: 5, lat: 6 }],
+    };
+
+    await expect(runProviderChain([miss, hit], chainInput)).resolves.toEqual([{ lon: 5, lat: 6 }]);
+    await expect(runProviderChain([down, hit], chainInput)).rejects.toBeInstanceOf(
+      ProviderUnavailableError
+    );
+  });
+
+  it('registers a stub provider and exercises it through the fallback stage', async () => {
+    const stub: GeocoderProvider = {
+      name: 'stub-contract',
+      geocode: vi.fn(async () => [{ lon: -1, lat: 2 }]),
+    };
+    registerGeocoderProvider(stub);
+    try {
+      const env: Env = {
+        RIDINGS: {} as R2Bucket,
+        GEOCODER: 'stub-contract',
+        GEOCODING_CACHE: nullKv(),
+      };
+      const result = await runExternalFallbackStage(
+        stageContext({ env, qp: { address: '1 St' }, query: '1 St' })
+      );
+      expect(result).toEqual({ lon: -1, lat: 2 });
+      expect(stub.geocode).toHaveBeenCalledTimes(1);
+    } finally {
+      unregisterGeocoderProvider('stub-contract');
+    }
+  });
+
+  it('google adapter does not call Nominatim itself', async () => {
+    const urls: string[] = [];
+    globalThis.fetch = vi.fn(async (url: string | URL) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify({ status: 'ZERO_RESULTS', results: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    await expect(
+      getGeocoderProvider('google')!.geocode({
+        env: { RIDINGS: {} as R2Bucket, GOOGLE_MAPS_KEY: 'k' } as Env,
+        qp: { address: '757 Victoria Park', city: 'Toronto', state: 'ON' },
+        query: '757 Victoria Park',
+        timeoutMs: 2000,
+      })
+    ).rejects.toBeInstanceOf(NoResultsError);
+
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toContain('maps.googleapis.com');
+    expect(urls.some((u) => u.includes('nominatim'))).toBe(false);
+  });
+
+  it('merges Google → Nominatim as chain data (google miss, nominatim hit)', async () => {
+    const urls: string[] = [];
+    globalThis.fetch = vi.fn(async (url: string | URL) => {
+      const target = String(url);
+      urls.push(target);
+      if (target.includes('maps.googleapis.com')) {
+        return new Response(JSON.stringify({ status: 'ZERO_RESULTS', results: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (target.includes('nominatim.openstreetmap.org')) {
+        return new Response(JSON.stringify([{ lat: '43.7', lon: '-79.3' }]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${target}`);
+    }) as typeof fetch;
+
+    const env: Env = {
+      RIDINGS: {} as R2Bucket,
+      GEOCODER: 'google',
+      GOOGLE_MAPS_KEY: 'k',
+      GEOCODING_CACHE: nullKv(),
+    };
+
+    const result = await runExternalFallbackStage(
+      stageContext({
+        env,
+        qp: { address: '757 Victoria Park', city: 'Toronto', state: 'ON' },
+        query: '757 Victoria Park',
+      })
+    );
+    expect(result).not.toBeNull();
+
+    expect(result!.lon).toBeCloseTo(-79.3, 3);
+    expect(result!.lat).toBeCloseTo(43.7, 3);
+    expect(urls).toHaveLength(2);
+    expect(urls[0]).toContain('maps.googleapis.com');
+    expect(urls[1]).toContain('nominatim.openstreetmap.org');
   });
 });

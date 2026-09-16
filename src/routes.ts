@@ -15,7 +15,7 @@
 import type { DeferTaskFn, Env } from './types';
 import { createApiReference, createOpenAPISpec } from './docs';
 import { createEmbedDocsPage } from './embed-docs';
-import { getCacheWarmingStatus } from './cache';
+import { getCacheWarmingStatus } from './cache-warming';
 import { getMetrics, getMetricsSummary } from './metrics';
 import {
   allRequiredDatasetsPresent,
