@@ -1,10 +1,9 @@
 // Documentation and UI functions
 
 import { getAllProvincialPaths, PROVINCIAL_DATASETS } from './datasets';
+import { EMBED_EVENTS, EMBED_SCRIPT_ATTRIBUTES } from './embed';
 
 const PROVINCIAL_DATASET_STEMS = PROVINCIAL_DATASETS.map((d) => d.r2Key.replace(/\.geojson$/, ''));
-
-export { createLandingPage } from './landing-page';
 
 /**
  * Version of the Scalar bundle loaded from CDN by the API reference page.
@@ -836,6 +835,9 @@ export function createOpenAPISpec(baseUrl: string) {
             "JavaScript widget that wires /api/search into an existing form. One script tag:",
             "",
             "    <script src='/embed.js' data-province='ON' defer></script>",
+            "",
+            `Supported script attributes: ${EMBED_SCRIPT_ATTRIBUTES.join(", ")}.`,
+            `Events: ${EMBED_EVENTS.join(", ")}.`,
             "",
             "It finds the address field in each form, fills the address on selection, and emits",
             "the riding as a `ridinglookup:riding` event. Pass data-demo='true' (or attach({ demo: true }))",

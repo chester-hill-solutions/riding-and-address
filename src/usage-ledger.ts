@@ -1,4 +1,5 @@
 import { Env } from './types';
+import { utcMonth } from './time';
 
 export type UsageLedgerResult = {
   allowed: boolean;
@@ -22,10 +23,6 @@ export type UsageLedgerResult = {
 export interface UsageLedger {
   consumeMonthly(customerId: string, monthlyLimit: number, nowMs: number): Promise<UsageLedgerResult>;
   peekMonthly(customerId: string, monthlyLimit: number, nowMs: number): Promise<UsageLedgerResult>;
-}
-
-export function utcMonth(nowMs: number): string {
-  return new Date(nowMs).toISOString().slice(0, 7);
 }
 
 function failClosed(monthlyLimit: number, month: string): UsageLedgerResult {

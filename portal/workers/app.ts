@@ -64,12 +64,12 @@ async function handlePortalRequest(
   ctx: ExecutionContext
 ): Promise<Response> {
   return runWithCloudflareContext({ env, ctx }, async () => {
-    // No eager `requireEnv()` gate here: `wrangler dev`/`vite dev` always evaluate the top-level
+    // No eager env fail-fast here: `wrangler dev`/`vite dev` always evaluate the top-level
     // (production) Cloudflare environment locally (see wrangler.jsonc — there's no separate
-    // "development" env), so a hard fail-fast here would demand every production secret
+    // "development" env), so a hard fail-fast would demand every production secret
     // (Resend, Stripe, etc.) just to boot the portal locally. Each feature that actually needs a
     // secret (auth.server.ts's AUTH_SECRET check, email sending, Stripe routes) already guards
-    // itself via env()/requireEnv() at the point of use.
+    // itself via env() at the point of use.
     return requestHandler(request, { cloudflare: { env, ctx } });
   });
 }

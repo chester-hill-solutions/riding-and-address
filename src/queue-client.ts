@@ -1,8 +1,19 @@
-import { Env } from './types';
+import type { BatchLookupRequest, Env } from './types';
+import type {
+  BatchJob,
+  DeadLetterResult,
+  ProcessJobsResult,
+  QueueJob,
+  QueueStats,
+  RetryDeadLetterResult,
+  RetryFailedResult,
+  SubmitBatchResult
+} from './queue-types';
 
 /**
  * Typed client for the QueueManager Durable Object (`main-queue`).
  * The only place that knows the DO's URI space and error envelope.
+ * Return types are the DO's wire envelopes, shared via `queue-types.ts`.
  */
 
 function stub(env: Env) {
@@ -31,8 +42,8 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
 export function submitBatch(
   env: Env,
-  requests: unknown
-): Promise<{ batchId: string; status: string }> {
+  requests: BatchLookupRequest[]
+): Promise<SubmitBatchResult> {
   return call(env, '/queue/submit', {
     method: 'POST',
     headers: JSON_HEADERS,
@@ -40,23 +51,19 @@ export function submitBatch(
   });
 }
 
-export function getBatchStatus<T = unknown>(env: Env, batchId: string): Promise<T> {
+export function getBatchStatus(env: Env, batchId: string): Promise<BatchJob> {
   return call(env, `/queue/status?batchId=${encodeURIComponent(batchId)}`);
 }
 
-export function getJob<T = unknown>(env: Env, jobId: string): Promise<T> {
+export function getJob(env: Env, jobId: string): Promise<QueueJob> {
   return call(env, `/queue/job?id=${encodeURIComponent(jobId)}`);
 }
 
-export function getBatchResult<T = unknown>(env: Env, id: string): Promise<T> {
-  return call(env, `/queue/batch?id=${encodeURIComponent(id)}`);
-}
-
-export function getStats<T = unknown>(env: Env): Promise<T> {
+export function getStats(env: Env): Promise<QueueStats> {
   return call(env, '/queue/stats');
 }
 
-export function retryFailed(env: Env, jobIds: string[]): Promise<unknown> {
+export function retryFailed(env: Env, jobIds: string[]): Promise<RetryFailedResult> {
   return call(env, '/queue/retry', {
     method: 'POST',
     headers: JSON_HEADERS,
@@ -64,7 +71,7 @@ export function retryFailed(env: Env, jobIds: string[]): Promise<unknown> {
   });
 }
 
-export function processJobs(env: Env, maxJobs: number = 10): Promise<unknown> {
+export function processJobs(env: Env, maxJobs: number = 10): Promise<ProcessJobsResult> {
   return call(env, '/queue/process', {
     method: 'POST',
     headers: JSON_HEADERS,
@@ -72,15 +79,11 @@ export function processJobs(env: Env, maxJobs: number = 10): Promise<unknown> {
   });
 }
 
-export function health<T = unknown>(env: Env): Promise<T> {
-  return call(env, '/queue/health');
-}
-
-export function listDeadLetter<T = unknown>(
+export function listDeadLetter(
   env: Env,
   limit: number = 50,
   offset: number = 0
-): Promise<T> {
+): Promise<DeadLetterResult> {
   return call(env, `/queue/dead-letter?limit=${limit}&offset=${offset}`);
 }
 
@@ -88,7 +91,7 @@ export function retryDeadLetter(
   env: Env,
   jobIds: string[],
   options?: { resetAttempts?: boolean; newPriority?: number | null }
-): Promise<unknown> {
+): Promise<RetryDeadLetterResult> {
   return call(env, '/queue/retry-dead-letter', {
     method: 'POST',
     headers: JSON_HEADERS,

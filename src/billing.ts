@@ -1,7 +1,7 @@
 import { Env } from './types';
 import { CustomerRecord, defaultFuseLimit, loadCustomer } from './customer';
 import { ApiKeyRecord } from './api-keys';
-import { utcMonth } from './api-key-usage-do';
+import { utcMonth } from './time';
 import { durableUsageLedger, UsageLedger } from './usage-ledger';
 
 export interface BillableAuthContext {

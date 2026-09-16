@@ -1,10 +1,10 @@
 /**
  * Standalone documentation page for the drop-in autocomplete widget (`GET /embed.js`).
- * Served at `/docs/embed`; mirrors docs/oda-geolocation-contract.md. Hand-maintained — keep the
- * widget options here in step with src/embed.ts (`scriptOptions()` / `attach()`).
+ * Served at `/docs/embed`; mirrors docs/oda-geolocation-contract.md. The attribute and event tables
+ * are generated from the contract exported by src/embed.ts, not hand-maintained here.
  */
 
-import { EMBED_VERSION } from './embed';
+import { EMBED_EVENTS, EMBED_SCRIPT_ATTRIBUTES, EMBED_VERSION } from './embed';
 
 function escapeHtml(value: string): string {
   return value
@@ -19,51 +19,31 @@ function escapeCode(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-const SCRIPT_ATTRIBUTES: Array<{ attribute: string; description: string }> = [
-  {
-    attribute: 'data-province',
-    description: 'Restrict suggestions to a province/territory code (for example <code>ON</code>).',
-  },
-  {
-    attribute: 'data-key',
-    description:
-      'Public browser key (<code>pk_…</code>). Required when browser keys are enabled; pairs with an origin allowlist and a daily cap.',
-  },
-  {
-    attribute: 'data-limit',
-    description: 'Maximum suggestions to request per keystroke. Defaults to the API default.',
-  },
-  {
-    attribute: 'data-include-province',
-    description:
-      'Set to <code>true</code> to resolve the riding as well as the address (uses <code>/api/combined</code>).',
-  },
-  {
-    attribute: 'data-demo',
-    description:
-      'Set to <code>true</code> to resolve via the keyless <code>/api/demo/*</code> tier — intended for marketing try-its, not production.',
-  },
-  {
-    attribute: 'data-endpoint',
-    description: 'Override the API origin the widget calls. Defaults to the script’s own origin.',
-  },
-  {
-    attribute: 'data-theme',
-    description:
-      'Force <code>light</code> or <code>dark</code>. Omit to follow the operating-system preference.',
-  },
-  {
-    attribute: 'data-auto',
-    description:
-      'Set to <code>false</code> to disable auto-attach and wire forms yourself with the JavaScript API.',
-  },
-];
+/**
+ * Prose for each attribute/event, keyed by the contract in `src/embed.ts`. Keying the maps by the
+ * exported union means adding an attribute there is a type error until it is described here.
+ */
+const SCRIPT_ATTRIBUTE_DESCRIPTIONS: Record<(typeof EMBED_SCRIPT_ATTRIBUTES)[number], string> = {
+  'data-auto':
+    'Set to <code>false</code> to disable auto-attach and wire forms yourself with the JavaScript API.',
+  'data-key':
+    'Public browser key (<code>pk_…</code>). Required when browser keys are enabled; pairs with an origin allowlist and a daily cap.',
+  'data-province': 'Restrict suggestions to a province/territory code (for example <code>ON</code>).',
+  'data-limit': 'Maximum suggestions to request per keystroke. Defaults to the API default.',
+  'data-include-province':
+    'Set to <code>true</code> to resolve the riding as well as the address (uses <code>/api/combined</code>).',
+  'data-demo':
+    'Set to <code>true</code> to resolve via the keyless <code>/api/demo/*</code> tier — intended for marketing try-its, not production.',
+  'data-endpoint': 'Override the API origin the widget calls. Defaults to the script’s own origin.',
+  'data-theme':
+    'Force <code>light</code> or <code>dark</code>. Omit to follow the operating-system preference.',
+};
 
-const EVENTS: Array<{ name: string; detail: string }> = [
-  { name: 'ridinglookup:select', detail: 'The chosen suggestion, fired for containers and addresses alike.' },
-  { name: 'ridinglookup:riding', detail: '{ riding, properties, provinceData, point, suggestion }' },
-  { name: 'ridinglookup:error', detail: '{ error }' },
-];
+const EVENT_DETAILS: Record<(typeof EMBED_EVENTS)[number], string> = {
+  'ridinglookup:select': 'The chosen suggestion, fired for containers and addresses alike.',
+  'ridinglookup:riding': '{ riding, properties, provinceData, point, suggestion }',
+  'ridinglookup:error': '{ error }',
+};
 
 export function createEmbedDocsPage(baseUrl: string): string {
   const originRaw = baseUrl.replace(/\/$/, '');
@@ -71,14 +51,14 @@ export function createEmbedDocsPage(baseUrl: string): string {
   const originCode = escapeCode(originRaw);
   const scriptTag = `<script src="${originRaw}/embed.js" data-province="ON" defer></script>`;
 
-  const attributeRows = SCRIPT_ATTRIBUTES.map(
-    ({ attribute, description }) =>
-      `<tr><th scope="row"><code>${attribute}</code></th><td>${description}</td></tr>`
+  const attributeRows = EMBED_SCRIPT_ATTRIBUTES.map(
+    (attribute) =>
+      `<tr><th scope="row"><code>${attribute}</code></th><td>${SCRIPT_ATTRIBUTE_DESCRIPTIONS[attribute]}</td></tr>`
   ).join('\n              ');
 
-  const eventRows = EVENTS.map(
-    ({ name, detail }) =>
-      `<tr><th scope="row"><code>${name}</code></th><td>${escapeHtml(detail)}</td></tr>`
+  const eventRows = EMBED_EVENTS.map(
+    (name) =>
+      `<tr><th scope="row"><code>${name}</code></th><td>${escapeHtml(EVENT_DETAILS[name])}</td></tr>`
   ).join('\n              ');
 
   return `<!DOCTYPE html>

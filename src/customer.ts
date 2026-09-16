@@ -1,4 +1,5 @@
 import { Env } from './types';
+import { readJsonEntry, writeJsonEntry, deleteEntry } from './kv-cache';
 
 export type CustomerPlan = 'free' | 'metered' | 'enterprise';
 
@@ -31,26 +32,21 @@ export async function loadCustomer(env: Env, customerId: string): Promise<Custom
   const cached = customerCache.get(customerId);
   if (cached && cached.expires > Date.now()) return cached.record;
 
-  try {
-    const record = (await env.API_KEYS.get(`customer:${customerId}`, 'json')) as CustomerRecord | null;
-    customerCache.set(customerId, { record, expires: Date.now() + CUSTOMER_CACHE_TTL_MS });
-    return record;
-  } catch (error) {
-    console.warn('Failed to load customer:', error);
-    return null;
-  }
+  const record = await readJsonEntry<CustomerRecord>(env.API_KEYS, `customer:${customerId}`);
+  customerCache.set(customerId, { record, expires: Date.now() + CUSTOMER_CACHE_TTL_MS });
+  return record;
 }
 
 export async function putCustomer(env: Env, record: CustomerRecord): Promise<void> {
   if (!env.API_KEYS) throw new Error('API_KEYS binding required');
   const next = { ...record, updatedAt: new Date().toISOString() };
-  await env.API_KEYS.put(`customer:${record.id}`, JSON.stringify(next));
+  await writeJsonEntry(env.API_KEYS, `customer:${record.id}`, next);
   customerCache.set(record.id, { record: next, expires: Date.now() + CUSTOMER_CACHE_TTL_MS });
 }
 
 export async function deleteCustomer(env: Env, customerId: string): Promise<void> {
   if (!env.API_KEYS) throw new Error('API_KEYS binding required');
-  await env.API_KEYS.delete(`customer:${customerId}`);
+  await deleteEntry(env.API_KEYS, `customer:${customerId}`);
   customerCache.set(customerId, { record: null, expires: Date.now() + CUSTOMER_CACHE_TTL_MS });
 }
 

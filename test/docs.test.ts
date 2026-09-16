@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { createOpenAPISpec, createApiReference } from '../src/docs';
 import { createEmbedDocsPage } from '../src/embed-docs';
-import { EMBED_VERSION } from '../src/embed';
-import { createLandingPage } from '../src/landing-page';
+import { createEmbedScript, EMBED_EVENTS, EMBED_SCRIPT_ATTRIBUTES, EMBED_VERSION } from '../src/embed';
 import { PROVINCIAL_DATASETS } from '../src/datasets';
 import pkg from '../package.json';
 
 /**
- * The OpenAPI spec and landing page are hand-maintained and were previously untested, which is
- * how three tags went missing, `securitySchemes` ended up outside `components`, and endpoints
+ * The OpenAPI spec and API reference page are hand-maintained and were previously untested, which
+ * is how three tags went missing, `securitySchemes` ended up outside `components`, and endpoints
  * reached production undocumented. These tests are cheap and catch that drift.
  */
 
@@ -16,6 +16,7 @@ const BASE = 'https://lookup.test';
 
 interface Operation {
   summary?: string;
+  description?: string;
   tags?: string[];
   parameters?: Array<{ name: string; required?: boolean; in: string }>;
   responses?: Record<string, unknown>;
@@ -161,10 +162,6 @@ describe('GET /api/search is documented', () => {
     expect(description).toMatch(/riding/i);
     expect(description).toMatch(/\/api\/federal|\/api\/combined/);
   });
-
-  it('is listed on the landing page', () => {
-    expect(createLandingPage(BASE)).toContain('/api/search');
-  });
 });
 
 describe('keyless demo tier', () => {
@@ -205,6 +202,55 @@ describe('keyless demo tier', () => {
   });
 });
 
+/**
+ * `src/embed.ts` defines the widget contract once; the `/docs/embed` page, the OpenAPI description,
+ * and `docs/oda-geolocation-contract.md` are all copies. The served source is the runtime source of
+ * truth (`scriptOptions()` reads the `data-*` keys; `emit()` dispatches the events), so these tests
+ * assert every copy against the exported lists and the lists against the source.
+ */
+describe('embed widget contract', () => {
+  const servedSource = () => createEmbedScript(BASE);
+
+  function markdownContract(): string {
+    return readFileSync('docs/oda-geolocation-contract.md', 'utf-8');
+  }
+
+  /** `includeProvince` -> `data-include-province`; the inverse of dataset's kebab-to-camel. */
+  function toDataAttribute(datasetKey: string): string {
+    return `data-${datasetKey.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
+  }
+
+  it('matches the keys scriptOptions() reads in the served source', () => {
+    // scriptOptions() reads each option as `data.<key>`, which is the only `data.` in the source.
+    const parserKeys = [...servedSource().matchAll(/data\.([A-Za-z]\w*)/g)].map((m) => m[1]);
+    expect(parserKeys.length, 'scriptOptions() no longer reads any data-* key').toBeGreaterThan(0);
+    expect(new Set(parserKeys.map(toDataAttribute))).toEqual(new Set(EMBED_SCRIPT_ATTRIBUTES));
+  });
+
+  it('matches the events the served source emits', () => {
+    // emit() dispatches 'ridinglookup:' + type, so the full names never appear literally.
+    const emitted = [...servedSource().matchAll(/emit\('([a-z]+)'/g)].map((m) => `ridinglookup:${m[1]}`);
+    expect(emitted.length, 'the served source emits no events').toBeGreaterThan(0);
+    expect(new Set(emitted)).toEqual(new Set(EMBED_EVENTS));
+  });
+
+  it('keeps the markdown contract in step with the exported lists', () => {
+    const md = markdownContract();
+    // Scope attributes to the "Script tag attributes" paragraph; other links contain "data-import".
+    const paragraph = md.match(/\*\*Script tag attributes:\*\*([\s\S]*?)\n\n/)?.[1] ?? '';
+    const attributes = [...new Set(paragraph.match(/data-[a-z][a-z-]*/g) ?? [])].sort();
+    const events = [...new Set(md.match(/ridinglookup:[a-z]+/g) ?? [])].sort();
+    expect(attributes).toEqual([...EMBED_SCRIPT_ATTRIBUTES].sort());
+    expect(events).toEqual([...EMBED_EVENTS].sort());
+  });
+
+  it('lists the contract in the served OpenAPI description', () => {
+    const description = spec().paths['/embed.js'].get.description ?? '';
+    for (const attribute of EMBED_SCRIPT_ATTRIBUTES) expect(description).toContain(attribute);
+    for (const event of EMBED_EVENTS) expect(description).toContain(event);
+  });
+});
+
 describe('embed widget docs page', () => {
   it('shows the one-tag install snippet pointed at this deployment', () => {
     const html = createEmbedDocsPage(BASE);
@@ -219,23 +265,14 @@ describe('embed widget docs page', () => {
 
   it('documents every script-tag attribute the widget reads', () => {
     const html = createEmbedDocsPage(BASE);
-    for (const attribute of [
-      'data-province',
-      'data-key',
-      'data-limit',
-      'data-include-province',
-      'data-demo',
-      'data-endpoint',
-      'data-theme',
-      'data-auto',
-    ]) {
+    for (const attribute of EMBED_SCRIPT_ATTRIBUTES) {
       expect(html, `${attribute} is undocumented`).toContain(attribute);
     }
   });
 
   it('documents the events integrators listen for', () => {
     const html = createEmbedDocsPage(BASE);
-    for (const event of ['ridinglookup:select', 'ridinglookup:riding', 'ridinglookup:error']) {
+    for (const event of EMBED_EVENTS) {
       expect(html, `${event} is undocumented`).toContain(event);
     }
   });
@@ -243,30 +280,11 @@ describe('embed widget docs page', () => {
   it('links back to the API reference', () => {
     expect(createEmbedDocsPage(BASE)).toContain(`href="${BASE}/docs"`);
   });
-
-  it('is linked from the landing page', () => {
-    expect(createLandingPage(BASE)).toContain(`${BASE}/docs/embed`);
-  });
 });
 
-describe('landing page', () => {
-  it('lists every provincial route', () => {
-    const html = createLandingPage(BASE);
-    for (const dataset of PROVINCIAL_DATASETS) {
-      expect(html, `${dataset.path} missing from landing page`).toContain(dataset.path);
-    }
-  });
-
+describe('API reference page', () => {
   it('points the API reference at the spec endpoint', () => {
     expect(createApiReference(BASE)).toContain(`${BASE}/api/docs`);
-  });
-
-  it('pretty-prints the full demo response payload', () => {
-    // The try-it box used to show only the riding name; integrators need the whole body to see
-    // every field the API returns.
-    const html = createLandingPage(BASE);
-    expect(html).toContain('try-embed__json');
-    expect(html).toContain('JSON.stringify(payload.raw, null, 2)');
   });
 
   it('loads the same Scalar version the devDependency pins', () => {

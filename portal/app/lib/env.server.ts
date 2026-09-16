@@ -51,15 +51,3 @@ export function env() {
   };
 }
 
-/**
- * Fail fast on missing production configuration. Called at server boot (workers/app.ts) when
- * running as a deployed/dev Worker; local scripts outside a request keep dev defaults.
- */
-export function requireEnv() {
-  const values = env();
-  if (!values.authSecret) throw new Error('AUTH_SECRET (or SESSION_SECRET) is required');
-  if (!values.baseUrl) throw new Error('BETTER_AUTH_URL (or BASE_URL) is required');
-  if (!values.resendApiKey) throw new Error('RESEND_API_KEY is required');
-  if (!values.emailFrom) throw new Error('EMAIL_FROM is required');
-  return values;
-}

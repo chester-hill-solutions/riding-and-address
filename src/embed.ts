@@ -10,6 +10,33 @@
 
 export const EMBED_VERSION = '1.3.0';
 
+/**
+ * The widget's public contract, in one place. `scriptOptions()` inside `createEmbedScript` is the
+ * runtime source of truth for these; the arrays below mirror it for the docs page, the OpenAPI
+ * description, and the markdown contract. `test/docs.test.ts` asserts the served source and both
+ * copies agree, so adding an option or event to the widget without updating this list fails CI.
+ *
+ * Names are the literal `data-*` attributes (kebab-case); the DOM `dataset` keys `scriptOptions()`
+ * reads are their camelCase equivalents.
+ */
+export const EMBED_SCRIPT_ATTRIBUTES = [
+  'data-auto',
+  'data-key',
+  'data-province',
+  'data-limit',
+  'data-include-province',
+  'data-demo',
+  'data-endpoint',
+  'data-theme',
+] as const;
+
+/** The `ridinglookup:*` DOM events the widget dispatches; see `emit()` in `createEmbedScript`. */
+export const EMBED_EVENTS = [
+  'ridinglookup:select',
+  'ridinglookup:riding',
+  'ridinglookup:error',
+] as const;
+
 export function createEmbedScript(baseUrl: string): string {
   return `/* CanCoder autocomplete widget v${EMBED_VERSION} */
 (function (global, factory) {

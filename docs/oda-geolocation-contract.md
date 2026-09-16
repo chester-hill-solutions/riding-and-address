@@ -280,9 +280,10 @@ by the worker and gated by the same `ODA_SUGGEST_ENABLED` flag (404 while off).
 That is the whole integration. On load it finds the address field in each `<form>`, attaches, and
 on selection fills the address fields and emits the riding.
 
-**Script tag attributes:** `data-province`, `data-limit`, `data-include-province="true"`,
-`data-demo="true"` (resolve riding via keyless `/api/demo/*` — for marketing try-it),
-`data-endpoint`, `data-auto="false"` (disable auto-attach and use the API below).
+**Script tag attributes:** `data-province`, `data-key` (a public `pk_…` browser key),
+`data-limit`, `data-include-province="true"`, `data-demo="true"` (resolve riding via keyless
+`/api/demo/*` — for marketing try-it), `data-endpoint`, `data-theme` (`light`/`dark`; omit to follow
+the OS preference), `data-auto="false"` (disable auto-attach and use the API below).
 
 **Field detection.** The standard `autocomplete` attribute wins, since it is an explicit
 statement of intent; otherwise `name`/`id`/`placeholder`/`aria-label`/`<label>` are matched
