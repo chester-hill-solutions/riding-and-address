@@ -1,7 +1,7 @@
 import { Form } from 'react-router';
 import type { Route } from './+types/app.keys';
 import { isOwnerOrAdmin, listKeys, requireCustomer, requireOwnerOrAdmin } from '~/lib/customer.server';
-import { mintKey, revokeKey } from '~/lib/projection.server';
+import { mirrorKeyMinted, mirrorKeyRevoked } from '~/lib/billing-mutations.server';
 import { getDb } from '~/lib/db.server';
 import { apiKeyMirror } from '~/db/schema';
 import { and, eq } from 'drizzle-orm';
@@ -44,16 +44,12 @@ export async function action({ request }: Route.ActionArgs) {
       return { error: 'Key not found in this organization' };
     }
     try {
-      await revokeKey(id);
+      await mirrorKeyRevoked({ workspaceId: billing.workspaceId, id });
     } catch (error) {
       return {
         error: error instanceof Error ? error.message : 'Could not revoke the key — try again.',
       };
     }
-    await getDb()
-      .update(apiKeyMirror)
-      .set({ disabled: true })
-      .where(and(eq(apiKeyMirror.id, id), eq(apiKeyMirror.workspaceId, billing.workspaceId)));
     return { ok: true as const, message: 'Key revoked.' };
   }
 
@@ -69,20 +65,12 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   try {
-    const minted = await mintKey({
-      kind,
-      customerId: billing.customerId,
-      label,
-      origins: kind === 'browser' ? origins : undefined,
-    });
-
-    await getDb().insert(apiKeyMirror).values({
-      id: minted.key.id,
+    const minted = await mirrorKeyMinted({
       workspaceId: billing.workspaceId,
       customerId: billing.customerId,
       kind,
       label,
-      origins: origins.join(','),
+      origins,
     });
 
     return {

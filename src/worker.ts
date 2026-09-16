@@ -123,81 +123,6 @@ async function handleScheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionC
   }
 }
 
-
-
-
-
-/** Cap on the body emailed by the webhook inbox, so one payload cannot balloon a mailbox. */
-const INBOX_MAX_BODY_BYTES = 200_000;
-
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
-/**
- * Catch-all webhook inbox: accepts any method and content type, and emails the full request
- * (headers, query and body) to INBOX_TO through the Cloudflare Email Service `SEND_EMAIL`
- * binding. The token lives in the path so the URL is a drop-in webhook target for third-party
- * services; without it the endpoint 404s, so it cannot be used as an open mail relay.
- *
- * scripts/nar-daily.sh points NAR_ALERT_WEBHOOK here so a failed nightly refresh emails its log.
- */
-async function handleWebhookInbox(
-  request: Request,
-  env: Env,
-  url: URL,
-  correlationId: string
-): Promise<Response> {
-  const json = (body: unknown, status: number): Response =>
-    new Response(JSON.stringify({ ...(body as object), correlationId }), {
-      status,
-      headers: { 'content-type': 'application/json; charset=UTF-8' },
-    });
-
-  const token = url.pathname.slice('/hooks/inbox/'.length);
-  if (!env.INBOX_TOKEN || !env.SEND_EMAIL) {
-    return json({ error: 'Inbox is not configured', code: 'INBOX_DISABLED' }, 503);
-  }
-  if (!token || !timingSafeEqual(token, env.INBOX_TOKEN)) {
-    return json({ error: 'Not found', code: 'NOT_FOUND' }, 404);
-  }
-
-  const raw = await request.text();
-  const truncated = raw.length > INBOX_MAX_BODY_BYTES;
-  const body = truncated ? raw.slice(0, INBOX_MAX_BODY_BYTES) : raw;
-  const query = url.searchParams.toString();
-  const headers = [...request.headers.entries()].map(([key, value]) => `${key}: ${value}`).join('\n');
-
-  const text = [
-    `Received: ${new Date().toISOString()}`,
-    `Method: ${request.method}`,
-    `URL: ${url.toString()}`,
-    `Content-Type: ${request.headers.get('content-type') ?? '-'}`,
-    '',
-    '--- headers ---',
-    headers || '(none)',
-    '',
-    `--- body (${raw.length} bytes${truncated ? `, truncated to ${INBOX_MAX_BODY_BYTES}` : ''}) ---`,
-    body || '(empty)',
-  ].join('\n');
-
-  try {
-    const result = await env.SEND_EMAIL.send({
-      from: env.INBOX_FROM || 'alerts@email.chesterhillsolutions.ca',
-      to: env.INBOX_TO || 'narfin@chsolutions.ca',
-      subject: `[webhook] ${request.method} ${url.pathname}${query ? `?${query}` : ''} (${raw.length} bytes)`,
-      text,
-    });
-    return json({ ok: true, messageId: result.messageId, bytes: raw.length }, 200);
-  } catch (error) {
-    console.error('[INBOX] send failed:', error instanceof Error ? error.message : error);
-    return json({ error: 'Failed to send', code: 'INBOX_SEND_FAILED' }, 502);
-  }
-}
-
 /**
  * Main Cloudflare Worker entry point.
  * Handles all incoming HTTP requests and routes them to appropriate handlers.
@@ -249,11 +174,6 @@ export default {
         });
       }
       
-      // Webhook inbox: any method, token in the path (see handleWebhookInbox).
-      if (pathname.startsWith('/hooks/inbox/')) {
-        return handleWebhookInbox(request, env, url, correlationId);
-      }
-
       // GET "/" is owned by the portal (see workers/app.ts) — the API worker never sees it in
       // the combined deploy, but keep a safe fallback for direct/standalone use of this Worker.
       if (pathname === "/") {
