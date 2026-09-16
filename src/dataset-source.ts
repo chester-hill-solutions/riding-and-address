@@ -10,13 +10,14 @@ import { CircuitBreakerOpenError, r2CircuitBreaker } from './circuit-breaker';
  * Where riding GeoJSON comes from.
  *
  * One named seam for the R2 binding, the per-isolate LRUs, the retry/circuit-breaker path and
- * the optional D1 point-in-polygon fast path. Callers ask the source for data by key; they never
+ * the D1 point-in-polygon fast path. Callers ask the source for data by key; they never
  * reach for `env.RIDINGS` or `env.RIDING_DB` themselves.
  *
  * `load` owns exactly what the old `loadGeo` did: R2 fetch → validate → retry → breaker → LRU
  * fill → spatial-index build. `getSpatialIndex` is the LRU read that `cachedLookupRiding` used to
- * do inline. `querySpatial` is only present when the D1 spatial database is configured, so the
- * D1-first → LRU → R2 ordering is preserved without the caller re-checking config.
+ * do inline. `querySpatial` is total: the D1-wrapped source answers from `env.RIDING_DB`, and
+ * every other source returns `null` so the D1-first → LRU → R2 ordering is preserved without the
+ * caller checking whether the DB is configured.
  */
 export interface DatasetSource {
   /** Fetch, validate, retry and LRU-cache a dataset's GeoJSON, building its spatial index. */
@@ -25,8 +26,11 @@ export interface DatasetSource {
   getSpatialIndex(key: string): Promise<SpatialIndex>;
   /** Head-check a dataset without downloading it (`checkRidingDatasets`). */
   head(key: string): Promise<{ size?: number } | null>;
-  /** Optional D1 point-in-polygon fast path; absent when the spatial DB is disabled. */
-  querySpatial?(key: string, lon: number, lat: number): Promise<Record<string, unknown> | null>;
+  /**
+   * D1 point-in-polygon fast path. Sources without a spatial database return `null`
+   * unconditionally, so callers never branch on method presence.
+   */
+  querySpatial(key: string, lon: number, lat: number): Promise<Record<string, unknown> | null>;
 }
 
 /** The two per-isolate LRUs a source owns. */
@@ -147,7 +151,7 @@ async function headFromR2(env: Env, key: string): Promise<{ size?: number } | nu
 }
 
 /**
- * D1 spatial decorator. Wraps `env.RIDING_DB` behind the optional `querySpatial` port method so
+ * D1 spatial decorator. Wraps `env.RIDING_DB` behind the `querySpatial` port method so
  * `riding-lookup` never reaches for the binding itself.
  */
 export function withD1Spatial(source: DatasetSource, env: Env): DatasetSource {
@@ -172,6 +176,8 @@ export function r2DatasetSource(env: Env, caches?: DatasetCaches): DatasetSource
     load: (key) => loadGeoFromR2(env, resolved, key),
     getSpatialIndex: (key) => getSpatialIndexFromCaches(env, resolved, key),
     head: (key) => headFromR2(env, key),
+    // No spatial DB here; `withD1Spatial` overrides this when D1 is configured.
+    querySpatial: async () => null,
   };
 
   return getSpatialDbConfig(env).ENABLED && env.RIDING_DB ? withD1Spatial(base, env) : base;
@@ -197,5 +203,7 @@ export function inMemoryDatasetSource(
       return createSpatialIndex(geo);
     },
     head: async (key) => (store.has(key) ? {} : null),
+    // No spatial DB in tests.
+    querySpatial: async () => null,
   };
 }

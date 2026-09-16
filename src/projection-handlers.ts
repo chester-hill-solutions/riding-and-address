@@ -19,7 +19,7 @@ import {
 } from './customer';
 import { peekCustomerUsage } from './billing';
 import { timingSafeEqual } from './utils';
-import type { RouteContext } from './routes';
+import type { RouteContext } from './route-context';
 
 /** The one 401 body for the projection Bearer gate; `runPrelude` returns it before dispatch. */
 export function projectionUnauthorizedResponse(): Response {

@@ -1,7 +1,7 @@
 import { Env, QueryParams, SuggestQueryParams, SuggestResponse } from './types';
 import { initializeOdaDatabase, getOdaStats } from './oda-schema';
 import { isOdaEnabled, getOdaConfig, getOdaSuggestConfig, ODA_DEFAULTS } from './oda-config';
-import type { RouteContext } from './routes';
+import type { RouteContext } from './route-context';
 import {
   geocodeWithOda,
   reverseGeocodeWithOda,

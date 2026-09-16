@@ -2,8 +2,28 @@
 
 import { getAllProvincialPaths, PROVINCIAL_DATASETS } from './datasets';
 import { EMBED_EVENTS, EMBED_SCRIPT_ATTRIBUTES } from './embed';
+import { jsonHeaders, type RouteContext } from './route-context';
 
 const PROVINCIAL_DATASET_STEMS = PROVINCIAL_DATASETS.map((d) => d.r2Key.replace(/\.geojson$/, ''));
+
+/** `/api/docs` — the machine-readable OpenAPI document. */
+export function handleOpenApiDocs(ctx: RouteContext): Response {
+  const baseUrl = `${ctx.url.protocol}//${ctx.url.host}`;
+  return new Response(JSON.stringify(createOpenAPISpec(baseUrl)), {
+    headers: jsonHeaders(ctx),
+  });
+}
+
+/** `/docs` + mirrors — the interactive Scalar reference. */
+export function handleApiReference(ctx: RouteContext): Response {
+  const baseUrl = `${ctx.url.protocol}//${ctx.url.host}`;
+  return new Response(createApiReference(baseUrl), {
+    headers: {
+      'content-type': 'text/html; charset=UTF-8',
+      ...ctx.corsHeaders(ctx.request.headers.get('Origin')),
+    },
+  });
+}
 
 /**
  * Version of the Scalar bundle loaded from CDN by the API reference page.

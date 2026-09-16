@@ -1,3 +1,13 @@
+/**
+ * In-memory ODA adapter for the `AddressStore` port.
+ *
+ * Why not real SQLite: the 2026-09-16 review's code-judo is to delete this adapter and run the
+ * D1 SQL against real SQLite. That is blocked on a test-runtime decision — root tests run under
+ * Node via vitest (`environment: 'node'`), where `node:sqlite` needs an experimental flag, and
+ * `bun:sqlite` needs a Bun-run harness. Taking either binding here would be a new runtime
+ * dependency, so this hand-written adapter stays until that call is made. Its divergences from
+ * the SQL are pinned by tests (see `findAddressAtCivic` ordering in test/oda-suggest.test.ts).
+ */
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { normalizeOdaCsvRow } from '../../src/oda-normalize';
@@ -288,6 +298,12 @@ export function createInMemoryAddressStore(
     },
 
     async findPostalCentroid(input) {
+      // Divergence, documented: the D1 SQL is `WHERE postal_code = ? AND province IN (...)
+      // LIMIT 1` with no ORDER BY, so SQLite's winner among duplicate postal codes is
+      // unspecified (it falls to rowid/plan order). The in-memory adapter instead takes the
+      // caller's province preference, which is deterministic and mirrors `findCityCentroid`.
+      // Observable only when one postal code exists in more than one province; the callers
+      // pass their own province list, so this is the closest faithful stand-in.
       for (const prov of input.provinces) {
         const hit = db.postalCentroids.get(`${prov}|${input.postal}`);
         if (hit) return hit as PostalCentroidRecord;
@@ -305,9 +321,11 @@ export function createInMemoryAddressStore(
 
     async findCityCentroidsByPrefix(input) {
       const prefix = `${input.prefix}|`;
-      return [...db.cityCentroids.values()].filter(
-        (c) => input.provinces.includes(c.province) && c.city_key.startsWith(prefix)
-      ) as CityCentroidRecord[];
+      return [...db.cityCentroids.values()]
+        .filter(
+          (c) => input.provinces.includes(c.province) && c.city_key.startsWith(prefix)
+        )
+        .slice(0, input.limit) as CityCentroidRecord[];
     },
 
     async findAddressesInBounds(input) {
@@ -327,8 +345,14 @@ export function createInMemoryAddressStore(
     },
 
     async searchStreetSuggest() {
-      // The fixture loads oda_addresses and the centroid/range tables, not the FTS suggest
-      // index (built by a separate migration). No fixture-backed search test needs rows.
+      // Uncovered stub. The D1 query is the richest on this path — FTS5 MATCH, bm25() rank,
+      // the suggest_text prefix CASE, location-bias distance and address_count ordering. The
+      // fixture only loads oda_addresses, postal/city centroids and street ranges; there is no
+      // oda_suggest_fts content to exercise. Running the real query needs an FTS5-capable
+      // SQLite at test time (node:sqlite behind a flag, or a Bun-run harness for bun:sqlite),
+      // which is the blocked code-judo in the 2026-09-16 review. Until that runtime decision
+      // lands, autocomplete suggestion ranking has no fixture coverage and this returns [].
+      // The SQL shape itself is pinned by test/oda-suggest.test.ts's mock-D1 assertions.
       return [];
     },
 
@@ -349,10 +373,12 @@ export function createInMemoryAddressStore(
         : base;
       if (matches.length === 0) return null;
 
-      // ORDER BY unit-empty first, then numeric, then text.
+      // ORDER BY unit-empty first, then numeric, then text — mirroring the D1 adapter's
+      // `CASE WHEN a.unit = '' OR a.unit IS NULL THEN 0 ELSE 1 END` (empty sorts before
+      // non-empty, so the unit-less row wins the LIMIT 1).
       const [row] = [...matches].sort((a, b) => {
-        const aEmpty = a.unit ? 0 : 1;
-        const bEmpty = b.unit ? 0 : 1;
+        const aEmpty = a.unit ? 1 : 0;
+        const bEmpty = b.unit ? 1 : 0;
         if (aEmpty !== bEmpty) return aEmpty - bEmpty;
         const byNumber = castInteger(a.unit) - castInteger(b.unit);
         if (byNumber !== 0) return byNumber;

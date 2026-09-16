@@ -10,22 +10,27 @@
  * `handler: legacy`, which the Worker maps to its old `fetch` guard-chain; ported entries carry a
  * real handler and their old branch is deleted. Specificity is computed, not positional: static
  * beats `:param` beats `*`, longer wins, declaration order breaks remaining ties.
+ *
+ * Handler implementations live beside their concerns (`ops-handlers.ts`, `docs.ts`, `embed.ts`,
+ * `lookup-handler.ts`, `oda-handlers.ts`, …) and import `RouteContext` from the leaf
+ * `route-context.ts`, never from here — which is what keeps this module free of the old cycle.
  */
 
-import type { DeferTaskFn, Env } from './types';
-import { createApiReference, createOpenAPISpec } from './docs';
-import { createEmbedDocsPage } from './embed-docs';
-import { getCacheWarmingStatus } from './cache-warming';
-import { getMetrics, getMetricsSummary } from './metrics';
+import { handleApiReference, handleOpenApiDocs } from './docs';
+import { handleEmbedDocs } from './embed-docs';
+import { handleEmbedScript } from './embed-handlers';
 import {
-  allRequiredDatasetsPresent,
-  checkRidingDatasets,
-  getAllProvincialPaths,
-  missingDatasetKeys,
-} from './datasets';
-import { geocodingCircuitBreaker, r2CircuitBreaker } from './circuit-breaker';
-import { TIME_CONSTANTS } from './config';
+  handleCacheWarming,
+  handleCircuitBreakerReset,
+  handleHealth,
+  handleMetrics,
+} from './ops-handlers';
 import { handleWebhookAdmin } from './webhook-admin';
+import { getAllProvincialPaths } from './datasets';
+import { handleDemoRoute, handleLookupRequest } from './lookup-handler';
+import { handleOdaInit, handleOdaStats } from './oda-handlers';
+import { checkProjectionAuth, projectionUnauthorizedResponse } from './projection-handlers';
+import type { RouteContext } from './route-context';
 import {
   badRequest,
   checkAdminAuth,
@@ -43,20 +48,8 @@ import {
   httpStatusForKeyDenial,
   type KeyAuthResult,
 } from './api-keys';
-import { checkProjectionAuth, projectionUnauthorizedResponse } from './projection-handlers';
-import { resolveCorsOrigin, securityHeaders } from './http-headers';
-import { billableDenialResponse, type BillableAuthContext } from './billing';
+import type { BillableAuthContext } from './billing';
 import { isOdaSuggestEnabled } from './oda-config';
-import { createEmbedScript, EMBED_VERSION } from './embed';
-import {
-  handleGeocodeRoute,
-  handleNormalizeAddressRoute,
-  handleOdaInit,
-  handleOdaStats,
-  handleReverseRoute,
-} from './oda-handlers';
-import { handleLookupRequest } from './lookup-handler';
-import type { LookupRidingFn } from './lookup-expansion';
 
 export type RouteOwner = 'api' | 'portal';
 export type RouteVisibility = 'public' | 'internal';
@@ -94,54 +87,6 @@ export type RateLimitBucket =
   | 'search'
   | 'batch';
 
-/** The outcome of a Billable-unit decision, as returned by `recordSuccessfulBillable`. */
-export type BillableDecision = {
-  allowed: boolean;
-  status: number;
-  body?: Record<string, unknown>;
-};
-
-/**
- * The complete per-request context: everything a handler needs, assembled once by the lifecycle.
- *
- * It carries the raw request/env/ctx, the resolved route (`url`, `params`), the request-scoped
- * timing + header policy, and the auth outcome (`isAdmin`, `billing`). Handlers never re-derive
- * the correlation id, rebuild an `ExecutionContext`, or re-run auth/rate limiting.
- */
-export type RouteContext = {
-  request: Request;
-  env: Env;
-  ctx: ExecutionContext;
-  url: URL;
-  params: Record<string, string>;
-  /** Derived once by the lifecycle; handler logs and error bodies reuse it verbatim. */
-  correlationId: string;
-  /** Request start timestamp, for the timing metrics. */
-  startTime: number;
-  /** The one response-header policy: CORS + security + correlation id. */
-  corsHeaders: (origin?: string | null) => Record<string, string>;
-  /** Defer background work past the response; undefined when no ExecutionContext is available. */
-  deferTask?: DeferTaskFn;
-  /** Set by the prelude: true when the entry required or accepted admin credentials. */
-  isAdmin: boolean;
-  /** Resolved Billable Customer for a key entry; null for public/operator requests. */
-  billing: BillableAuthContext | null;
-  /** Full key-auth outcome, so a handler can branch on the accepted key (e.g. browser vs server). */
-  auth: KeyAuthResult;
-  /** Test seam: override the riding lookup. Production uses the cached core. */
-  lookup?: LookupRidingFn;
-  /**
-   * The single Fuse-denial dialect: `recordSuccessfulBillable`'s wire body, minus the HTTP
-   * envelope. Batch redaction applies this to one item instead of returning a Response.
-   */
-  billableDenialBody: (billed: BillableDecision) => Record<string, unknown>;
-  /**
-   * The single Fuse-denial dialect as a Response, with this request's correlation id and headers.
-   * `headers` overrides the default CORS policy for routes with origin-aware CORS.
-   */
-  billableDenial: (billed: BillableDecision, headers?: Record<string, string>) => Response;
-};
-
 export type RouteHandler = (ctx: RouteContext) => Promise<Response> | Response;
 
 /** Sentinel marking an entry that still runs the old `fetch` if-chain. */
@@ -173,248 +118,6 @@ const DEMO_PATHS = [
 /** The lookup surface served by one handler; `/api` and `/api/combined` are aliases of federal. */
 const LOOKUP_PATHS = ['/api', '/api/federal', '/api/combined', ...getAllProvincialPaths()];
 
-export function jsonHeaders(ctx: RouteContext): Record<string, string> {
-  return {
-    'content-type': 'application/json; charset=UTF-8',
-    ...ctx.corsHeaders(ctx.request.headers.get('Origin')),
-  };
-}
-
-/** Build the header policy once: CORS for this origin, security headers, and the correlation id. */
-function responseHeaderPolicy(
-  env: Env,
-  correlationId: string
-): (origin?: string | null) => Record<string, string> {
-  return (origin?: string | null) => {
-    const cors = resolveCorsOrigin(env, origin);
-    return {
-      'Access-Control-Allow-Origin': cors.allowOrigin,
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers':
-        'Content-Type, Authorization, X-Api-Key, X-Google-API-Key, X-Correlation-ID, X-Request-ID',
-      'Access-Control-Max-Age': '86400',
-      // Credentials only for an origin explicitly matched against the configured allowlist.
-      ...(cors.allowCredentials ? { 'Access-Control-Allow-Credentials': 'true' } : {}),
-      'X-Correlation-ID': correlationId,
-      ...securityHeaders(),
-    };
-  };
-}
-
-export type RouteContextInput = {
-  request: Request;
-  env: Env;
-  ctx: ExecutionContext;
-  correlationId: string;
-  startTime: number;
-  lookup?: LookupRidingFn;
-};
-
-/**
- * Assemble the complete request context once, before dispatch. Auth fields start empty and are
- * filled by `runPrelude`; `params` is filled by `dispatch` once the route resolves.
- */
-export function createRouteContext(input: RouteContextInput): RouteContext {
-  const { request, env, ctx, correlationId, startTime, lookup } = input;
-  const url = new URL(request.url);
-  const corsHeaders = responseHeaderPolicy(env, correlationId);
-
-  return {
-    request,
-    env,
-    ctx,
-    url,
-    params: {},
-    correlationId,
-    startTime,
-    corsHeaders,
-    deferTask: (task: Promise<unknown>) => { ctx.waitUntil(task); },
-    isAdmin: false,
-    billing: null,
-    auth: { ok: true },
-    lookup,
-    billableDenialBody: (billed) => ({ ...(billed.body ?? {}) }),
-    billableDenial: (billed, headers) =>
-      billableDenialResponse(
-        billed,
-        correlationId,
-        headers ?? corsHeaders(request.headers.get('Origin'))
-      ),
-  };
-}
-
-// ── Gateway surface: ported handlers ─────────────────────────────────────────
-
-/** `/api/docs` — the machine-readable OpenAPI document. */
-function handleOpenApiDocs(ctx: RouteContext): Response {
-  const baseUrl = `${ctx.url.protocol}//${ctx.url.host}`;
-  return new Response(JSON.stringify(createOpenAPISpec(baseUrl)), {
-    headers: jsonHeaders(ctx),
-  });
-}
-
-/** `/docs` + mirrors — the interactive Scalar reference. */
-function handleApiReference(ctx: RouteContext): Response {
-  const baseUrl = `${ctx.url.protocol}//${ctx.url.host}`;
-  return new Response(createApiReference(baseUrl), {
-    headers: {
-      'content-type': 'text/html; charset=UTF-8',
-      ...ctx.corsHeaders(ctx.request.headers.get('Origin')),
-    },
-  });
-}
-
-/** `/docs/embed` + `/embed/docs` — the widget guide. Wildcard CORS, kept separate from Scalar. */
-function handleEmbedDocs(ctx: RouteContext): Response {
-  const baseUrl = `${ctx.url.protocol}//${ctx.url.host}`;
-  return new Response(createEmbedDocsPage(baseUrl), {
-    headers: {
-      'content-type': 'text/html; charset=UTF-8',
-      'Access-Control-Allow-Origin': '*',
-    },
-  });
-}
-
-/** `/health` — public liveness; detailed diagnostics only for a valid operator credential. */
-async function handleHealth(ctx: RouteContext): Promise<Response> {
-  const headers = jsonHeaders(ctx);
-
-  if (!ctx.isAdmin) {
-    return new Response(
-      JSON.stringify({ status: 'healthy', timestamp: Date.now() }),
-      { headers }
-    );
-  }
-
-  const metrics = getMetrics();
-  const circuitBreakerStates = {
-    geocodingOda: await geocodingCircuitBreaker.getStateInfo('geocoding:oda'),
-    geocodingNominatim: await geocodingCircuitBreaker.getStateInfo('geocoding:nominatim'),
-    r2: await r2CircuitBreaker.getStateInfo('r2:federalridings-2024.geojson'),
-  };
-  const datasets = await checkRidingDatasets(ctx.env);
-  const datasetsOk = allRequiredDatasetsPresent(datasets);
-  const missingDatasets = missingDatasetKeys(datasets);
-
-  return new Response(
-    JSON.stringify({
-      status: datasetsOk ? 'healthy' : 'unhealthy',
-      timestamp: Date.now(),
-      metrics,
-      circuitBreakers: circuitBreakerStates,
-      cacheWarming: getCacheWarmingStatus(),
-      datasets,
-      ...(missingDatasets.length > 0 && { missingDatasets }),
-    }),
-    { headers }
-  );
-}
-
-/** `/metrics` — operator summary; admin gate runs in `runPrelude`. */
-function handleMetrics(ctx: RouteContext): Response {
-  return new Response(JSON.stringify(getMetricsSummary()), { headers: jsonHeaders(ctx) });
-}
-
-/** `/cache-warming` — last-warming status; admin gate runs in `runPrelude`. */
-function handleCacheWarming(ctx: RouteContext): Response {
-  const status = getCacheWarmingStatus();
-  return new Response(
-    JSON.stringify({
-      ...status,
-      config: {
-        enabled: true,
-        interval: TIME_CONSTANTS.SIX_HOURS_MS,
-        batchSize: 5,
-      },
-    }),
-    { headers: jsonHeaders(ctx) }
-  );
-}
-
-/** `/admin/circuit-breaker/reset` — reset one breaker (by `key`) or all of them. */
-async function handleCircuitBreakerReset(ctx: RouteContext): Promise<Response> {
-  const key = ctx.url.searchParams.get('key');
-  if (key) {
-    if (key.startsWith('r2:')) {
-      await r2CircuitBreaker.reset(key);
-    } else {
-      await geocodingCircuitBreaker.reset(key);
-    }
-    return new Response(
-      JSON.stringify({ success: true, message: `Circuit breaker ${key} reset` }),
-      { headers: jsonHeaders(ctx) }
-    );
-  }
-
-  await geocodingCircuitBreaker.resetAll();
-  return new Response(
-    JSON.stringify({ success: true, message: 'All circuit breakers reset' }),
-    { headers: jsonHeaders(ctx) }
-  );
-}
-
-/** `/webhooks/*` + `/api/webhooks/*` — the existing single webhook-admin adapter. */
-function handleWebhookAdminRoute(ctx: RouteContext): Promise<Response> {
-  return handleWebhookAdmin(ctx, ctx.request, ctx.url.pathname);
-}
-
-// ── Ported data surface: lookup, demo mirrors, ODA admin, embed ─────────────
-
-/**
- * The lookup surface. The prelude has already run auth, rate limiting and the header policy, and
- * filled `billing`; this handler only resolves the riding.
- */
-function handleLookupRoute(ctx: RouteContext): Promise<Response> {
-  return handleLookupRequest(ctx);
-}
-
-/** A copy of `ctx` whose `url.pathname` is the real route the demo path mirrors. */
-function withLookupPath(ctx: RouteContext, pathname: string): RouteContext {
-  const url = new URL(ctx.url.toString());
-  url.pathname = pathname;
-  return { ...ctx, url };
-}
-
-/**
- * Keyless demo mirrors. Re-pointed at the real route, never inheriting its policy: a demo request
- * is public, per-IP rate-limited, and never a Billable unit (so `billing` stays null).
- */
-function handleDemoRoute(ctx: RouteContext): Promise<Response> {
-  const demoPath = ctx.url.pathname.replace(/^\/api\/demo/, '/api') || '/api';
-  if (demoPath === '/api/geocode') return handleGeocodeRoute(ctx);
-  if (demoPath === '/api/reverse') return handleReverseRoute(ctx);
-  if (demoPath === '/api/normalize-address') return handleNormalizeAddressRoute(ctx);
-  return handleLookupRequest(withLookupPath(ctx, demoPath === '/api' ? '/api/federal' : demoPath));
-}
-
-/** `/api/oda/init` — admin gate runs in the prelude. */
-function handleOdaInitRoute(ctx: RouteContext): Promise<Response> {
-  return handleOdaInit(ctx);
-}
-
-/** `/api/oda/stats` — admin gate runs in the prelude. */
-function handleOdaStatsRoute(ctx: RouteContext): Promise<Response> {
-  return handleOdaStats(ctx);
-}
-
-/**
- * `/embed.js` — the drop-in widget. Gated on the same flag as `/api/search`: a widget whose only
- * data source is unregistered would fail silently on the integrator's page, worse than a 404.
- */
-function handleEmbedScript(ctx: RouteContext): Response {
-  if (!isOdaSuggestEnabled(ctx.env)) {
-    return badRequest('Address autocomplete is not enabled', 404, 'NOT_FOUND', ctx.correlationId);
-  }
-  return new Response(createEmbedScript(ctx.url.origin), {
-    headers: {
-      'content-type': 'application/javascript; charset=UTF-8',
-      'Cache-Control': 'public, max-age=300, s-maxage=3600',
-      'X-Embed-Version': EMBED_VERSION,
-      ...ctx.corsHeaders(ctx.request.headers.get('Origin')),
-    },
-  });
-}
-
 // ── The table ────────────────────────────────────────────────────────────────
 
 export const ROUTES: readonly RouteEntry[] = [
@@ -433,11 +136,11 @@ export const ROUTES: readonly RouteEntry[] = [
   { path: '/metrics', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleMetrics },
   { path: '/cache-warming', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleCacheWarming },
   { path: '/admin/circuit-breaker/reset', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleCircuitBreakerReset },
-  { path: ['/webhooks', '/api/webhooks'], methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleWebhookAdminRoute },
-  { path: ['/webhooks/*', '/api/webhooks/*'], methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleWebhookAdminRoute },
+  { path: ['/webhooks', '/api/webhooks'], methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleWebhookAdmin },
+  { path: ['/webhooks/*', '/api/webhooks/*'], methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleWebhookAdmin },
 
   // Lookup surface — ported; auth + rate limit run once in the prelude.
-  { path: LOOKUP_PATHS, methods: ALL_METHODS, owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'lookup', handler: handleLookupRoute },
+  { path: LOOKUP_PATHS, methods: ALL_METHODS, owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'lookup', handler: handleLookupRequest },
   { path: '/embed.js', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'none', handler: handleEmbedScript },
   { path: DEMO_PATHS, methods: ['GET'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'demo', handler: handleDemoRoute },
   { path: '/api/demo/*', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'demo', handler: handleDemoRoute },
@@ -448,8 +151,8 @@ export const ROUTES: readonly RouteEntry[] = [
   { path: '/api/reverse', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: legacy },
   { path: '/api/normalize-address', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: legacy },
   { path: '/api/search', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'search', rateLimit: 'search', handler: legacy },
-  { path: '/api/oda/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleOdaInitRoute },
-  { path: '/api/oda/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleOdaStatsRoute },
+  { path: '/api/oda/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleOdaInit },
+  { path: '/api/oda/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleOdaStats },
 
   // Batch / queue — declared, still legacy.
   { path: '/batch', methods: ['POST'], owner: 'api', visibility: 'public', auth: 'batch', rateLimit: 'batch', handler: legacy },
@@ -614,6 +317,8 @@ export function matchRoute(method: string | undefined, pathname: string): RouteM
 export function ownerOf(pathname: string): RouteOwner | null {
   return matchRoute(undefined, pathname)?.entry.owner ?? null;
 }
+
+// ── The one auth/rate-limit prelude ──────────────────────────────────────────
 
 function keyAuthFailureResponse(auth: KeyAuthResult, correlationId: string): Response {
   const status = auth.reason ? httpStatusForKeyDenial(auth.reason) : 401;
@@ -781,7 +486,8 @@ export async function dispatch(
     return badRequest('Not found', 404, 'NOT_FOUND', ctx.correlationId);
   }
 
-  const routeCtx: RouteContext = { ...ctx, params: match.params };
+  // Shallow copy: the prelude fills auth/rate-limit outcome without mutating the caller's context.
+  const routeCtx: RouteContext = { ...ctx };
 
   const denial = await runPrelude(match.entry, routeCtx);
   if (denial) return denial;

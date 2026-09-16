@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { handleLookupRequest } from '../src/lookup-handler';
-import { createRouteContext, type RouteContext } from '../src/routes';
+import { createRouteContext, type RouteContext, type RouteDeps } from '../src/route-context';
 import { Env } from '../src/types';
 
 function makeContext(
   env: Env,
   request: Request,
-  lookup?: RouteContext['lookup']
+  lookup?: RouteDeps['lookup']
 ): RouteContext {
   return createRouteContext({
     request,
@@ -18,7 +18,7 @@ function makeContext(
     } as unknown as ExecutionContext,
     correlationId: 'corr',
     startTime: Date.now(),
-    lookup,
+    deps: lookup ? { lookup } : undefined,
   });
 }
 

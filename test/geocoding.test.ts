@@ -5,11 +5,9 @@ import {
   parseGoogleAddressComponents,
   geocodeIfNeeded,
   stageLimit,
-  runGeocodeStages,
-  runOdaGeocodeStage,
-  runExternalFallbackStage,
-  buildGeocodeStages,
   OdaGeocodeError,
+} from '../src/geocoding';
+import {
   getGeocoderProvider,
   registerGeocoderProvider,
   unregisterGeocoderProvider,
@@ -19,9 +17,7 @@ import {
   NoResultsError,
   type GeocoderProvider,
   type GeocoderProviderInput,
-  type GeocodeStage,
-  type GeocodeStageContext,
-} from '../src/geocoding';
+} from '../src/geocoder-providers';
 import { Env, QueryParams } from '../src/types';
 import { CircuitBreakerOpenError } from '../src/circuit-breaker';
 
@@ -499,97 +495,6 @@ describe('geocodeIfNeeded with ODA enabled', () => {
   });
 });
 
-function stageContext(overrides: Partial<GeocodeStageContext> = {}): GeocodeStageContext {
-  return {
-    env: {} as Env,
-    qp: { address: '123 Main St' },
-    query: '123 Main St',
-    budgetMs: 10000,
-    startTime: Date.now(),
-    stages: { oda: 3000, geogratis: 5000, fallback: 5000 },
-    ...overrides,
-  };
-}
-
-describe('geocode stage contract', () => {
-  it('runs stages in order and stops at the first hit', async () => {
-    const calls: string[] = [];
-    const first: GeocodeStage = async () => {
-      calls.push('first');
-      return null;
-    };
-    const second: GeocodeStage = async () => {
-      calls.push('second');
-      return { lon: 1, lat: 2 };
-    };
-    const third: GeocodeStage = async () => {
-      calls.push('third');
-      return { lon: 3, lat: 4 };
-    };
-
-    const result = await runGeocodeStages(stageContext(), [first, second, third]);
-
-    expect(result).toEqual({ lon: 1, lat: 2 });
-    expect(calls).toEqual(['first', 'second']);
-  });
-
-  it('treats order as data — a swapped list changes call order', async () => {
-    const calls: string[] = [];
-    const a: GeocodeStage = async () => {
-      calls.push('a');
-      return { lon: 1, lat: 1 };
-    };
-    const b: GeocodeStage = async () => {
-      calls.push('b');
-      return { lon: 2, lat: 2 };
-    };
-
-    const result = await runGeocodeStages(stageContext(), [b, a]);
-
-    expect(result).toEqual({ lon: 2, lat: 2 });
-    expect(calls).toEqual(['b']);
-  });
-
-  it('stops at a terminal throw and does not run later stages', async () => {
-    const calls: string[] = [];
-    const terminal: GeocodeStage = async () => {
-      calls.push('terminal');
-      throw new Error('terminal stage failure');
-    };
-    const later: GeocodeStage = async () => {
-      calls.push('later');
-      return { lon: 0, lat: 0 };
-    };
-
-    await expect(runGeocodeStages(stageContext(), [terminal, later])).rejects.toThrow(
-      'terminal stage failure'
-    );
-    expect(calls).toEqual(['terminal']);
-  });
-
-  it('throws when every stage misses', async () => {
-    const miss: GeocodeStage = async () => null;
-    await expect(runGeocodeStages(stageContext(), [miss])).rejects.toThrow(
-      'All geocoding stages missed'
-    );
-  });
-
-  it('builds the default cascade as data — ODA only when enabled', () => {
-    const off = buildGeocodeStages({ ODA_GEOCODING_ENABLED: 'false' } as Env);
-    expect(off.map((s) => s.name)).toEqual(['runGeoGratisStage', 'runExternalFallbackStage']);
-
-    const on = buildGeocodeStages({
-      ODA_GEOCODING_ENABLED: 'true',
-      ODA_DB: {} as D1Database,
-    } as Env);
-    expect(on.map((s) => s.name)).toEqual([
-      'runOdaGeocodeStage',
-      'runGeoGratisStage',
-      'runExternalFallbackStage',
-    ]);
-  });
-});
-
 describe('stageLimit budget', () => {
   it('caps at the configured stage ceiling when budget remains', () => {
     const now = Date.now();
@@ -719,39 +624,29 @@ describe('stage cache ownership', () => {
   });
 });
 
-describe('stage miss/throw semantics', () => {
-  it('ODA stage returns null when its circuit breaker is open', async () => {
-    const env: Env = {
-      RIDINGS: {} as R2Bucket,
-      ODA_DB: missOdaDb(),
-      ODA_GEOCODING_ENABLED: 'true',
-      ODA_PROVINCES: 'ON,QC',
-    };
-    const circuitBreaker = {
-      execute: vi.fn(async () => {
-        throw new CircuitBreakerOpenError('geocoding:oda');
-      }),
-    };
-
-    await expect(
-      runOdaGeocodeStage(
-        stageContext({
-          env,
-          qp: { address: '1 Main St', city: 'Toronto', state: 'ON' },
-          circuitBreaker,
-        })
-      )
-    ).resolves.toBeNull();
-
-    expect(circuitBreaker.execute).toHaveBeenCalledWith(
-      'geocoding:oda',
-      expect.any(Function),
-      expect.objectContaining({ shouldCountFailure: expect.any(Function) })
-    );
+describe('cascade miss/throw semantics', () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
 
-  it('external stage throws when its circuit breaker is open', async () => {
-    const env: Env = { RIDINGS: {} as R2Bucket, ODA_GEOCODING_ENABLED: 'false' };
+  it('the external cascade is terminal when its circuit breaker is open', async () => {
+    globalThis.fetch = vi.fn(async (url: string | URL) => {
+      if (String(url).includes('geolocator.api.geo.ca')) {
+        // GeoGratis misses so the external cascade is the one that runs.
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${String(url)}`);
+    }) as typeof fetch;
+
+    const env: Env = {
+      RIDINGS: {} as R2Bucket,
+      ODA_GEOCODING_ENABLED: 'false',
+      GEOCODING_CACHE: nullKv(),
+    };
     const circuitBreaker = {
       execute: vi.fn(async () => {
         throw new CircuitBreakerOpenError('geocoding:nominatim');
@@ -759,26 +654,8 @@ describe('stage miss/throw semantics', () => {
     };
 
     await expect(
-      runExternalFallbackStage(stageContext({ env, circuitBreaker }))
+      geocodeIfNeeded(env, { address: '1 Main St' }, { circuitBreaker })
     ).rejects.toBeInstanceOf(CircuitBreakerOpenError);
-  });
-
-  it('postal-centroid-only queries stay terminal (throw)', async () => {
-    const env: Env = {
-      RIDINGS: {} as R2Bucket,
-      ODA_DB: missOdaDb(),
-      ODA_GEOCODING_ENABLED: 'true',
-      ODA_PROVINCES: 'ON,QC',
-    };
-
-    await expect(
-      runOdaGeocodeStage(
-        stageContext({
-          env,
-          qp: { postal: 'M5V2T6', state: 'ON', geocodeMethod: 'postal_centroid' },
-        })
-      )
-    ).rejects.toBeInstanceOf(OdaGeocodeError);
   });
 
   it('postal-centroid-only is terminal through the whole cascade', async () => {
@@ -974,21 +851,39 @@ describe('GeocoderProvider registry and chain', () => {
     );
   });
 
-  it('registers a stub provider and exercises it through the fallback stage', async () => {
+  it('treats an empty candidate array as a miss, with a clear no-results error', async () => {
+    const empty: GeocoderProvider = {
+      name: 'empty',
+      geocode: async () => [],
+    };
+
+    await expect(runProviderChain([empty], chainInput)).rejects.toBeInstanceOf(NoResultsError);
+  });
+
+  it('registers a stub provider and exercises it through the real cascade', async () => {
     const stub: GeocoderProvider = {
       name: 'stub-contract',
       geocode: vi.fn(async () => [{ lon: -1, lat: 2 }]),
     };
     registerGeocoderProvider(stub);
     try {
+      globalThis.fetch = vi.fn(async (url: string | URL) => {
+        if (String(url).includes('geolocator.api.geo.ca')) {
+          // GeoGratis misses so the registered stub heads the external cascade.
+          return new Response(JSON.stringify([]), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        throw new Error(`Unexpected fetch: ${String(url)}`);
+      }) as typeof fetch;
+
       const env: Env = {
         RIDINGS: {} as R2Bucket,
         GEOCODER: 'stub-contract',
         GEOCODING_CACHE: nullKv(),
       };
-      const result = await runExternalFallbackStage(
-        stageContext({ env, qp: { address: '1 St' }, query: '1 St' })
-      );
+      const result = await geocodeIfNeeded(env, { address: '1 St' });
       expect(result).toEqual({ lon: -1, lat: 2 });
       expect(stub.geocode).toHaveBeenCalledTimes(1);
     } finally {
@@ -1025,6 +920,13 @@ describe('GeocoderProvider registry and chain', () => {
     globalThis.fetch = vi.fn(async (url: string | URL) => {
       const target = String(url);
       urls.push(target);
+      if (target.includes('geolocator.api.geo.ca')) {
+        // GeoGratis misses so the external chain owns the resolution.
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
       if (target.includes('maps.googleapis.com')) {
         return new Response(JSON.stringify({ status: 'ZERO_RESULTS', results: [] }), {
           status: 200,
@@ -1047,19 +949,93 @@ describe('GeocoderProvider registry and chain', () => {
       GEOCODING_CACHE: nullKv(),
     };
 
-    const result = await runExternalFallbackStage(
-      stageContext({
-        env,
-        qp: { address: '757 Victoria Park', city: 'Toronto', state: 'ON' },
-        query: '757 Victoria Park',
-      })
-    );
-    expect(result).not.toBeNull();
+    const result = await geocodeIfNeeded(env, {
+      address: '757 Victoria Park',
+      city: 'Toronto',
+      state: 'ON',
+    });
 
-    expect(result!.lon).toBeCloseTo(-79.3, 3);
-    expect(result!.lat).toBeCloseTo(43.7, 3);
-    expect(urls).toHaveLength(2);
-    expect(urls[0]).toContain('maps.googleapis.com');
-    expect(urls[1]).toContain('nominatim.openstreetmap.org');
+    expect(result.lon).toBeCloseTo(-79.3, 3);
+    expect(result.lat).toBeCloseTo(43.7, 3);
+
+    const externalUrls = urls.filter((u) => !u.includes('geolocator'));
+    expect(externalUrls).toHaveLength(2);
+    expect(externalUrls[0]).toContain('maps.googleapis.com');
+    expect(externalUrls[1]).toContain('nominatim.openstreetmap.org');
+  });
+});
+
+describe('external provider cache consistency', () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('a cache hit returns the same full shape as a fresh lookup', async () => {
+    const store = new Map<string, string>();
+    const kv = {
+      get: async (key: string, type?: string) => {
+        const raw = store.get(key);
+        if (raw === undefined) return null;
+        return type === 'json' ? JSON.parse(raw) : raw;
+      },
+      put: async (key: string, value: string) => {
+        store.set(key, value);
+      },
+      delete: async (key: string) => {
+        store.delete(key);
+      },
+      list: async () => ({ keys: [], list_complete: true, cacheStatus: null }),
+      getWithMetadata: async () => ({ value: null, metadata: null, cacheStatus: null }),
+    } as unknown as KVNamespace;
+
+    const jsonResponse = (body: unknown) =>
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+    const googleBody = {
+      status: 'OK',
+      results: [
+        {
+          geometry: { location: { lat: 45.4215, lng: -75.6972 } },
+          formatted_address: '123 Main St, Ottawa, Ontario, Canada',
+          address_components: [
+            { long_name: 'Ottawa', short_name: 'Ottawa', types: ['locality'] },
+            { long_name: 'Ontario', short_name: 'ON', types: ['administrative_area_level_1'] },
+          ],
+        },
+      ],
+    };
+
+    const env: Env = {
+      RIDINGS: {} as R2Bucket,
+      GEOCODER: 'google',
+      GOOGLE_MAPS_KEY: 'k',
+      GEOCODING_CACHE: kv,
+    };
+    const qp: QueryParams = { address: '123 Main St', city: 'Ottawa', state: 'ON' };
+
+    globalThis.fetch = vi.fn(async (url: string | URL) => {
+      const target = String(url);
+      if (target.includes('geolocator.api.geo.ca')) return jsonResponse([]);
+      if (target.includes('maps.googleapis.com')) return jsonResponse(googleBody);
+      throw new Error(`Unexpected fetch: ${target}`);
+    }) as typeof fetch;
+    const fresh = await geocodeIfNeeded(env, qp);
+
+    expect(fresh.normalizedAddress).toBe('123 Main St, Ottawa, Ontario, Canada');
+    expect(fresh.addressComponents?.locality).toBe('Ottawa');
+
+    // Second run: Google is off the network entirely; only the cache can answer.
+    globalThis.fetch = vi.fn(async (url: string | URL) => {
+      const target = String(url);
+      if (target.includes('geolocator.api.geo.ca')) return jsonResponse([]);
+      throw new Error(`Google must not be called on a cache hit: ${target}`);
+    }) as typeof fetch;
+    const cached = await geocodeIfNeeded(env, qp);
+
+    expect(cached).toEqual(fresh);
   });
 });

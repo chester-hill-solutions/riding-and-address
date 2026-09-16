@@ -12,6 +12,12 @@ import {
   type ScoreInputs,
 } from '../src/oda-suggest';
 import { Env, SuggestQueryParams } from '../src/types';
+import { createD1AddressStore } from '../src/address-store';
+import {
+  createInMemoryAddressStore,
+  type OdaMemoryAddressRow,
+  type OdaMemoryDb,
+} from './helpers/oda-memory-db';
 
 type MockRow = Record<string, unknown>;
 
@@ -677,5 +683,141 @@ describe('searchSuggestions', () => {
 
     expect(result.suggestions).toEqual([]);
     expect(result.provinces).toEqual(['NU']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AddressStore adapter agreement.
+//
+// test/helpers/oda-memory-db.ts re-implements the D1 SQL in JS. These pin the
+// places where it had already drifted from src/address-store.ts, so the two
+// adapters stay in step until the blocked "run real SQLite" move lands.
+// ---------------------------------------------------------------------------
+
+function memoryRow(overrides: Partial<OdaMemoryAddressRow> = {}): OdaMemoryAddressRow {
+  return {
+    id: 1,
+    province: 'ON',
+    civic_number: '250',
+    street_name: 'MAIN',
+    street_type: 'ST',
+    street_direction: '',
+    unit: '',
+    postal_code: 'M4L 1E7',
+    city: 'Toronto',
+    city_key: 'TORONTO|ON',
+    lat: 43.6891,
+    lon: -79.2989,
+    full_address: '250 Main St, Toronto ON',
+    search_key: '250|MAIN|ST|ON',
+    street_key: 'MAIN|ST',
+    ...overrides,
+  };
+}
+
+function memoryDb(overrides: Partial<OdaMemoryDb> = {}): OdaMemoryDb {
+  return {
+    addresses: [],
+    postalCentroids: new Map(),
+    cityCentroids: new Map(),
+    streetRanges: new Map(),
+    ...overrides,
+  };
+}
+
+/** Capture the SQL the D1 adapter sends; every read answers null/[] so the SQL is the payload. */
+function createCapturingD1() {
+  const sqls: string[] = [];
+  const db = {
+    prepare: (sql: string) => {
+      sqls.push(sql);
+      return {
+        bind: () => ({
+          first: async () => null,
+          all: async () => ({ results: [] }),
+        }),
+      };
+    },
+  } as unknown as D1Database;
+  return { db, sqls };
+}
+
+describe('AddressStore adapter agreement', () => {
+  const civicRef = {
+    province: 'ON',
+    cityKey: 'TORONTO|ON',
+    streetKey: 'MAIN|ST',
+    civic: '250',
+  };
+
+  it('findAddressAtCivic puts the unit-less row first, matching the D1 ORDER BY', async () => {
+    // Empty unit, two numeric units and a text unit, all in the same building. The old
+    // in-memory sort ordered non-empty units first while the SQL ordered empty first.
+    const rows = [
+      memoryRow({ id: 1, unit: 'PH' }),
+      memoryRow({ id: 2, unit: '101' }),
+      memoryRow({ id: 3, unit: '12' }),
+      memoryRow({ id: 4, unit: '' }),
+    ];
+
+    const { db: d1, sqls } = createCapturingD1();
+    await createD1AddressStore(d1).findAddressAtCivic(civicRef);
+    expect(sqls[0]).toContain(
+      "ORDER BY CASE WHEN a.unit = '' OR a.unit IS NULL THEN 0 ELSE 1 END"
+    );
+
+    const store = createInMemoryAddressStore(memoryDb({ addresses: rows }));
+    const result = await store.findAddressAtCivic(civicRef);
+
+    // Empty sorts first (CASE ... THEN 0), so the unit-less row wins the SQL LIMIT 1.
+    expect(result?.unit).toBe('');
+    // Distinct non-empty units only: '12', '101', 'PH'.
+    expect(result?.unit_total).toBe(3);
+  });
+
+  it('findCityCentroidsByPrefix applies the caller limit, as the SQL LIMIT does', async () => {
+    const centroids = [
+      { province: 'ON', city_key: 'TORONTO|ON', city: 'Toronto', lat: 43.65, lon: -79.38 },
+      { province: 'QC', city_key: 'TORONTO|QC', city: 'Toronto', lat: 45.5, lon: -73.6 },
+      { province: 'BC', city_key: 'TORONTO|BC', city: 'Toronto', lat: 49.2, lon: -122.9 },
+    ];
+    const store = createInMemoryAddressStore(
+      memoryDb({
+        cityCentroids: new Map(centroids.map((c) => [`${c.province}|${c.city_key}`, c])),
+      })
+    );
+
+    const provinces = ['ON', 'QC', 'BC'];
+    expect(
+      await store.findCityCentroidsByPrefix({ provinces, prefix: 'TORONTO', limit: 10 })
+    ).toHaveLength(3);
+    // The old adapter ignored the limit entirely and returned all three.
+    expect(
+      await store.findCityCentroidsByPrefix({ provinces, prefix: 'TORONTO', limit: 2 })
+    ).toHaveLength(2);
+  });
+
+  it('findPostalCentroid follows caller province order (the SQL has no ORDER BY)', async () => {
+    const cents = [
+      { province: 'ON', postal_code: 'M5V 2T6', lat: 43.64, lon: -79.39 },
+      { province: 'QC', postal_code: 'M5V 2T6', lat: 45.0, lon: -73.0 },
+    ];
+    const store = createInMemoryAddressStore(
+      memoryDb({
+        postalCentroids: new Map(cents.map((p) => [`${p.province}|${p.postal_code}`, p])),
+      })
+    );
+
+    const onFirst = await store.findPostalCentroid({
+      postal: 'M5V 2T6',
+      provinces: ['ON', 'QC'],
+    });
+    expect(onFirst?.province).toBe('ON');
+
+    const qcFirst = await store.findPostalCentroid({
+      postal: 'M5V 2T6',
+      provinces: ['QC', 'ON'],
+    });
+    expect(qcFirst?.province).toBe('QC');
   });
 });
