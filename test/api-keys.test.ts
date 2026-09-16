@@ -15,7 +15,8 @@ import {
   type ApiKeyRecord,
   type KeyDenialReason,
 } from '../src/api-keys';
-import { utcDay, consumeDailyQuota } from '../src/api-key-usage-do';
+import { utcDay } from '../src/time';
+import { consumeDailyQuota } from '../src/api-key-usage-do';
 import { clearCustomerCache, loadCustomer, putCustomer, deleteCustomer, type CustomerRecord } from '../src/customer';
 import { Env } from '../src/types';
 

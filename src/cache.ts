@@ -362,29 +362,6 @@ export async function performCacheWarming(
   }
 }
 
-// Start cache warming on worker initialization
-export async function initializeCacheWarming(
-  env: Env,
-  loadGeo: (env: Env, r2Key: string) => Promise<void>,
-  lookupRiding: (env: Env, pathname: string, lon: number, lat: number) => Promise<LookupResult>
-): Promise<void> {
-  if (!CACHE_WARMING_CONFIG.ENABLED) {
-    return;
-  }
-
-  // Start warming immediately
-  performCacheWarming(env, loadGeo, lookupRiding).catch(error => {
-    console.error("Initial cache warming failed:", error);
-  });
-
-  // Set up periodic warming
-  setInterval(() => {
-    performCacheWarming(env, loadGeo, lookupRiding).catch(error => {
-      console.error("Periodic cache warming failed:", error);
-    });
-  }, CACHE_WARMING_CONFIG.WARMING_INTERVAL);
-}
-
 // Get cache warming status
 export function getCacheWarmingStatus(): CacheWarmingState {
   return { ...cacheWarmingState };
