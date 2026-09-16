@@ -39,6 +39,7 @@ import {
   provinceNameForGoogleComponent,
   selectGeoGratisResult,
 } from './geocode-region';
+import { joinAddressLines } from './canada-post-format';
 
 
 // Geocoding cache entry interface
@@ -940,20 +941,11 @@ export async function geocodeBatchWithGoogle(
   const results: GeocodeBatchResult[] = [];
   const errors: string[] = [];
   
-  // Convert queries to Google batch format
-  const addresses = queries.map(query => {
-    const addressParts: string[] = [];
-    
-    if (query.address) addressParts.push(query.address);
-    if (query.postal) addressParts.push(query.postal);
-    if (query.city) addressParts.push(query.city);
-    if (query.state) addressParts.push(query.state);
-    if (query.country) addressParts.push(query.country);
-    
-    return {
-      address: addressParts.join(', ')
-    };
-  });
+  // Convert queries to Google batch format. Parts are joined by the one canonical assembler;
+  // the Google batch API takes the province code and country as given, so no expansion is applied.
+  const addresses = queries.map(query => ({
+    address: joinAddressLines([query.address, query.postal, query.city, query.state, query.country]),
+  }));
 
   const batchRequest: GoogleBatchGeocodeRequest = {
     addresses

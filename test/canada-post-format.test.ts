@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { formatCanadaPostAddress } from '../src/canada-post-format';
+import { STREET_TYPE_CANONICAL } from '../src/oda-normalize';
 
 describe('formatCanadaPostAddress', () => {
   it('formats address without unit in Canada Post style', () => {
@@ -61,5 +62,31 @@ describe('formatCanadaPostAddress', () => {
       province: 'ON',
     });
     expect(result.canadaPostCertified).toBe(false);
+  });
+
+  it('derives every mailing abbreviation from the canonical map', () => {
+    for (const [alias, canonical] of Object.entries(STREET_TYPE_CANONICAL)) {
+      const result = formatCanadaPostAddress({
+        civicNumber: '1',
+        streetName: 'Main',
+        streetType: alias,
+        province: 'ON',
+      });
+      expect(result.line1).toBe(`1 MAIN ${canonical}`);
+    }
+  });
+
+  it('canonicalises the circle aliases instead of passing them through', () => {
+    // The mailing formatter used to re-list the map and silently omit CIRCLE/CIRCL/CRCL.
+    for (const alias of ['CIRCLE', 'CIRCL', 'CRCL']) {
+      expect(
+        formatCanadaPostAddress({
+          civicNumber: '2',
+          streetName: 'Welby',
+          streetType: alias,
+          province: 'ON',
+        }).line1
+      ).toBe('2 WELBY CIR');
+    }
   });
 });

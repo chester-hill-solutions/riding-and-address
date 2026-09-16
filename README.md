@@ -221,10 +221,10 @@ Event-driven notifications for batch completion:
 
 - `GET /api/webhooks` — List configured webhooks
 - `POST /api/webhooks` — Create new webhook
-- `PUT /api/webhooks/{id}` — Update webhook configuration
-- `DELETE /api/webhooks/{id}` — Remove webhook
 - `GET /api/webhooks/events` — View webhook event history
 - `GET /api/webhooks/deliveries` — View delivery attempts
+
+The `/webhooks/*` alias serves the same surface.
 
 #### Documentation
 Interactive API documentation:

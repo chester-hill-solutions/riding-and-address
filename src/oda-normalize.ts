@@ -88,8 +88,11 @@ const ODA_VERBATIM_STREET_TYPES = [
 /**
  * Types that canonicalise to a different token. Import applied these too, so a row whose
  * raw type is DRIVE is stored as `...|DR|...` — changing a target here would strand data.
+ *
+ * This is the single owner of the address vocabulary: the mailing formatter, the geocode-side
+ * suffix patterns and the geocoding candidate defaults all derive from it.
  */
-const STREET_TYPE_CANONICAL: Record<string, string> = {
+export const STREET_TYPE_CANONICAL: Record<string, string> = {
   ST: 'ST',
   STREET: 'ST',
   AVE: 'AVE',
@@ -126,6 +129,30 @@ const STREET_TYPE_SEARCH: Record<string, string> = {
   // Canonical mappings win: a token in both tables must canonicalise, not self-map.
   ...STREET_TYPE_CANONICAL,
 };
+
+/**
+ * Verbatim types the geocoder treats as an already-present suffix when deciding whether to append
+ * a default. Deliberately narrower than ODA_VERBATIM_STREET_TYPES: a type like PARK or MALL doubles
+ * as an ordinary part of a street name ("Ravine Park"), and recognising the whole list here would
+ * stop `expandStreetAddress` completing those addresses.
+ */
+const STREET_TYPE_QUERY_VERBATIM = ['WAY', 'LANE', 'LN', 'TRAIL', 'TL', 'CIR'] as const;
+
+/**
+ * The street-type tokens the geocode-side suffix heuristic recognises. Derived from the canonical
+ * map plus the curated verbatim subset above, so `geocode-region`'s two patterns cannot drift:
+ * `STREET_TYPE_ANY` used to accept CIRCL/CRCL while `STREET_TYPE_SUFFIX` did not.
+ */
+export const STREET_TYPE_QUERY_TOKENS: readonly string[] = [
+  ...Object.keys(STREET_TYPE_CANONICAL),
+  ...STREET_TYPE_QUERY_VERBATIM,
+];
+
+/**
+ * Street types tried, in order, when a query omits the type entirely. A subset of the canonical
+ * values chosen for the most common types; the order is load-bearing because it ranks candidates.
+ */
+export const DEFAULT_STREET_TYPES = ['', 'AVE', 'ST', 'RD', 'DR', 'BLVD', 'CRES'] as const;
 
 const STREET_DIR_SEARCH: Record<string, string> = {
   N: 'N',
@@ -220,10 +247,49 @@ export function normalizePostalCode(postal: string | undefined): string | undefi
   return result.valid ? result.sanitized : undefined;
 }
 
+/**
+ * The civic-number grammar. Every civic reader in the codebase — the free-form parser, the
+ * pasted-address splitter and the geocode-side scorer — is built from these tokens, so "123",
+ * "123A" and "123 1/2" are read the same way everywhere.
+ */
+const CIVIC_DIGITS = String.raw`\d+`;
+const CIVIC_LETTER = String.raw`[A-Za-z]`;
+/** A fractional civic, e.g. " 1/2", written after the number. */
+const CIVIC_FRACTION = String.raw`(?:\s+\d+\/\d+)?`;
+/** A civic number as a caller writes it: digits, an optional attached letter, an optional fraction. */
+const CIVIC_NUMBER = `${CIVIC_DIGITS}${CIVIC_LETTER}?${CIVIC_FRACTION}`;
+
+/** Leading civic plus the remainder of the address, requiring whitespace between them. */
+const CIVIC_PREFIX_RE = new RegExp(`^(${CIVIC_NUMBER})\\s+(.+)$`);
+/** A whole string that is only a civic number. */
+const CIVIC_BARE_RE = new RegExp(`^${CIVIC_DIGITS}${CIVIC_LETTER}?$`);
+/** A leading civic followed by a comma, as in "2, WELBY CRCL". */
+const CIVIC_BARE_COMMA_RE = new RegExp(`^(${CIVIC_DIGITS}${CIVIC_LETTER}?),\\s*`);
+/** The leading digits only, for coarse matching and scoring. */
+const CIVIC_HEAD_RE = new RegExp(`^(${CIVIC_DIGITS})`);
+/**
+ * A whole civic number including a trailing letter, e.g. "123A" or "123 1/2A". Kept separate from
+ * CIVIC_NUMBER because the stored form reads the letter after the fraction rather than before it.
+ */
+const CIVIC_FULL_RE = new RegExp(`^(${CIVIC_DIGITS}${CIVIC_FRACTION})(${CIVIC_LETTER}?)$`);
+
+/** Split a leading civic number from the rest of a free-form address, or null when absent. */
+function splitLeadingCivicNumber(text: string): { civic: string; rest: string } | null {
+  const match = text.match(CIVIC_PREFIX_RE);
+  if (!match) return null;
+  return { civic: match[1], rest: match[2] };
+}
+
+/** The leading civic digits of an address, or undefined when it does not start with one. */
+export function leadingCivicNumber(address: string | undefined): string | undefined {
+  if (!address) return undefined;
+  return address.trim().match(CIVIC_HEAD_RE)?.[1];
+}
+
 export function parseCivicNumber(raw: string | undefined): ParsedCivicNumber | undefined {
   if (!raw) return undefined;
   const cleaned = raw.trim().toUpperCase();
-  const match = cleaned.match(/^(\d+(?:\s+\d+\/\d+)?)([A-Z]?)$/);
+  const match = cleaned.match(CIVIC_FULL_RE);
   if (!match) {
     return { raw: cleaned, numeric: null, suffix: '' };
   }
@@ -408,13 +474,13 @@ export function parseFreeformAddress(address: string): {
     normalized = `${unitCivicMatch[2]} ${unitCivicMatch[3]}`;
   }
 
-  const civicMatch = normalized.match(/^(\d+[A-Za-z]?(?:\s+\d+\/\d+)?)\s+(.+)$/);
-  if (!civicMatch) {
+  const split = splitLeadingCivicNumber(normalized);
+  if (!split) {
     return { streetName: normalized, unit };
   }
 
-  const street = parseStreetTail(civicMatch[2]);
-  return { civic: civicMatch[1], unit, ...street };
+  const street = parseStreetTail(split.rest);
+  return { civic: split.civic, unit, ...street };
 }
 
 /**
@@ -462,14 +528,14 @@ export function extractAddressParts(address: string): {
   }
 
   if (!postal && !province) {
-    return { streetAddress: address.replace(/^(\d+[A-Za-z]?),\s*/, '$1 ').trim() };
+    return { streetAddress: address.replace(CIVIC_BARE_COMMA_RE, '$1 ').trim() };
   }
 
   // A bare civic segment ("2") belongs with the following segment, not treated as a street.
   const merged: string[] = [];
   for (let i = 0; i < cleaned.length; i++) {
     const segment = cleaned[i];
-    if (/^\d+[A-Za-z]?$/.test(segment) && i + 1 < cleaned.length) {
+    if (CIVIC_BARE_RE.test(segment) && i + 1 < cleaned.length) {
       merged.push(`${segment} ${cleaned[++i]}`);
     } else {
       merged.push(segment);
