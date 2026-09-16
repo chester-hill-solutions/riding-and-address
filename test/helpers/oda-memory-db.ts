@@ -145,13 +145,14 @@ export function loadOdaFixtureDb(fixturePath?: string): OdaMemoryDb {
     });
   }
 
-  for (const [rangeKey, acc] of streetRanges) {
-    const [cityKey, streetKey] = rangeKey.split('|');
-    const province = cityKey.split('|')[1] ?? 'ON';
-    db.streetRanges.set(`${province}|${cityKey}|${streetKey}`, {
+  for (const acc of streetRanges.values()) {
+    // The accumulator already carries the real keys; re-splitting the map key collapsed
+    // `TORONTO|ON|MAIN|ST` into `(TORONTO, ON)` and seeded unusable rows.
+    const province = acc.cityKey.split('|')[1] ?? 'ON';
+    db.streetRanges.set(`${province}|${acc.cityKey}|${acc.streetKey}`, {
       province,
-      city_key: cityKey,
-      street_key: streetKey,
+      city_key: acc.cityKey,
+      street_key: acc.streetKey,
       lat: acc.latSum / acc.count,
       lon: acc.lonSum / acc.count,
     });
