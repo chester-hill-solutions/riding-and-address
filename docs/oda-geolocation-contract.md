@@ -56,11 +56,17 @@ At least one location parameter is required. Coordinates (`lat`/`lon`) are not a
 }
 ```
 
+`dataSource.provider` is `statcan-oda` for the 2021 Open Database of Addresses and `statcan-nar`
+for a city that has been refreshed from the National Address Register, in which case
+`dataSource.version` is the NAR vintage (e.g. `202606`). Address data migrates city by city, so the
+provider reflects the city a result resolved in, not a global setting.
+
 **Geocode methods:**
 
 | Method | Default confidence | Description |
 |--------|-------------------|-------------|
 | `exact` | 1.0 | Full civic + street + city/province or postal match |
+| `postal_street` | 0.9 | Exact civic + street scoped by postal code, when no municipality is supplied |
 | `postal_centroid` | 0.85 | Centroid of all addresses sharing a postal code |
 | `street_interpolated` | 0.75 | Same street, civic interpolated or nearest civic |
 | `city_centroid` | 0.45 | Centroid of all addresses in a city |
@@ -441,6 +447,12 @@ and costs CDN cacheability. The API calls are the resource; those are gated.
 | 403 | `ORIGIN_NOT_ALLOWED` | Origin is not on this key's allowlist (the message names it, as Canada Post's does) |
 | 429 | `DAILY_LIMIT_EXCEEDED` | Daily cap reached; resets 00:00 UTC |
 
+There is also a per-minute rate limit (`RATE_LIMIT`, default 100) keyed by client, returning `429`
+with code `RATE_LIMIT_EXCEEDED`. **The operator credential (HTTP Basic) is exempt from the
+per-minute limit**: it is a server-to-server secret, and bulk work such as geocoding an imported
+household list must not be throttled by the per-IP bucket that protects public and browser-key
+traffic. Key-based traffic keeps its per-minute limit and daily cap.
+
 Denials carry **no CORS headers** — echoing a rejected origin back would let the offending page
 read the response and undercut the check that just failed.
 
@@ -529,7 +541,7 @@ It asserts a p95 budget (default 100ms) and exits non-zero if any scenario misse
 | Route | Method | Auth | Description |
 |-------|--------|------|-------------|
 | `/api/oda/init` | POST | Basic | Initialize ODA schema |
-| `/api/oda/stats` | GET | Basic | Row counts, import metadata |
+| `/api/oda/stats` | GET | Basic | Row counts, ODA import metadata, and per-city NAR provenance (`narImports`) |
 
 ## Related docs
 

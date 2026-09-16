@@ -4,7 +4,7 @@
 
 Statistics Canada [Open Database of Addresses (ODA)](https://www.statcan.gc.ca/en/lode/databases/oda), version 1.0 (2021001), Open Government License - Canada.
 
-Data collection period: January–April 2021. New developments after 2021 may be missing. Statistics Canada is developing a National Address Register (NAR) as a successor source.
+Data collection period: January–April 2021. New developments after 2021 may be missing. The [National Address Register](nar-data-import.md) is the semi-annual successor source; cities migrate from ODA to NAR one at a time, replacing their rows in place.
 
 ## Province downloads
 

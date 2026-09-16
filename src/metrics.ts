@@ -51,6 +51,22 @@ const metrics: Metrics = {
   odaD1Reads: 0,
   odaD1QueriesMaxPerRequest: 0,
   odaStageTimeouts: 0,
+  geocodingOdaMethodExact: 0,
+  geocodingOdaMethodPostalStreet: 0,
+  geocodingOdaMethodPostalCentroid: 0,
+  geocodingOdaMethodStreetInterpolated: 0,
+  geocodingOdaMethodCityCentroid: 0,
+  geocodingOdaMethodNearest: 0,
+  geocodingOdaMissNotFound: 0,
+  geocodingOdaMissAmbiguous: 0,
+  geocodingOdaMissProvinceNotLoaded: 0,
+  geocodingOdaMissLowConfidence: 0,
+  geocodingOdaMissOther: 0,
+  geocodingExternalCalls: 0,
+  geocodingExternalGeogratis: 0,
+  geocodingExternalGoogle: 0,
+  geocodingExternalMapbox: 0,
+  geocodingExternalNominatim: 0,
   totalR2Time: 0,
   totalBatchTime: 0,
   totalWebhookTime: 0
@@ -113,6 +129,16 @@ export function getMetricsSummary(): {
     errors: number;
     hitRate: number;
     avgTime: number;
+  };
+  geocodingFallback: {
+    odaResolved: number;
+    odaMisses: number;
+    externalCalls: number;
+    /** Share of resolutions (local + external) that required an external provider, as a percent. */
+    fallbackRate: number;
+    byMethod: Record<string, number>;
+    missReasons: Record<string, number>;
+    providers: Record<string, number>;
   };
   r2: {
     requests: number;
@@ -179,6 +205,23 @@ export function getMetricsSummary(): {
     ? metrics.totalWebhookTime / webhookTotal 
     : 0;
 
+  const odaResolved =
+    metrics.geocodingOdaMethodExact +
+    metrics.geocodingOdaMethodPostalStreet +
+    metrics.geocodingOdaMethodPostalCentroid +
+    metrics.geocodingOdaMethodStreetInterpolated +
+    metrics.geocodingOdaMethodCityCentroid +
+    metrics.geocodingOdaMethodNearest;
+  const odaMisses =
+    metrics.geocodingOdaMissNotFound +
+    metrics.geocodingOdaMissAmbiguous +
+    metrics.geocodingOdaMissProvinceNotLoaded +
+    metrics.geocodingOdaMissLowConfidence +
+    metrics.geocodingOdaMissOther;
+  const externalCalls = metrics.geocodingExternalCalls;
+  const resolutionTotal = odaResolved + externalCalls;
+  const fallbackRate = resolutionTotal > 0 ? (externalCalls / resolutionTotal) * 100 : 0;
+
   return {
     requests: {
       total: totalRequests,
@@ -192,6 +235,33 @@ export function getMetricsSummary(): {
       errors: metrics.geocodingErrors,
       hitRate: Math.round(geocodingHitRate * 100) / 100,
       avgTime: Math.round(geocodingAvgTime * 100) / 100
+    },
+    geocodingFallback: {
+      odaResolved,
+      odaMisses,
+      externalCalls,
+      fallbackRate: Math.round(fallbackRate * 100) / 100,
+      byMethod: {
+        exact: metrics.geocodingOdaMethodExact,
+        postal_street: metrics.geocodingOdaMethodPostalStreet,
+        postal_centroid: metrics.geocodingOdaMethodPostalCentroid,
+        street_interpolated: metrics.geocodingOdaMethodStreetInterpolated,
+        city_centroid: metrics.geocodingOdaMethodCityCentroid,
+        nearest_neighbor: metrics.geocodingOdaMethodNearest
+      },
+      missReasons: {
+        not_found: metrics.geocodingOdaMissNotFound,
+        ambiguous: metrics.geocodingOdaMissAmbiguous,
+        province_not_loaded: metrics.geocodingOdaMissProvinceNotLoaded,
+        low_confidence: metrics.geocodingOdaMissLowConfidence,
+        other: metrics.geocodingOdaMissOther
+      },
+      providers: {
+        geogratis: metrics.geocodingExternalGeogratis,
+        google: metrics.geocodingExternalGoogle,
+        mapbox: metrics.geocodingExternalMapbox,
+        nominatim: metrics.geocodingExternalNominatim
+      }
     },
     r2: {
       requests: metrics.r2Requests,

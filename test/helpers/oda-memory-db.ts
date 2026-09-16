@@ -153,6 +153,9 @@ export function loadOdaFixtureDb(fixturePath?: string): OdaMemoryDb {
 function sqlKind(sql: string): string {
   const s = sql.replace(/\s+/g, ' ').toUpperCase();
   if (s.includes('SEARCH_KEY IN') && s.includes('ODA_ADDRESSES')) return 'exact';
+  if (s.includes('POSTAL_CODE =') && s.includes('STREET_KEY IN') && s.includes('ODA_ADDRESSES')) {
+    return 'postal_street';
+  }
   if (s.includes('ODA_POSTAL_CENTROIDS')) return 'postal';
   if (s.includes('STREET_KEY IN') && s.includes('CIVIC_NUMBER =')) return 'street_in_exact';
   if (s.includes('STREET_KEY IN') && s.includes('ORDER BY ABS(CAST(CIVIC_NUMBER')) return 'street_in_nearest';
@@ -256,6 +259,27 @@ function executeQuery(db: OdaMemoryDb, sql: string, params: unknown[]): unknown 
         if (hit) return hit;
       }
       return null;
+    }
+    case 'postal_street': {
+      // WHERE province IN (...) AND postal_code = ? AND street_key IN (...) AND civic_number = ?
+      const s = sql.replace(/\s+/g, ' ').toUpperCase();
+      let offset = 0;
+      const provinces = params
+        .slice(offset, (offset += countPlaceholders(s.match(/PROVINCE IN \(([^)]+)\)/)?.[1])))
+        .map(String);
+      const postal = String(params[offset++]);
+      const streetKeys = params
+        .slice(offset, (offset += countPlaceholders(s.match(/STREET_KEY IN \(([^)]+)\)/)?.[1])))
+        .map(String);
+      const civic = String(params[offset++]);
+
+      return db.addresses.filter(
+        (a) =>
+          provinces.includes(a.province) &&
+          a.postal_code === postal &&
+          streetKeys.includes(a.street_key) &&
+          a.civic_number === civic
+      );
     }
     case 'street_in_exact': {
       const { provinces, cityKeys, streetKeys, rest } = parseStreetInParams(sql, params);

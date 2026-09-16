@@ -32,6 +32,17 @@ Fixture CSV: `test/fixtures/oda/fixture.csv`
 - `confidence`: `0.85`
 - `mailingAddress.postalCode`: `M5V 2T6`
 
+## Case 2b: Postal-scoped street without a city (ON)
+
+**Query:** `GET /api/geocode?address=757%20Victoria%20Park%20Ave&postal=M4C%201N2`
+
+**Expected:**
+- `geocodeMethod`: `postal_street`
+- `confidence`: `0.9`
+- `matchedFields` includes `civic`, `street`, `postal`
+- Resolves the exact civic point instead of the postal centroid (relevant for pasted addresses
+  like `2, WELBY CRCL, M4B 2Y8` that carry a postal code but no city)
+
 ## Case 3: Unit address formatting (ON)
 
 **Query:** exact match on address with unit `1205`

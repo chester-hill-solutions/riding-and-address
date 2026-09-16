@@ -622,6 +622,24 @@ async function geocodeWithMapbox(qp: QueryParams, query: string, env: Env): Prom
   return { lon: feat.center[0], lat: feat.center[1] };
 }
 
+/**
+ * Fallback instrumentation. A local miss is attributed to its contract code so the rate can be
+ * broken down by cause; external calls are counted per provider so spend and health are visible.
+ * See docs/plans/reduce-external-geocoder-fallback.md.
+ */
+const ODA_MISS_METRIC: Record<string, keyof Metrics> = {
+  ADDRESS_NOT_FOUND: 'geocodingOdaMissNotFound',
+  AMBIGUOUS_LOCATION: 'geocodingOdaMissAmbiguous',
+  PROVINCE_NOT_LOADED: 'geocodingOdaMissProvinceNotLoaded',
+  LOW_CONFIDENCE_GEOCODE: 'geocodingOdaMissLowConfidence',
+};
+
+const EXTERNAL_PROVIDER_METRIC: Record<string, keyof Metrics> = {
+  google: 'geocodingExternalGoogle',
+  mapbox: 'geocodingExternalMapbox',
+  nominatim: 'geocodingExternalNominatim',
+};
+
 function remainingMs(budgetMs: number, startTime: number): number {
   return Math.max(0, budgetMs - (Date.now() - startTime));
 }
@@ -688,6 +706,7 @@ async function runOdaGeocodeStage(
       console.warn(
         `[GEOCODING] ODA miss (${error.code}), falling back to GeoGratis/${env.GEOCODER || 'nominatim'}`
       );
+      metrics?.incrementMetric(ODA_MISS_METRIC[error.code] ?? 'geocodingOdaMissOther');
       return null;
     }
     throw error;
@@ -796,6 +815,8 @@ export async function geocodeIfNeeded(
     const geogratisStarted = Date.now();
     try {
       const geogratisStageMs = stageLimit(timeoutMs, startTime, GEOCODING_STAGE_TIMEOUTS.geogratis);
+      metrics?.incrementMetric('geocodingExternalCalls');
+      metrics?.incrementMetric('geocodingExternalGeogratis');
       const geogratisResult = await withTimeout(geocodeWithGeoGratis(qp, env), geogratisStageMs, 'GeoGratis geocoding');
       recordTiming('geocodingGeoGratisTime', Date.now() - geogratisStarted);
       
@@ -861,6 +882,10 @@ export async function geocodeIfNeeded(
     metrics?.incrementMetric('geocodingCacheMisses');
     
     // Use circuit breaker and retry for geocoding
+    metrics?.incrementMetric('geocodingExternalCalls');
+    const providerMetric = EXTERNAL_PROVIDER_METRIC[provider];
+    if (providerMetric) metrics?.incrementMetric(providerMetric);
+
     let result: GeocodeResult;
     try {
       const fallbackStageMs = stageLimit(timeoutMs, startTime, GEOCODING_STAGE_TIMEOUTS.fallback);

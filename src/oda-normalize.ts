@@ -114,6 +114,11 @@ const STREET_TYPE_CANONICAL: Record<string, string> = {
   RUE: 'RUE',
   CH: 'CH',
   CHEMIN: 'CH',
+  // Circle. The stored vocabulary contains CIR only — CIRCLE/CIRCL/CRCL never occur — so mapping
+  // these query-side cannot strand existing rows, and a caller typing "CRCL" still matches.
+  CIRCLE: 'CIR',
+  CIRCL: 'CIR',
+  CRCL: 'CIR',
 };
 
 const STREET_TYPE_SEARCH: Record<string, string> = {
@@ -412,21 +417,107 @@ export function parseFreeformAddress(address: string): {
   return { civic: civicMatch[1], unit, ...street };
 }
 
+/**
+ * Split a free-form address that embeds a postal code, province and/or city after commas.
+ *
+ * Callers routinely paste a whole Canadian address into `address` instead of using the separate
+ * city/state/postal params — "2, WELBY CRCL, M4B 2Y8" or "123 Main St, Toronto, ON M5V 2T6".
+ * Without this the civic-number regex fails on the comma after the civic and the postal code is
+ * swallowed into the street name, so the lookup can use neither: the query looks street-only,
+ * with no context to scope it.
+ *
+ * Reinterpretation only happens when a postal code or province is actually present; otherwise
+ * the input is returned with just a leading "2," normalised, preserving the existing parse.
+ */
+export function extractAddressParts(address: string): {
+  streetAddress: string;
+  postal?: string;
+  province?: string;
+  city?: string;
+} {
+  const segments = address
+    .split(',')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  let postal: string | undefined;
+  let province: string | undefined;
+  const cleaned: string[] = [];
+
+  for (const segment of segments) {
+    let text = segment;
+    const postalMatch = text.match(/\b([A-Za-z]\d[A-Za-z])\s?(\d[A-Za-z]\d)\b/);
+    if (postalMatch && !postal) {
+      postal = normalizePostalCode(`${postalMatch[1]}${postalMatch[2]}`);
+      text = text.replace(postalMatch[0], ' ').trim();
+    }
+    if (text && !province) {
+      const code = normalizeProvince(text);
+      if (code) {
+        province = code;
+        text = '';
+      }
+    }
+    if (text && normalizeSearchToken(text) !== 'CANADA') cleaned.push(text);
+  }
+
+  if (!postal && !province) {
+    return { streetAddress: address.replace(/^(\d+[A-Za-z]?),\s*/, '$1 ').trim() };
+  }
+
+  // A bare civic segment ("2") belongs with the following segment, not treated as a street.
+  const merged: string[] = [];
+  for (let i = 0; i < cleaned.length; i++) {
+    const segment = cleaned[i];
+    if (/^\d+[A-Za-z]?$/.test(segment) && i + 1 < cleaned.length) {
+      merged.push(`${segment} ${cleaned[++i]}`);
+    } else {
+      merged.push(segment);
+    }
+  }
+
+  // A lone non-numeric segment is a city-only query ("Vancouver, BC").
+  if (merged.length === 1 && !/\d/.test(merged[0])) {
+    return { streetAddress: '', postal, province, city: merged[0] };
+  }
+
+  const [streetAddress = '', ...rest] = merged;
+  let city: string | undefined;
+  const trailing: string[] = [];
+  for (const segment of rest) {
+    if (!city && !/\d/.test(segment)) city = segment;
+    else trailing.push(segment);
+  }
+
+  return {
+    // Join with commas so unit suffixes ("Unit # 132") keep the separator the parser expects.
+    streetAddress: [streetAddress, ...trailing].filter(Boolean).join(', ').replace(/\s+/g, ' ').trim(),
+    postal,
+    province,
+    city,
+  };
+}
+
 export function parseAddressQuery(input: {
   address?: string;
   postal?: string;
   city?: string;
   state?: string;
 }): ParsedAddressQuery {
-  const province = normalizeProvince(input.state);
-  const postal = normalizePostalCode(input.postal);
-  const city = input.city ? normalizeSearchToken(input.city) : undefined;
+  const parts = input.address ? extractAddressParts(input.address) : undefined;
+  const province = normalizeProvince(input.state) ?? parts?.province;
+  const postal = normalizePostalCode(input.postal) ?? parts?.postal;
+  const city = input.city
+    ? normalizeSearchToken(input.city)
+    : parts?.city
+      ? normalizeSearchToken(parts.city)
+      : undefined;
 
   if (!input.address) {
     return { postal, city, province };
   }
 
-  const parsed = parseFreeformAddress(input.address);
+  const parsed = parseFreeformAddress(parts!.streetAddress);
   return {
     civic: parsed.civic,
     civicParsed: parseCivicNumber(parsed.civic),

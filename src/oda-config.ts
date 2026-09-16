@@ -13,6 +13,9 @@ export const ODA_DEFAULTS = {
 
 export const CONFIDENCE_BY_METHOD = {
   exact: 1.0,
+  // Exact civic + street within the postal code, but no municipality was supplied. Slightly
+  // below `exact` because the postal code, not the city, is what scopes the match.
+  postal_street: 0.9,
   postal_centroid: 0.85,
   street_interpolated: 0.75,
   city_centroid: 0.45,

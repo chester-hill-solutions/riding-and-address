@@ -45,5 +45,9 @@ An optional request that selects a specific boundary vintage; unavailable vintag
 _Avoid_: Version (ambiguous with API version)
 
 **ODA**:
-Statistics Canada Open Database of Addresses used for geocoding — not riding boundaries.
+Statistics Canada Open Database of Addresses (2021) used for geocoding — not riding boundaries.
 _Avoid_: Using “ODA” to mean any open data
+
+**NAR**:
+Statistics Canada National Address Register (catalogue 46-26-0002), the semi-annual successor to the ODA. Addresses migrate **city by city**; a result's source is reported per city in `dataSource`.
+_Avoid_: Assuming a whole province shares one address vintage; “NAR” for riding boundaries
