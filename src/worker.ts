@@ -10,7 +10,7 @@ import {
   handleSearchRoute,
 } from './oda-handlers';
 import { isOdaSuggestEnabled } from './oda-config';
-import { performCacheWarming } from './cache';
+import { performCacheWarming } from './cache-warming';
 import { geocodingCircuitBreaker, initializeCircuitBreakers, r2CircuitBreaker } from './circuit-breaker';
 import { incrementMetric, recordTiming } from './metrics';
 import { 
@@ -85,9 +85,7 @@ async function handleScheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionC
   
   // Perform cache warming
   try {
-    await performCacheWarming(env, async (env: Env, r2Key: string) => {
-      await loadGeo(env, r2Key);
-    }, lookupRiding);
+    await performCacheWarming(env);
     console.log('[Cron] Cache warming completed successfully');
   } catch (error) {
     console.error('[Cron] Cache warming failed:', error);

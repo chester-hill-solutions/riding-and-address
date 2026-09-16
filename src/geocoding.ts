@@ -1,7 +1,6 @@
 import { 
   Env, 
   QueryParams, 
-  MapboxResponse, 
   GoogleBatchGeocodeRequest,
   GoogleAddressComponents,
   GoogleGeocodeLocation,
@@ -22,7 +21,8 @@ import {
   safeValidateGeoGratis,
   safeValidateGoogleGeocode,
   safeValidateGoogleBatchGeocode,
-  safeValidateNominatim
+  safeValidateNominatim,
+  safeValidateMapbox
 } from './validation';
 import { isOdaEnabled } from './oda-config';
 import {
@@ -436,191 +436,342 @@ export async function normalizeAddressWithGoogle(
   }
 }
 
-/**
- * Geocodes an address using the GeoGratis Geolocation API (Government of Canada).
- * This is the primary geocoding service used by the application.
- * 
- * @param qp - Query parameters containing address, postal code, city, state, or country
- * @returns Promise resolving to geocoding result with lon, lat, qualifier, and score, or null if failed
- * 
- * @remarks
- * - Uses the NRCan Geolocator API: https://www.geolocator.api.geo.ca/geolocation/en/locate
- * - Requests score and component data via expand parameter for quality assessment
- * - Returns null on API errors, empty results, or invalid coordinates
- */
-async function geocodeWithGeoGratis(qp: QueryParams, fetchTimeoutMs: number): Promise<{ lon: number; lat: number; qualifier?: string; score?: number } | null> {
-  const retryConfig = getRetryConfig();
-  try {
-    return await withRetry(async () => {
-      const queryString = buildGeocodeQueryString(qp);
-      const params = new URLSearchParams({
-        q: queryString,
-        expand: 'score,component',
-      });
+// ---------------------------------------------------------------------------
+// GeocoderProvider seam
+//
+// Every outbound geocoder implements one contract: `geocode(input)` resolves to
+// ranked candidates or throws a typed error. The registry is data, and the
+// fallback stage walks it in order. Providers never call each other.
+// ---------------------------------------------------------------------------
 
-      const url = `https://www.geolocator.api.geo.ca/geolocation/en/locate?${params.toString()}`;
-      const resp = await fetch(url, {
-        headers: { "User-Agent": "riding-lookup/1.0" },
-        signal: AbortSignal.timeout(fetchTimeoutMs)
-      });
-      
-      if (!resp.ok) {
-        throw new Error(`GeoGratis API error: ${resp.status}`);
-      }
-      
-      const rawData = await resp.json();
-      
-      // Validate response structure with zod
-      const validation = safeValidateGeoGratis(rawData);
-      if (!validation.success) {
-        console.warn(`[GEOCODING] GeoGratis response validation failed:`, validation.error.issues);
-        throw new NonRetriableError('GeoGratis response validation failed');
-      }
-      
-      const data = validation.data;
-
-      if (data.length === 0) {
-        console.warn(`[GEOCODING] GeoGratis returned no results`);
-        throw new NonRetriableError('GeoGratis returned no results');
-      }
-
-      const selected = selectGeoGratisResult(qp, data);
-      if (!selected?.geometry?.coordinates || selected.geometry.coordinates.length < 2) {
-        console.warn(`[GEOCODING] GeoGratis result missing valid coordinates`);
-        throw new NonRetriableError('GeoGratis result missing valid coordinates');
-      }
-
-      const lon = selected.geometry.coordinates[0];
-      const lat = selected.geometry.coordinates[1];
-      
-      if (typeof lon !== 'number' || typeof lat !== 'number' || isNaN(lon) || isNaN(lat)) {
-        console.warn(`[GEOCODING] GeoGratis result has invalid coordinates`);
-        throw new NonRetriableError('GeoGratis result has invalid coordinates');
-      }
-      
-      return {
-        lon,
-        lat,
-        qualifier: selected.qualifier,
-        score: selected.score,
-      };
-    }, retryConfig, 'GeoGratis geocode');
-  } catch (error) {
-    console.warn(`[GEOCODING] GeoGratis geocoding failed:`, error instanceof Error ? error.message : 'Unknown error');
-    return null;
+/** The provider was reachable but failed in a way that may succeed on retry. */
+export class ProviderUnavailableError extends Error {
+  readonly provider: string;
+  constructor(provider: string, message: string) {
+    super(message);
+    this.name = 'ProviderUnavailableError';
+    this.provider = provider;
   }
 }
 
 /**
- * Geocodes an address using the Google Geocoding API.
- * Falls back to Nominatim on ZERO_RESULTS, REQUEST_DENIED, or INVALID_REQUEST.
+ * The provider answered but had no usable match. Extends `NonRetriableError`, so
+ * `withRetry` skips it and the provider chain hands off to the next entry.
  */
-async function geocodeWithGoogle(qp: QueryParams, query: string, env: Env, request: Request | undefined, fetchTimeoutMs: number): Promise<GeocodeResult> {
-  const headerKey = request?.headers.get("X-Google-API-Key");
-  const key = headerKey || env.GOOGLE_MAPS_KEY;
-  if (!key) throw new NonRetriableError("Google API key not provided. Set X-Google-API-Key header or configure GOOGLE_MAPS_KEY environment variable");
-  const params = new URLSearchParams({ key });
-  const componentFilters: string[] = [];
-  if (qp.postal) componentFilters.push(`postal_code:${qp.postal.replace(/\s+/g, '')}`);
-  if (qp.city) componentFilters.push(`locality:${qp.city}`);
-  const provinceComponent = provinceNameForGoogleComponent(qp.state);
-  if (provinceComponent) componentFilters.push(`administrative_area:${provinceComponent}`);
-  const country = (qp.country || 'CA').toUpperCase();
-  componentFilters.push(`country:${country}`);
-  if (componentFilters.length) params.set('components', componentFilters.join('|'));
-  params.set('address', qp.address ? expandStreetAddress(qp.address) : buildGeocodeQueryString(qp));
-  params.set('region', 'ca');
-
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
-  const resp = await fetch(url, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(fetchTimeoutMs) });
-  if (!resp.ok) throw new Error(`Google error: ${resp.status}`);
-  const rawData = await resp.json();
-  const validation = safeValidateGoogleGeocode(rawData);
-  if (!validation.success) {
-    console.warn(`[GEOCODING] Google response validation failed:`, validation.error.issues);
-    throw new NonRetriableError(`Google API response validation failed`);
+export class NoResultsError extends NonRetriableError {
+  readonly provider: string;
+  constructor(provider: string, message: string) {
+    super(message);
+    this.name = 'NoResultsError';
+    this.provider = provider;
   }
-  const data = validation.data;
-  if (data.status === 'ZERO_RESULTS' || data.status === 'REQUEST_DENIED' || data.status === 'INVALID_REQUEST' || !data.results?.length) {
-    console.error(`[GEOCODING] Google API failed (${data.status || 'no results'}), falling back to Nominatim`);
-    return await geocodeWithNominatim(qp, query, { notFoundMessage: 'No results from Google', fetchTimeoutMs });
-  }
-  if (data.status === 'OVER_QUERY_LIMIT' || data.status === 'UNKNOWN_ERROR') {
-    throw new Error(`Google API error: ${data.status}`);
-  }
-  const result = data.results[0];
-  const loc = result.geometry.location;
-  const fmt = result.formatted_address;
-  const components = parseGoogleAddressComponents(result);
-  if (!googleResultMatchesRegion(qp, components, typeof fmt === 'string' ? fmt : undefined)) {
-    console.warn('[GEOCODING] Google result outside requested region, falling back to Nominatim');
-    return await geocodeWithNominatim(qp, buildGeocodeQueryString(qp), { notFoundMessage: 'No results from Google', fetchTimeoutMs });
-  }
-  return {
-    lon: loc.lng,
-    lat: loc.lat,
-    ...(typeof fmt === 'string' && fmt.length > 0 && { normalizedAddress: fmt }),
-    ...(components && { addressComponents: components })
-  };
 }
 
-/**
- * Geocodes an address using the Nominatim (OpenStreetMap) API.
- * Single implementation for both direct use (`nominatim` provider) and as
- * Google's zero-results fallback (`notFoundMessage` keeps the legacy error).
- */
-async function geocodeWithNominatim(
-  qp: QueryParams,
-  query: string,
-  opts: { notFoundMessage?: string; fetchTimeoutMs: number }
-): Promise<GeocodeResult> {
-  const notFoundMessage = opts.notFoundMessage ?? 'No results from Nominatim';
-  const nominatimParams = new URLSearchParams({ format: 'jsonv2', limit: '1', country: 'canada' });
-  const street = qp.address ? expandStreetAddress(qp.address) : undefined;
-  if (street) nominatimParams.set('street', street);
-  if (qp.city) nominatimParams.set('city', qp.city);
-  if (qp.state) {
-    const provinceName = provinceNameForGoogleComponent(qp.state);
-    nominatimParams.set('state', provinceName || qp.state);
-  }
-  if (qp.country) nominatimParams.set("country", qp.country);
-  if (qp.postal) nominatimParams.set("postalcode", qp.postal);
-  if (![qp.address, qp.city, qp.state, qp.country, qp.postal].some(Boolean)) {
-    nominatimParams.set("q", query);
-  }
-  const nominatimUrl = `https://nominatim.openstreetmap.org/search?${nominatimParams.toString()}`;
-  const resp = await fetch(nominatimUrl, { headers: { "User-Agent": "riding-lookup/1.0" }, signal: AbortSignal.timeout(opts.fetchTimeoutMs) });
-  if (!resp.ok && !opts.notFoundMessage) throw new Error(`Nominatim error: ${resp.status}`);
-  const rawResults = await resp.json();
-  const nomValidation = safeValidateNominatim(rawResults);
-  if (!nomValidation.success) {
-    console.warn(`[GEOCODING] Nominatim response validation failed:`, nomValidation.error.issues);
-    throw new NonRetriableError(`Nominatim API response validation failed`);
-  }
-  const results = nomValidation.data;
-  const first = results?.[0];
-  if (!first) {
-    console.error(`[GEOCODING] Nominatim returned no results${opts.notFoundMessage ? ' after fallback' : ''}`);
-    throw new NonRetriableError(notFoundMessage);
-  }
-  return { lon: Number(first.lon), lat: Number(first.lat) };
+/** One result from a provider, best first. */
+export type GeocoderCandidate = {
+  lon: number;
+  lat: number;
+  qualifier?: string;
+  score?: number;
+  normalizedAddress?: string;
+  addressComponents?: GoogleAddressComponents;
+};
+
+/** Everything a provider needs. An object, so new knobs don't move every call site. */
+export type GeocoderProviderInput = {
+  env: Env;
+  qp: QueryParams;
+  query: string;
+  request?: Request;
+  /** Per-attempt outbound timeout (ms), derived from the stage budget. */
+  timeoutMs: number;
+};
+
+/** The single contract every outbound geocoder implements. */
+export interface GeocoderProvider {
+  readonly name: string;
+  /** Ranked candidates, best first. Throws `NoResultsError` / `ProviderUnavailableError`. */
+  geocode(input: GeocoderProviderInput): Promise<GeocoderCandidate[]>;
 }
 
+type ProviderValidation<T> =
+  | { success: true; data: T }
+  | { success: false; error: { issues: unknown[] } };
+
 /**
- * Geocodes an address using the Mapbox Geocoding API.
+ * The one outbound protocol: fetch with the canonical user agent and timeout, reject a non-OK
+ * status as unavailable, parse JSON, then zod-validate. Keeping it here means the five-line dance
+ * exists once, and retry/breaker placement stays with the caller.
  */
-async function geocodeWithMapbox(qp: QueryParams, query: string, env: Env, fetchTimeoutMs: number): Promise<GeocodeResult> {
-  const token = env.MAPBOX_TOKEN;
-  if (!token) throw new NonRetriableError("MAPBOX_TOKEN not configured");
-  const resp = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?limit=1&proximity=ca&access_token=${token}`, {
-    headers: { "User-Agent": "riding-lookup/1.0" },
-    signal: AbortSignal.timeout(fetchTimeoutMs)
+async function fetchProviderJson<T>(
+  url: string,
+  opts: { provider: string; label: string; timeoutMs: number },
+  validate: (data: unknown) => ProviderValidation<T>
+): Promise<T> {
+  const resp = await fetch(url, {
+    headers: { 'User-Agent': 'riding-lookup/1.0' },
+    signal: AbortSignal.timeout(opts.timeoutMs),
   });
-  if (!resp.ok) throw new Error(`Mapbox error: ${resp.status}`);
-  const data = await resp.json() as MapboxResponse;
-  const feat = data?.features?.[0];
-  if (!feat?.center) throw new NonRetriableError("No results from Mapbox");
-  return { lon: feat.center[0], lat: feat.center[1] };
+  if (!resp.ok) {
+    throw new ProviderUnavailableError(opts.provider, `${opts.label} error: ${resp.status}`);
+  }
+  const validation = validate(await resp.json());
+  if (!validation.success) {
+    console.warn(`[GEOCODING] ${opts.label} response validation failed:`, validation.error.issues);
+    throw new NonRetriableError(`${opts.label} API response validation failed`);
+  }
+  return validation.data;
+}
+
+/**
+ * GeoGratis (NRCan Geolocator): the primary service. Selection and quality scoring stay in this
+ * adapter so the stage reads `qualifier`/`score` off the candidate.
+ * https://www.geolocator.api.geo.ca/geolocation/en/locate
+ */
+const geogratisProvider: GeocoderProvider = {
+  name: 'geogratis',
+  async geocode({ qp, timeoutMs }) {
+    const queryString = buildGeocodeQueryString(qp);
+    const params = new URLSearchParams({ q: queryString, expand: 'score,component' });
+    const url = `https://www.geolocator.api.geo.ca/geolocation/en/locate?${params.toString()}`;
+    const data = await fetchProviderJson(
+      url,
+      { provider: 'geogratis', label: 'GeoGratis', timeoutMs },
+      safeValidateGeoGratis
+    );
+
+    if (data.length === 0) {
+      console.warn(`[GEOCODING] GeoGratis returned no results`);
+      throw new NoResultsError('geogratis', 'GeoGratis returned no results');
+    }
+
+    const selected = selectGeoGratisResult(qp, data);
+    if (!selected?.geometry?.coordinates || selected.geometry.coordinates.length < 2) {
+      console.warn(`[GEOCODING] GeoGratis result missing valid coordinates`);
+      throw new NonRetriableError('GeoGratis result missing valid coordinates');
+    }
+
+    const lon = selected.geometry.coordinates[0];
+    const lat = selected.geometry.coordinates[1];
+    if (typeof lon !== 'number' || typeof lat !== 'number' || isNaN(lon) || isNaN(lat)) {
+      console.warn(`[GEOCODING] GeoGratis result has invalid coordinates`);
+      throw new NonRetriableError('GeoGratis result has invalid coordinates');
+    }
+
+    return [{ lon, lat, qualifier: selected.qualifier, score: selected.score }];
+  },
+};
+
+/**
+ * Google Geocoding (BYOK via `X-Google-API-Key` or `GOOGLE_MAPS_KEY`). A miss is a typed
+ * `NoResultsError`; the chain — not this adapter — decides to try Nominatim next.
+ */
+const googleProvider: GeocoderProvider = {
+  name: 'google',
+  async geocode({ qp, env, request, timeoutMs }) {
+    const headerKey = request?.headers.get('X-Google-API-Key');
+    const key = headerKey || env.GOOGLE_MAPS_KEY;
+    if (!key) {
+      throw new NonRetriableError(
+        'Google API key not provided. Set X-Google-API-Key header or configure GOOGLE_MAPS_KEY environment variable'
+      );
+    }
+    const params = new URLSearchParams({ key });
+    const componentFilters: string[] = [];
+    if (qp.postal) componentFilters.push(`postal_code:${qp.postal.replace(/\s+/g, '')}`);
+    if (qp.city) componentFilters.push(`locality:${qp.city}`);
+    const provinceComponent = provinceNameForGoogleComponent(qp.state);
+    if (provinceComponent) componentFilters.push(`administrative_area:${provinceComponent}`);
+    const country = (qp.country || 'CA').toUpperCase();
+    componentFilters.push(`country:${country}`);
+    if (componentFilters.length) params.set('components', componentFilters.join('|'));
+    params.set('address', qp.address ? expandStreetAddress(qp.address) : buildGeocodeQueryString(qp));
+    params.set('region', 'ca');
+
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
+    const data = await fetchProviderJson(
+      url,
+      { provider: 'google', label: 'Google', timeoutMs },
+      safeValidateGoogleGeocode
+    );
+
+    if (
+      data.status === 'ZERO_RESULTS' ||
+      data.status === 'REQUEST_DENIED' ||
+      data.status === 'INVALID_REQUEST' ||
+      !data.results?.length
+    ) {
+      console.warn(`[GEOCODING] Google API failed (${data.status || 'no results'}), trying next provider`);
+      throw new NoResultsError('google', 'No results from Google');
+    }
+    if (data.status === 'OVER_QUERY_LIMIT' || data.status === 'UNKNOWN_ERROR') {
+      throw new ProviderUnavailableError('google', `Google API error: ${data.status}`);
+    }
+
+    const result = data.results[0];
+    const loc = result.geometry.location;
+    const fmt = result.formatted_address;
+    const components = parseGoogleAddressComponents(result);
+    if (!googleResultMatchesRegion(qp, components, typeof fmt === 'string' ? fmt : undefined)) {
+      console.warn('[GEOCODING] Google result outside requested region, trying next provider');
+      throw new NoResultsError('google', 'No results from Google');
+    }
+
+    return [
+      {
+        lon: loc.lng,
+        lat: loc.lat,
+        ...(typeof fmt === 'string' && fmt.length > 0 && { normalizedAddress: fmt }),
+        ...(components && { addressComponents: components }),
+      },
+    ];
+  },
+};
+
+/** Nominatim (OpenStreetMap). Reached directly or as the next entry after a Google miss. */
+const nominatimProvider: GeocoderProvider = {
+  name: 'nominatim',
+  async geocode({ qp, query, timeoutMs }) {
+    const params = new URLSearchParams({ format: 'jsonv2', limit: '1', country: 'canada' });
+    const street = qp.address ? expandStreetAddress(qp.address) : undefined;
+    if (street) params.set('street', street);
+    if (qp.city) params.set('city', qp.city);
+    if (qp.state) {
+      const provinceName = provinceNameForGoogleComponent(qp.state);
+      params.set('state', provinceName || qp.state);
+    }
+    if (qp.country) params.set('country', qp.country);
+    if (qp.postal) params.set('postalcode', qp.postal);
+    if (![qp.address, qp.city, qp.state, qp.country, qp.postal].some(Boolean)) {
+      params.set('q', query);
+    }
+    const url = `https://nominatim.openstreetmap.org/search?${params.toString()}`;
+    const results = await fetchProviderJson(
+      url,
+      { provider: 'nominatim', label: 'Nominatim', timeoutMs },
+      safeValidateNominatim
+    );
+
+    const first = results?.[0];
+    if (!first) {
+      console.error('[GEOCODING] Nominatim returned no results');
+      throw new NoResultsError('nominatim', 'No results from Nominatim');
+    }
+    return [{ lon: Number(first.lon), lat: Number(first.lat) }];
+  },
+};
+
+/** Mapbox Geocoding. */
+const mapboxProvider: GeocoderProvider = {
+  name: 'mapbox',
+  async geocode({ query, env, timeoutMs }) {
+    const token = env.MAPBOX_TOKEN;
+    if (!token) throw new NonRetriableError('MAPBOX_TOKEN not configured');
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?limit=1&proximity=ca&access_token=${token}`;
+    const data = await fetchProviderJson(
+      url,
+      { provider: 'mapbox', label: 'Mapbox', timeoutMs },
+      safeValidateMapbox
+    );
+
+    const feat = data?.features?.[0];
+    if (!feat?.center) throw new NoResultsError('mapbox', 'No results from Mapbox');
+    return [{ lon: feat.center[0], lat: feat.center[1] }];
+  },
+};
+
+/** The provider catalog. Adding a provider is one adapter plus one entry here. */
+export const GEOCODER_PROVIDERS: readonly GeocoderProvider[] = [
+  geogratisProvider,
+  googleProvider,
+  nominatimProvider,
+  mapboxProvider,
+];
+
+const providerRegistry = new Map<string, GeocoderProvider>(
+  GEOCODER_PROVIDERS.map((provider) => [provider.name, provider])
+);
+
+/** Register (or replace) a provider by name. Used by the contract suite's stub. */
+export function registerGeocoderProvider(provider: GeocoderProvider): void {
+  providerRegistry.set(provider.name, provider);
+}
+
+/** Remove a provider by name. Test cleanup only. */
+export function unregisterGeocoderProvider(name: string): void {
+  providerRegistry.delete(name);
+}
+
+export function getGeocoderProvider(name: string): GeocoderProvider | undefined {
+  return providerRegistry.get(name.toLowerCase());
+}
+
+/**
+ * Fallback order per configured provider, as data. Google's hidden Nominatim fallback is now just
+ * the next entry; the adapters themselves never reach into another provider. An unlisted (or
+ * registered-in-tests) name resolves to itself.
+ */
+const PROVIDER_FALLBACK_CHAINS: Readonly<Record<string, readonly string[]>> = {
+  google: ['google', 'nominatim'],
+  mapbox: ['mapbox'],
+  nominatim: ['nominatim'],
+};
+
+export function buildExternalProviderChain(env: Env): GeocoderProvider[] {
+  const configured = (env.GEOCODER || 'nominatim').toLowerCase();
+  const names = PROVIDER_FALLBACK_CHAINS[configured] ?? [configured];
+  const chain = names
+    .map((name) => getGeocoderProvider(name))
+    .filter((provider): provider is GeocoderProvider => Boolean(provider));
+  return chain.length > 0 ? chain : [nominatimProvider];
+}
+
+/**
+ * Walk a provider chain. `NoResultsError` is a miss and hands off to the next provider; any other
+ * error (unavailable, misconfigured) is terminal. This is what makes fallback order data.
+ */
+export async function runProviderChain(
+  chain: readonly GeocoderProvider[],
+  input: GeocoderProviderInput
+): Promise<GeocoderCandidate[]> {
+  let lastMiss: NoResultsError | undefined;
+  for (const provider of chain) {
+    try {
+      return await provider.geocode(input);
+    } catch (error) {
+      if (error instanceof NoResultsError) {
+        lastMiss = error;
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastMiss ?? new NoResultsError(chain[chain.length - 1]?.name ?? 'unknown', 'No geocoder returned results');
+}
+
+/**
+ * The uniform retry/breaker wrapper. Every provider call goes through here, so failure counting
+ * and retry placement do not depend on which adapter is selected.
+ */
+export async function executeProviderChain(
+  chain: readonly GeocoderProvider[],
+  input: GeocoderProviderInput,
+  circuitBreaker?: CircuitBreakerExecutor
+): Promise<GeocoderCandidate[]> {
+  const name = chain[0]?.name ?? 'unknown';
+  const retryConfig = getRetryConfig();
+  const attempt = () => withRetry(() => runProviderChain(chain, input), retryConfig, `Geocoding ${name}`);
+  if (!circuitBreaker) return attempt();
+  return (await circuitBreaker.execute(`geocoding:${name}`, attempt)) as GeocoderCandidate[];
+}
+
+function candidateToGeocodeResult(candidate: GeocoderCandidate): GeocodeResult {
+  return {
+    lon: candidate.lon,
+    lat: candidate.lat,
+    ...(candidate.normalizedAddress && { normalizedAddress: candidate.normalizedAddress }),
+    ...(candidate.addressComponents && { addressComponents: candidate.addressComponents }),
+  };
 }
 
 /**
@@ -734,7 +885,7 @@ export async function runOdaGeocodeStage(ctx: GeocodeStageContext): Promise<Geoc
 }
 
 export async function runGeoGratisStage(ctx: GeocodeStageContext): Promise<GeocodeResult | null> {
-  const { env, qp, deferTask, metrics, budgetMs, startTime, stages } = ctx;
+  const { env, qp, query, deferTask, metrics, budgetMs, startTime, stages } = ctx;
 
   const geogratisCacheKey = generateGeocodingCacheKey(qp, 'geogratis');
   const geogratisCached = await getGeocodingCacheEntry(env, geogratisCacheKey);
@@ -762,11 +913,12 @@ export async function runGeoGratisStage(ctx: GeocodeStageContext): Promise<Geoco
     const geogratisStageMs = stageLimit(budgetMs, startTime, stages.geogratis);
     metrics?.incrementMetric('geocodingExternalCalls');
     metrics?.incrementMetric('geocodingExternalGeogratis');
-    const geogratisResult = await withTimeout(
-      geocodeWithGeoGratis(qp, geogratisStageMs),
+    const geogratisCandidates = await withTimeout(
+      executeProviderChain([geogratisProvider], { env, qp, query, timeoutMs: geogratisStageMs }),
       geogratisStageMs,
       'GeoGratis geocoding'
     );
+    const geogratisResult = geogratisCandidates[0];
     recordTiming('geocodingGeoGratisTime', Date.now() - geogratisStarted);
 
     if (geogratisResult) {
@@ -816,7 +968,11 @@ export async function runExternalFallbackStage(ctx: GeocodeStageContext): Promis
   const { env, qp, query, request, metrics, circuitBreaker, deferTask, budgetMs, startTime, stages } = ctx;
 
   const fallbackStarted = Date.now();
-  const provider = (env.GEOCODER || "nominatim").toLowerCase();
+  // Fallback order is data: the configured provider heads the chain, followed by its
+  // registered fallbacks (Google → Nominatim). The cache and breaker stay keyed by the
+  // configured provider, so instrumenting and caching are unchanged.
+  const chain = buildExternalProviderChain(env);
+  const provider = chain[0]?.name ?? (env.GEOCODER || "nominatim").toLowerCase();
 
   // Check cache for fallback provider
   const cacheKey = generateGeocodingCacheKey(qp, provider);
@@ -843,24 +999,10 @@ export async function runExternalFallbackStage(ctx: GeocodeStageContext): Promis
   let result: GeocodeResult;
   try {
     const fallbackStageMs = stageLimit(budgetMs, startTime, stages.fallback);
-    const geocodeFn = async (): Promise<GeocodeResult> => {
-      if (provider === "google") {
-        return await geocodeWithGoogle(qp, query, env, request, fallbackStageMs);
-      } else if (provider === "mapbox") {
-        return await geocodeWithMapbox(qp, query, env, fallbackStageMs);
-      } else {
-        return await geocodeWithNominatim(qp, query, { fetchTimeoutMs: fallbackStageMs });
-      }
-    };
+    const input: GeocoderProviderInput = { env, qp, query, request, timeoutMs: fallbackStageMs };
+    const fallbackPromise = executeProviderChain(chain, input, circuitBreaker);
 
-    const retryConfig = getRetryConfig();
-    const fallbackPromise = circuitBreaker
-      ? circuitBreaker.execute(`geocoding:${provider}`, async () => {
-          return await withRetry(geocodeFn, retryConfig, `Geocoding ${provider}`);
-        })
-      : withRetry(geocodeFn, retryConfig, `Geocoding ${provider}`);
-
-    result = (await withTimeout(fallbackPromise, fallbackStageMs, 'Fallback geocoding')) as GeocodeResult;
+    result = candidateToGeocodeResult((await withTimeout(fallbackPromise, fallbackStageMs, 'Fallback geocoding'))[0]);
     recordTiming('geocodingFallbackTime', Date.now() - fallbackStarted);
 
     metrics?.incrementMetric('geocodingSuccesses');
