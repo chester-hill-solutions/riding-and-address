@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   generateWebhookId,
   generateEventId,
@@ -6,8 +6,35 @@ import {
   createWebhookSignature,
   truncateWebhookResponseBody,
   shouldScheduleWebhookRetry,
+  createWebhook,
+  deleteWebhook,
+  getWebhook,
+  createWebhookEvent,
+  cleanupWebhookData,
+  getWebhookEvents,
   WEBHOOK_CONFIG
 } from '../src/webhooks';
+import type { Env, WebhookConfig, WebhookEvent } from '../src/types';
+
+function createWebhookEnv() {
+  const store = new Map<string, unknown>();
+  const get = vi.fn(async (key: string): Promise<unknown> => store.get(key) ?? null);
+  const put = vi.fn(async (key: string, value: string): Promise<void> => {
+    store.set(key, JSON.parse(value));
+  });
+  const remove = vi.fn(async (key: string): Promise<void> => {
+    store.delete(key);
+  });
+  const env = { WEBHOOKS: { get, put, delete: remove } } as unknown as Env;
+  return { env, store, get, put, remove };
+}
+
+const WEBHOOK_CONFIG_INPUT = {
+  url: 'https://example.com/hook',
+  secret: 'shh',
+  events: ['batch.completed'],
+  active: true
+};
 
 describe('generateWebhookId', () => {
   it('generates a string starting with webhook_', () => {
@@ -109,5 +136,78 @@ describe('shouldScheduleWebhookRetry', () => {
   it('stops retrying after maxAttempts is reached', () => {
     expect(shouldScheduleWebhookRetry(4, 5)).toBe(true);
     expect(shouldScheduleWebhookRetry(5, 5)).toBe(false);
+  });
+});
+
+describe('webhook KV contract', () => {
+  it('createWebhook writes the config and its index key through the port', async () => {
+    const { env, store, put } = createWebhookEnv();
+
+    const id = await createWebhook(env, WEBHOOK_CONFIG_INPUT);
+
+    expect(put).toHaveBeenCalledWith(`webhook:config:${id}`, expect.any(String));
+    expect(put).toHaveBeenCalledWith('webhook:index', JSON.stringify([id]));
+    expect(store.get('webhook:index')).toEqual([id]);
+    const stored = store.get(`webhook:config:${id}`) as WebhookConfig;
+    expect(stored.url).toBe(WEBHOOK_CONFIG_INPUT.url);
+  });
+
+  it('getWebhook reads the config back through the port', async () => {
+    const { env } = createWebhookEnv();
+    const id = await createWebhook(env, WEBHOOK_CONFIG_INPUT);
+
+    const webhook = await getWebhook(env, id);
+
+    expect(webhook?.url).toBe(WEBHOOK_CONFIG_INPUT.url);
+    expect(webhook?.active).toBe(true);
+  });
+
+  it('deleteWebhook deletes the config key and rewrites the index', async () => {
+    const { env, store, remove } = createWebhookEnv();
+    const id = await createWebhook(env, WEBHOOK_CONFIG_INPUT);
+
+    await deleteWebhook(env, id);
+
+    expect(remove).toHaveBeenCalledWith(`webhook:config:${id}`);
+    expect(store.get('webhook:index')).toEqual([]);
+  });
+
+  it('createWebhookEvent writes the event and appends it to the event index', async () => {
+    const { env, store } = createWebhookEnv();
+    const webhookId = await createWebhook(env, WEBHOOK_CONFIG_INPUT);
+
+    const eventId = await createWebhookEvent(env, webhookId, 'batch.completed', 'batch_1', { ok: true });
+
+    expect(store.get(`webhook:event:${eventId}`)).toMatchObject({ id: eventId, webhookId });
+    expect(store.get('webhook:event:index')).toEqual([eventId]);
+    await expect(getWebhookEvents(env)).resolves.toHaveLength(1);
+  });
+
+  it('cleanupWebhookData deletes only events older than the max age', async () => {
+    const { env, store, remove } = createWebhookEnv();
+    const base: Omit<WebhookEvent, 'id' | 'createdAt' | 'status'> = {
+      webhookId: 'webhook_1',
+      eventType: 'batch.completed',
+      batchId: 'batch_1',
+      payload: {},
+      attempts: 0,
+      maxAttempts: WEBHOOK_CONFIG.MAX_RETRY_ATTEMPTS
+    };
+    const oldEvent: WebhookEvent = {
+      ...base,
+      id: 'event_old',
+      status: 'delivered',
+      createdAt: Date.now() - WEBHOOK_CONFIG.MAX_EVENT_AGE - 1000
+    };
+    const freshEvent: WebhookEvent = { ...base, id: 'event_new', status: 'delivered', createdAt: Date.now() };
+    store.set('webhook:event:index', ['event_old', 'event_new']);
+    store.set('webhook:event:event_old', oldEvent);
+    store.set('webhook:event:event_new', freshEvent);
+
+    await cleanupWebhookData(env);
+
+    expect(remove).toHaveBeenCalledWith('webhook:event:event_old');
+    expect(remove).not.toHaveBeenCalledWith('webhook:event:event_new');
+    expect(store.get('webhook:event:index')).toEqual(['event_new']);
   });
 });

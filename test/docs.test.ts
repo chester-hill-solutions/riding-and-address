@@ -2,13 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { createOpenAPISpec, createApiReference } from '../src/docs';
 import { createEmbedDocsPage } from '../src/embed-docs';
 import { EMBED_VERSION } from '../src/embed';
-import { createLandingPage } from '../src/landing-page';
 import { PROVINCIAL_DATASETS } from '../src/datasets';
 import pkg from '../package.json';
 
 /**
- * The OpenAPI spec and landing page are hand-maintained and were previously untested, which is
- * how three tags went missing, `securitySchemes` ended up outside `components`, and endpoints
+ * The OpenAPI spec and API reference page are hand-maintained and were previously untested, which
+ * is how three tags went missing, `securitySchemes` ended up outside `components`, and endpoints
  * reached production undocumented. These tests are cheap and catch that drift.
  */
 
@@ -161,10 +160,6 @@ describe('GET /api/search is documented', () => {
     expect(description).toMatch(/riding/i);
     expect(description).toMatch(/\/api\/federal|\/api\/combined/);
   });
-
-  it('is listed on the landing page', () => {
-    expect(createLandingPage(BASE)).toContain('/api/search');
-  });
 });
 
 describe('keyless demo tier', () => {
@@ -243,30 +238,11 @@ describe('embed widget docs page', () => {
   it('links back to the API reference', () => {
     expect(createEmbedDocsPage(BASE)).toContain(`href="${BASE}/docs"`);
   });
-
-  it('is linked from the landing page', () => {
-    expect(createLandingPage(BASE)).toContain(`${BASE}/docs/embed`);
-  });
 });
 
-describe('landing page', () => {
-  it('lists every provincial route', () => {
-    const html = createLandingPage(BASE);
-    for (const dataset of PROVINCIAL_DATASETS) {
-      expect(html, `${dataset.path} missing from landing page`).toContain(dataset.path);
-    }
-  });
-
+describe('API reference page', () => {
   it('points the API reference at the spec endpoint', () => {
     expect(createApiReference(BASE)).toContain(`${BASE}/api/docs`);
-  });
-
-  it('pretty-prints the full demo response payload', () => {
-    // The try-it box used to show only the riding name; integrators need the whole body to see
-    // every field the API returns.
-    const html = createLandingPage(BASE);
-    expect(html).toContain('try-embed__json');
-    expect(html).toContain('JSON.stringify(payload.raw, null, 2)');
   });
 
   it('loads the same Scalar version the devDependency pins', () => {

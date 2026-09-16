@@ -5,57 +5,22 @@ import { parseBatchLookupRequests } from './validation';
 import { performExpandedLookup, expandedLookupResponseFields } from './lookup-expansion';
 import { cachedLookupRiding } from './riding-lookup';
 import { geocodeIfNeeded } from './geocoding';
+import type {
+  BatchJob,
+  DeadLetterJob,
+  DeadLetterResult,
+  ProcessJobsResult,
+  QueueHealth,
+  QueueJob,
+  QueueStats,
+  RetryDeadLetterResult,
+  RetryFailedResult,
+  SubmitBatchResult,
+} from './queue-types';
 
-export interface QueueJob {
-  id: string;
-  batchId: string;
-  request: BatchLookupRequest;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'retrying' | 'dead_letter';
-  priority: number; // Higher number = higher priority
-  attempts: number;
-  maxAttempts: number;
-  createdAt: number;
-  startedAt?: number;
-  completedAt?: number;
-  nextRetryAt?: number;
-  result?: BatchLookupResponse;
-  error?: string;
-  processingTime?: number;
-  lastError?: string;
-  errorCount: number;
-  tags?: string[];
-}
-
-export interface BatchJob {
-  id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'partially_completed';
-  totalJobs: number;
-  completedJobs: number;
-  failedJobs: number;
-  createdAt: number;
-  startedAt?: number;
-  completedAt?: number;
-  results: BatchLookupResponse[];
-  errors: string[];
-}
-
-export interface QueueStats {
-  totalJobs: number;
-  pendingJobs: number;
-  processingJobs: number;
-  completedJobs: number;
-  failedJobs: number;
-  retryingJobs: number;
-  deadLetterJobs: number;
-  averageProcessingTime: number;
-  successRate: number;
-  priorityDistribution: Record<number, number>;
-  errorRate: number;
-  throughput: number; // jobs per minute
-  oldestPendingJob: number;
-  deadLetterQueueSize: number;
-  retryQueueSize: number;
-}
+// The DO's wire types live in `queue-types.ts`; re-exported here so this
+// module's public surface is unchanged.
+export type { BatchJob, QueueJob, QueueStats } from './queue-types';
 
 export class QueueManager {
   private state: DurableObjectState;
@@ -402,7 +367,7 @@ export class QueueManager {
       groupedJobs: groupedRequests.size,
       status: 'submitted',
       message: 'Batch submitted successfully with optimization'
-    }), {
+    } satisfies SubmitBatchResult), {
       headers: { 'Content-Type': 'application/json' }
     });
   }
@@ -535,7 +500,7 @@ export class QueueManager {
     return new Response(JSON.stringify({
       message: `Retried ${retriedCount} jobs`,
       retriedCount
-    }), {
+    } satisfies RetryFailedResult), {
       headers: { 'Content-Type': 'application/json' }
     });
   }
@@ -645,7 +610,7 @@ export class QueueManager {
         retryQueueSize: this.retryQueue.length,
         deadLetterQueueSize: this.deadLetterQueue.length
       }
-    }), {
+    } satisfies ProcessJobsResult), {
       headers: { 'Content-Type': 'application/json' }
     });
   }
@@ -697,7 +662,7 @@ export class QueueManager {
         retry: this.retryQueue.length,
         deadLetter: this.deadLetterQueue.length
       }
-    };
+    } satisfies QueueHealth;
 
     return new Response(JSON.stringify(health), {
       headers: { 'Content-Type': 'application/json' }
@@ -824,7 +789,7 @@ export class QueueManager {
 
     const deadLetterJobs = this.deadLetterQueue
       .slice(offset, offset + limit)
-      .map(jobId => {
+      .map((jobId): DeadLetterJob | null => {
         const job = this.jobs.get(jobId);
         if (!job) return null;
         
@@ -841,14 +806,14 @@ export class QueueManager {
           request: job.request
         };
       })
-      .filter(Boolean);
+      .filter(Boolean) as DeadLetterJob[];
 
     return new Response(JSON.stringify({
       deadLetterJobs,
       total: this.deadLetterQueue.length,
       limit,
       offset
-    }), {
+    } satisfies DeadLetterResult), {
       headers: { 'Content-Type': 'application/json' }
     });
   }
@@ -911,7 +876,7 @@ export class QueueManager {
       message: `Retried ${retriedCount} dead letter jobs`,
       retriedCount,
       results
-    }), {
+    } satisfies RetryDeadLetterResult), {
       headers: { 'Content-Type': 'application/json' }
     });
   }

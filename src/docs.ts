@@ -4,8 +4,6 @@ import { getAllProvincialPaths, PROVINCIAL_DATASETS } from './datasets';
 
 const PROVINCIAL_DATASET_STEMS = PROVINCIAL_DATASETS.map((d) => d.r2Key.replace(/\.geojson$/, ''));
 
-export { createLandingPage } from './landing-page';
-
 /**
  * Version of the Scalar bundle loaded from CDN by the API reference page.
  *

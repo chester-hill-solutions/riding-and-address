@@ -1,5 +1,6 @@
 import { Env } from './types';
 import { CustomerRecord, loadCustomer } from './customer';
+import { readJsonEntry, writeJsonEntry, deleteEntry } from './kv-cache';
 
 /**
  * Browser API keys (`pk_*`) are PUBLIC — origin allowlist + optional daily cap.
@@ -114,14 +115,9 @@ export async function loadApiKey(env: Env, id: string): Promise<ApiKeyRecord | n
   const cached = cacheGet(id);
   if (cached !== undefined) return cached;
 
-  try {
-    const record = (await env.API_KEYS.get(`key:${id}`, 'json')) as ApiKeyRecord | null;
-    cacheSet(id, record);
-    return record;
-  } catch (error) {
-    console.warn('Failed to load API key:', error);
-    return null;
-  }
+  const record = await readJsonEntry<ApiKeyRecord>(env.API_KEYS, `key:${id}`);
+  cacheSet(id, record);
+  return record;
 }
 
 export async function loadServerKeyBySecret(env: Env, secret: string): Promise<ApiKeyRecord | null> {
@@ -130,15 +126,10 @@ export async function loadServerKeyBySecret(env: Env, secret: string): Promise<A
   const cached = cacheGet(`hash:${hash}`);
   if (cached !== undefined) return cached;
 
-  try {
-    const record = (await env.API_KEYS.get(`keyhash:${hash}`, 'json')) as ApiKeyRecord | null;
-    cacheSet(`hash:${hash}`, record);
-    if (record) cacheSet(record.id, record);
-    return record;
-  } catch (error) {
-    console.warn('Failed to load server key:', error);
-    return null;
-  }
+  const record = await readJsonEntry<ApiKeyRecord>(env.API_KEYS, `keyhash:${hash}`);
+  cacheSet(`hash:${hash}`, record);
+  if (record) cacheSet(record.id, record);
+  return record;
 }
 
 export async function putBrowserKey(env: Env, record: ApiKeyRecord): Promise<void> {
@@ -149,7 +140,7 @@ export async function putBrowserKey(env: Env, record: ApiKeyRecord): Promise<voi
     origins: record.origins || [],
     createdAt: record.createdAt || new Date().toISOString(),
   };
-  await env.API_KEYS.put(`key:${next.id}`, JSON.stringify(next));
+  await writeJsonEntry(env.API_KEYS, `key:${next.id}`, next);
   cacheSet(next.id, next);
 }
 
@@ -168,8 +159,8 @@ export async function putServerKey(
     secretHash: hash,
     createdAt: record.createdAt || new Date().toISOString(),
   };
-  await env.API_KEYS.put(`keyhash:${hash}`, JSON.stringify(next));
-  await env.API_KEYS.put(`key:${next.id}`, JSON.stringify({ ...next, secretHash: hash }));
+  await writeJsonEntry(env.API_KEYS, `keyhash:${hash}`, next);
+  await writeJsonEntry(env.API_KEYS, `key:${next.id}`, { ...next, secretHash: hash });
   cacheSet(`hash:${hash}`, next);
   cacheSet(next.id, next);
   return next;
@@ -178,10 +169,10 @@ export async function putServerKey(
 export async function deleteApiKey(env: Env, id: string, secretHash?: string): Promise<void> {
   if (!env.API_KEYS) throw new Error('API_KEYS binding required');
   const existing = await loadApiKey(env, id);
-  await env.API_KEYS.delete(`key:${id}`);
+  await deleteEntry(env.API_KEYS, `key:${id}`);
   const hash = secretHash || existing?.secretHash;
   if (hash) {
-    await env.API_KEYS.delete(`keyhash:${hash}`);
+    await deleteEntry(env.API_KEYS, `keyhash:${hash}`);
     cacheSet(`hash:${hash}`, null);
   }
   cacheSet(id, null);

@@ -9,6 +9,7 @@
 export interface KVNamespaceLike {
   get(key: string, type: 'json'): Promise<unknown>;
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+  delete(key: string): Promise<void>;
 }
 
 export type TimestampedEntry = { timestamp: number };
@@ -45,6 +46,61 @@ export async function writeTimestampedEntry<T extends TimestampedEntry>(
     await namespace.put(key, JSON.stringify(entry), { expirationTtl: ttlSeconds });
   } catch (error) {
     console.warn(`Failed to cache ${label}:`, error);
+    // Don't throw - cache errors should never fail requests
+  }
+}
+
+/**
+ * Raw JSON entry cache: for callers that own their entry shape and TTL policy
+ * (config records, index arrays) rather than the timestamped family. Same
+ * never-throw / absent-binding semantics as the timestamped helpers.
+ */
+export async function readJsonEntry<T>(
+  namespace: KVNamespaceLike | undefined,
+  key: string
+): Promise<T | null> {
+  if (!namespace) return null;
+
+  try {
+    const value = (await namespace.get(key, 'json')) as T | null;
+    return value ?? null;
+  } catch (error) {
+    console.warn(`Failed to get cached entry ${key}:`, error);
+    return null;
+  }
+}
+
+export async function writeJsonEntry<T>(
+  namespace: KVNamespaceLike | undefined,
+  key: string,
+  value: T,
+  ttlSeconds?: number
+): Promise<void> {
+  if (!namespace) return;
+
+  try {
+    const serialized = JSON.stringify(value);
+    if (ttlSeconds === undefined) {
+      await namespace.put(key, serialized);
+    } else {
+      await namespace.put(key, serialized, { expirationTtl: ttlSeconds });
+    }
+  } catch (error) {
+    console.warn(`Failed to cache entry ${key}:`, error);
+    // Don't throw - cache errors should never fail requests
+  }
+}
+
+export async function deleteEntry(
+  namespace: KVNamespaceLike | undefined,
+  key: string
+): Promise<void> {
+  if (!namespace) return;
+
+  try {
+    await namespace.delete(key);
+  } catch (error) {
+    console.warn(`Failed to delete cached entry ${key}:`, error);
     // Don't throw - cache errors should never fail requests
   }
 }

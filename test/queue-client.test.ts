@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, expectTypeOf } from 'vitest';
 import {
   submitBatch,
   getBatchStatus,
@@ -9,6 +9,8 @@ import {
   listDeadLetter,
   retryDeadLetter
 } from '../src/queue-client';
+import type { BatchJob as QueueBatchJob, QueueJob, QueueStats } from '../src/queue-types';
+import type { QueryParams } from '../src/types';
 
 function mockQueueManager(expectedPath: string, respond: (body: unknown) => unknown, method = 'POST') {
   const captured = { path: '', body: undefined as unknown };
@@ -36,7 +38,7 @@ function mockQueueManager(expectedPath: string, respond: (body: unknown) => unkn
 describe('queue client', () => {
   it('submitBatch preserves the full QueryParams shape on the wire', async () => {
     // The drift this guards against: queued jobs losing return/include_province.
-    const query = {
+    const query: QueryParams = {
       postal: 'M5V 2T6',
       country: 'Canada',
       return: 'municipality',
@@ -46,12 +48,24 @@ describe('queue client', () => {
       geocode_method: 'auto',
       geocodeMethod: 'auto' as const
     };
-    const { env, captured } = mockQueueManager('/queue/submit', () => ({ batchId: 'b1', status: 'pending' }));
+    const { env, captured } = mockQueueManager('/queue/submit', () => ({
+      batchId: 'b1',
+      totalJobs: 1,
+      groupedJobs: 1,
+      status: 'submitted',
+      message: 'Batch submitted successfully with optimization'
+    }));
     const result = await submitBatch(env as never, [
       { id: 'q1', query, pathname: '/api/federal' }
     ]);
 
-    expect(result).toEqual({ batchId: 'b1', status: 'pending' });
+    expect(result).toEqual({
+      batchId: 'b1',
+      totalJobs: 1,
+      groupedJobs: 1,
+      status: 'submitted',
+      message: 'Batch submitted successfully with optimization'
+    });
     expect(captured.path).toBe('/queue/submit');
     const sent = (captured.body as { requests: { query: Record<string, unknown> }[] }).requests[0].query;
     expect(sent.return).toBe('municipality');
@@ -94,6 +108,12 @@ describe('queue client', () => {
       expect(seen[0]).toBe(`${method} ${path}`);
     }
     expect(cases.length).toBe(7);
+  });
+
+  it('resolves each method against the DO wire envelopes', () => {
+    expectTypeOf(getBatchStatus).returns.resolves.toEqualTypeOf<QueueBatchJob>();
+    expectTypeOf(getJob).returns.resolves.toEqualTypeOf<QueueJob>();
+    expectTypeOf(getStats).returns.resolves.toEqualTypeOf<QueueStats>();
   });
 
   it('throws when QUEUE_MANAGER binding is absent', async () => {
