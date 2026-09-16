@@ -1,7 +1,7 @@
 import { Env, QueryParams, SuggestQueryParams, SuggestResponse } from './types';
 import { initializeOdaDatabase, getOdaStats } from './oda-schema';
 import { isOdaEnabled, getOdaConfig, getOdaSuggestConfig, ODA_DEFAULTS } from './oda-config';
-import type { LookupRequestScope } from './lookup-handler';
+import type { RouteContext } from './routes';
 import {
   geocodeWithOda,
   reverseGeocodeWithOda,
@@ -11,30 +11,38 @@ import {
 import { searchSuggestions, SuggestError } from './oda-suggest';
 import { authorizeSearchRequest, httpStatusForKeyDenial } from './api-keys';
 import { consumeDailyQuota } from './api-key-usage-do';
-import { billableDenialResponse, recordSuccessfulBillable } from './billing';
+import { recordSuccessfulBillable } from './billing';
 import {
   generateSuggestCacheKey,
   getCachedSuggestions,
   setCachedSuggestions,
 } from './cache';
 import { normalizeProvince } from './oda-normalize';
-import { parseQuery, badRequest, getCorrelationId, hasValidBasicAuth } from './utils';
+import { parseQuery, badRequest, hasValidBasicAuth } from './utils';
 import { incrementMetric, recordTiming } from './metrics';
 import { normalizeAddressWithGoogle } from './geocoding';
 import { GoogleAddressComponents, CanadaPostStyleAddress } from './types';
 
-function odaErrorResponse(error: unknown, correlationId: string): Response {
+function odaErrorResponse(error: unknown, ctx: RouteContext): Response {
   if (error instanceof OdaGeocodeError) {
-    return badRequest(error.message, error.status, error.code, correlationId);
+    return badRequest(error.message, error.status, error.code, ctx.correlationId);
   }
   const message = error instanceof Error ? error.message : 'ODA geocoding failed';
-  return badRequest(message, 500, 'GEOCODING_ERROR', correlationId);
+  return badRequest(message, 500, 'GEOCODING_ERROR', ctx.correlationId);
+}
+
+/** CORS + security + correlation headers, matching every other JSON response. */
+function odaJsonHeaders(ctx: RouteContext): Record<string, string> {
+  return {
+    'content-type': 'application/json; charset=UTF-8',
+    ...ctx.corsHeaders(ctx.request.headers.get('Origin')),
+  };
 }
 
 function geocodeJsonResponse(
+  ctx: RouteContext,
   query: QueryParams,
-  result: Awaited<ReturnType<typeof geocodeWithOda>>,
-  correlationId: string
+  result: Awaited<ReturnType<typeof geocodeWithOda>>
 ): Response {
   return new Response(
     JSON.stringify({
@@ -48,32 +56,30 @@ function geocodeJsonResponse(
       mailingAddress: result.mailingAddress,
       addressComponents: result.addressComponents,
       dataSource: result.dataSource,
-      correlationId,
+      correlationId: ctx.correlationId,
     }),
-    { headers: { 'content-type': 'application/json; charset=UTF-8' } }
+    { headers: odaJsonHeaders(ctx) }
   );
 }
 
-export async function handleOdaInit(env: Env): Promise<Response> {
-  const success = await initializeOdaDatabase(env);
+export async function handleOdaInit(ctx: RouteContext): Promise<Response> {
+  const success = await initializeOdaDatabase(ctx.env);
   return new Response(
     JSON.stringify({
       success,
       message: success ? 'ODA database initialized successfully' : 'ODA database initialization failed',
     }),
-    { headers: { 'content-type': 'application/json; charset=UTF-8' } }
+    { headers: odaJsonHeaders(ctx) }
   );
 }
 
-export async function handleOdaStats(env: Env): Promise<Response> {
-  const stats = await getOdaStats(env);
-  return new Response(JSON.stringify(stats), {
-    headers: { 'content-type': 'application/json; charset=UTF-8' },
-  });
+export async function handleOdaStats(ctx: RouteContext): Promise<Response> {
+  const stats = await getOdaStats(ctx.env);
+  return new Response(JSON.stringify(stats), { headers: odaJsonHeaders(ctx) });
 }
 
-export async function handleGeocodeRoute(request: Request, env: Env): Promise<Response> {
-  const correlationId = getCorrelationId(request);
+export async function handleGeocodeRoute(ctx: RouteContext): Promise<Response> {
+  const { request, env, correlationId } = ctx;
   if (!isOdaEnabled(env)) {
     return badRequest('ODA geocoding is not enabled', 503, 'ODA_NOT_ENABLED', correlationId);
   }
@@ -94,14 +100,14 @@ export async function handleGeocodeRoute(request: Request, env: Env): Promise<Re
 
   try {
     const result = await geocodeWithOda(env, validation.sanitized);
-    return geocodeJsonResponse(validation.sanitized, result, correlationId);
+    return geocodeJsonResponse(ctx, validation.sanitized, result);
   } catch (error) {
-    return odaErrorResponse(error, correlationId);
+    return odaErrorResponse(error, ctx);
   }
 }
 
-export async function handleReverseRoute(request: Request, env: Env): Promise<Response> {
-  const correlationId = getCorrelationId(request);
+export async function handleReverseRoute(ctx: RouteContext): Promise<Response> {
+  const { request, env, correlationId } = ctx;
   if (!isOdaEnabled(env)) {
     return badRequest('ODA geocoding is not enabled', 503, 'ODA_NOT_ENABLED', correlationId);
   }
@@ -121,14 +127,14 @@ export async function handleReverseRoute(request: Request, env: Env): Promise<Re
       validation.sanitized.lat,
       validation.sanitized.lon
     );
-    return geocodeJsonResponse(validation.sanitized, result, correlationId);
+    return geocodeJsonResponse(ctx, validation.sanitized, result);
   } catch (error) {
-    return odaErrorResponse(error, correlationId);
+    return odaErrorResponse(error, ctx);
   }
 }
 
-export async function handleNormalizeAddressRoute(request: Request, env: Env): Promise<Response> {
-  const correlationId = getCorrelationId(request);
+export async function handleNormalizeAddressRoute(ctx: RouteContext): Promise<Response> {
+  const { request, env, correlationId } = ctx;
   if (!isOdaEnabled(env)) {
     return badRequest('ODA geocoding is not enabled', 503, 'ODA_NOT_ENABLED', correlationId);
   }
@@ -151,10 +157,10 @@ export async function handleNormalizeAddressRoute(request: Request, env: Env): P
         dataSource: result.dataSource,
         correlationId,
       }),
-      { headers: { 'content-type': 'application/json; charset=UTF-8' } }
+      { headers: odaJsonHeaders(ctx) }
     );
   } catch (error) {
-    return odaErrorResponse(error, correlationId);
+    return odaErrorResponse(error, ctx);
   }
 }
 
@@ -164,15 +170,11 @@ export async function handleNormalizeAddressRoute(request: Request, env: Env): P
  * Returns suggestions only; no riding. The caller takes a suggestion's `location` and calls the
  * existing lookup routes once the user selects one, which is why this path never touches R2.
  */
-export async function handleSearchRoute(
-  scope: LookupRequestScope,
-  request: Request
-): Promise<Response> {
-  const { env, correlationId, startTime, corsHeaders: getCorsHeaders, deferTask } = scope;
-  const ctx = deferTask ? { waitUntil: deferTask } as unknown as ExecutionContext : undefined;
+export async function handleSearchRoute(ctx: RouteContext): Promise<Response> {
+  const { request, env, correlationId, startTime, corsHeaders: getCorsHeaders, deferTask } = ctx;
   const origin = request.headers.get('Origin');
   const config = getOdaSuggestConfig(env);
-  const url = new URL(request.url);
+  const url = ctx.url;
 
   incrementMetric('suggestRequests');
 
@@ -248,12 +250,11 @@ export async function handleSearchRoute(
       const billed = await recordSuccessfulBillable(
         env,
         { key: auth.key, customer: auth.customer },
-        {
-          waitUntil: ctx ? (task) => ctx.waitUntil(task) : undefined,
-        }
+        { waitUntil: deferTask }
       );
       if (!billed.allowed) {
-        return billableDenialResponse(billed, correlationId, corsHeaders());
+        // Same single shaper, with this route's origin-aware CORS policy.
+        return ctx.billableDenial(billed, corsHeaders());
       }
     }
 
@@ -308,7 +309,7 @@ export async function handleSearchRoute(
         config.cacheTtlSeconds,
         result.nextCursor
       );
-      if (ctx) ctx.waitUntil(fill);
+      if (deferTask) deferTask(fill);
       else await fill;
     }
 

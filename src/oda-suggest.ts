@@ -17,6 +17,11 @@ import {
 } from './oda-normalize';
 import { formatFromOdaRow } from './canada-post-format';
 import { haversineMeters } from './oda-geocoding';
+import {
+  getAddressStore,
+  type AddressStore,
+  type AddressWithUnitTotal,
+} from './address-store';
 
 /**
  * Address autocomplete over the ODA tables.
@@ -283,6 +288,9 @@ export async function searchSuggestions(env: Env, params: SuggestQueryParams): P
   if (!env.ODA_DB) {
     throw new SuggestError('ODA database is not configured', 'ODA_NOT_ENABLED', 503);
   }
+  // Search reads are not request-tracked the way geocoding reads are; the recorder is a no-op
+  // so the port's bookkeeping stays uniform.
+  const store = getAddressStore(env.ODA_DB, () => {});
   if (params.locationBias && params.locationRestriction) {
     throw new SuggestError(
       'Specify locationBias or locationRestriction, not both',
@@ -304,21 +312,21 @@ export async function searchSuggestions(env: Env, params: SuggestQueryParams): P
   const unit = parsed.unit ? normalizeUnit(parsed.unit) : '';
 
   if (params.containerId) {
-    return drillIntoContainer(env, params, suggestConfig.limit, hasCivic ? civic : null, unit);
+    return drillIntoContainer(store, params, suggestConfig.limit, hasCivic ? civic : null, unit);
   }
 
   // suggest_text holds no civic number, so the civic has to come out of the match expression or
   // nothing matches at all. Scoring uses the same stripped text for the same reason.
   const searchText = hasCivic ? stripLeadingCivic(normalizedQuery) : normalizedQuery;
 
-  const rows = await queryContainers(env, params, searchText, provinces, suggestConfig.candidateWindow);
+  const rows = await queryContainers(store, params, searchText, provinces, suggestConfig.candidateWindow);
   if (rows.length === 0) return { suggestions: [], provinces };
 
   const scored = scoreRows(rows, searchText, params, hasCivic ? civic : null);
   const top = scored.slice(0, suggestConfig.limit);
 
   const suggestions = hasCivic
-    ? await resolveLeaves(env, top, civic!, unit, params)
+    ? await resolveLeaves(store, top, civic!, unit, params)
     : top.map(({ row, score, distanceMeters }) =>
         toContainerSuggestion(row, score, searchText, params, distanceMeters)
       );
@@ -339,7 +347,7 @@ function stripLeadingCivic(normalized: string): string {
 }
 
 async function queryContainers(
-  env: Env,
+  store: AddressStore,
   params: SuggestQueryParams,
   searchText: string,
   provinces: string[],
@@ -348,22 +356,8 @@ async function queryContainers(
   const match = buildFtsMatchQuery(searchText);
   if (!match) return [];
 
-  const where: string[] = ['oda_suggest_fts MATCH ?'];
-  const binds: unknown[] = [match];
-
-  if (provinces.length) {
-    where.push(`s.province IN (${provinces.map(() => '?').join(', ')})`);
-    binds.push(...provinces);
-  }
-
-  const restriction = params.locationRestriction;
-  if (restriction) {
-    where.push('s.lat BETWEEN ? AND ?', 's.lon BETWEEN ? AND ?');
-    binds.push(restriction.minLat, restriction.maxLat, restriction.minLon, restriction.maxLon);
-  }
-
   /*
-   * The window is a truncation, so it must be ordered by something that AGREES with the final
+   * The window is a truncation, so the adapter orders it by something that AGREES with the final
    * score in scoreSuggestion() -- otherwise it throws away the rows scoring would have chosen and
    * everything after it is decoration.
    *
@@ -376,38 +370,19 @@ async function queryContainers(
    *     "MAIN ST TORONTO ON" for the query "main st". Its length normalisation also penalises
    *     streets whose city name happens to have more words.
    *
-   * So order by the same signals JS weights, strongest first: prefix quality (0.40), then
-   * proximity (0.10) when biased, then popularity (0.20). bm25 ranks last, as a tie-breaker only.
+   * So the adapter orders by the same signals JS weights, strongest first: prefix quality (0.40),
+   * then proximity (0.10) when biased, then popularity (0.20). bm25 ranks last, as a tie-breaker.
    */
-  const orderBy: string[] = [];
-
-  // prefixQuality proxy. normalizeSearchToken strips % and _, so the pattern needs no escaping.
-  orderBy.push('CASE WHEN s.suggest_text LIKE ? THEN 0 ELSE 1 END ASC');
-  binds.push(`${searchText}%`);
-
-  if (params.locationBias) {
-    // Planar squared distance, not haversine: no trig, and monotonic enough to ORDER BY. The
-    // 0.53 factor is cos(43°)^2 -- a longitude degree is shorter than a latitude degree at
-    // Canadian latitudes. Exact distance is recomputed properly in JS for the response.
-    orderBy.push('((s.lat - ?) * (s.lat - ?) + (s.lon - ?) * (s.lon - ?) * 0.53) ASC');
-    binds.push(params.locationBias.lat, params.locationBias.lat, params.locationBias.lon, params.locationBias.lon);
-  }
-
-  orderBy.push('s.address_count DESC', 'rank ASC');
-  binds.push(window);
-
-  const sql = `SELECT s.id, s.province, s.city, s.city_key, s.street_key,
-                      s.min_civic, s.max_civic, s.lat, s.lon, s.address_count,
-                      bm25(oda_suggest_fts) AS rank
-               FROM oda_suggest_fts f
-               JOIN oda_street_suggest s ON s.id = f.rowid
-               WHERE ${where.join(' AND ')}
-               ORDER BY ${orderBy.join(', ')}
-               LIMIT ?`;
-
   try {
-    const result = await env.ODA_DB!.prepare(sql).bind(...binds).all<SuggestRow>();
-    return result.results || [];
+    return await store.searchStreetSuggest({
+      match,
+      provinces,
+      restriction: params.locationRestriction,
+      locationBias: params.locationBias,
+      // prefixQuality proxy. normalizeSearchToken strips % and _, so the pattern needs no escaping.
+      prefixPattern: `${searchText}%`,
+      limit: window,
+    });
   } catch (error) {
     // The suggest tables are built by a separate migration; until it runs, this table is absent.
     if (isMissingSuggestTable(error)) {
@@ -483,7 +458,7 @@ function suggestTextOf(row: SuggestRow): string {
 // ---------------------------------------------------------------------------
 
 async function resolveLeaves(
-  env: Env,
+  store: AddressStore,
   scored: Array<{ row: SuggestRow; score: number; distanceMeters?: number }>,
   civic: number,
   unit: string,
@@ -499,10 +474,10 @@ async function resolveLeaves(
       lookups++;
       // Always ask about the civic itself first: its row count is what separates an address
       // from a tower, and we need it even when a unit was typed but does not exist.
-      const atCivic = await queryCivic(env, entry.row, civic, '');
+      const atCivic = await queryCivic(store, entry.row, civic, '');
 
       if (atCivic.row && unit) {
-        const exact = await queryCivic(env, entry.row, civic, unit);
+        const exact = await queryCivic(store, entry.row, civic, unit);
         if (exact.row) {
           out.push(toLeafSuggestion(exact.row, entry.score, entry.distanceMeters));
           continue;
@@ -562,43 +537,28 @@ async function resolveLeaves(
  * with no unit at all, and counting rows would read those as a two-unit building. Only a real
  * spread of unit identifiers makes a civic a tower.
  *
- * The correlated subquery sees the outer row, so the count needs no extra bind parameters and
- * survives the unit filter in the WHERE clause below.
+ * The adapter's correlated subquery sees the outer row, so the count needs no extra parameters
+ * and survives the unit filter it applies alongside it.
  */
 async function queryCivic(
-  env: Env,
+  store: AddressStore,
   row: SuggestRow,
   civic: number,
   unit: string
-): Promise<{ row: AddressRow | null; unitTotal: number }> {
-  const where = ['a.province = ?', 'a.city_key = ?', 'a.street_key = ?', 'a.civic_number = ?'];
-  const binds: unknown[] = [row.province, row.city_key, row.street_key, String(civic)];
-
-  if (unit) {
-    where.push('UPPER(REPLACE(a.unit, \' \', \'\')) = ?');
-    binds.push(unit.replace(/\s/g, ''));
-  }
-
-  const sql = `SELECT a.civic_number, a.unit, a.postal_code, a.street_name, a.street_type,
-                      a.street_direction, a.city, a.province, a.lat, a.lon, a.full_address,
-                      (SELECT COUNT(DISTINCT NULLIF(u.unit, ''))
-                         FROM oda_addresses u
-                        WHERE u.province = a.province AND u.city_key = a.city_key
-                          AND u.street_key = a.street_key AND u.civic_number = a.civic_number
-                      ) AS unit_total
-               FROM oda_addresses a
-               WHERE ${where.join(' AND ')}
-               ORDER BY CASE WHEN a.unit = '' OR a.unit IS NULL THEN 0 ELSE 1 END,
-                        CAST(a.unit AS INTEGER), a.unit
-               LIMIT 1`;
-
-  const result = await env.ODA_DB!.prepare(sql).bind(...binds).first<AddressRow & { unit_total: number }>();
+): Promise<{ row: AddressWithUnitTotal | null; unitTotal: number }> {
+  const result = await store.findAddressAtCivic({
+    province: row.province,
+    cityKey: row.city_key,
+    streetKey: row.street_key,
+    civic: String(civic),
+    unit: unit || undefined,
+  });
   if (!result) return { row: null, unitTotal: 0 };
-  return { row: result, unitTotal: (result.unit_total as number) || 0 };
+  return { row: result, unitTotal: result.unit_total || 0 };
 }
 
 async function drillIntoContainer(
-  env: Env,
+  store: AddressStore,
   params: SuggestQueryParams,
   limit: number,
   civic: number | null,
@@ -614,46 +574,32 @@ async function drillIntoContainer(
   }
 
   return container.civic
-    ? listUnits(env, container, params, limit, cursor, unit)
-    : listCivics(env, container, params, limit, cursor, civic);
+    ? listUnits(store, container, params, limit, cursor, unit)
+    : listCivics(store, container, params, limit, cursor, civic);
 }
 
 /** Street container -> the civic numbers on it. A civic with many units becomes its own container. */
 async function listCivics(
-  env: Env,
+  store: AddressStore,
   container: ContainerRef,
   params: SuggestQueryParams,
   limit: number,
   cursor: Cursor | null,
   civic: number | null
 ): Promise<SuggestResult> {
-  const where = ['province = ?', 'city_key = ?', 'street_key = ?'];
-  const binds: unknown[] = [container.province, container.cityKey, container.streetKey];
-
-  if (civic !== null) {
-    where.push('civic_number LIKE ?');
-    binds.push(`${civic}%`);
-  }
-  if (cursor && cursor.civicNum !== undefined) {
-    // Row-value comparison keeps the keyset in lockstep with ORDER BY, including "1" vs "1A".
-    where.push('(CAST(civic_number AS INTEGER), civic_number) > (?, ?)');
-    binds.push(cursor.civicNum, cursor.civicStr ?? '');
-  }
-  binds.push(limit + 1);
-
-  // min(unit) makes the bare columns deterministic: SQLite documents that with min()/max() the
-  // other columns come from the matching row, rather than an arbitrary one.
-  const sql = `SELECT civic_number, min(unit) AS unit, postal_code, street_name, street_type,
-                      street_direction, city, province, lat, lon, full_address,
-                      COUNT(DISTINCT NULLIF(unit, '')) AS unit_total
-               FROM oda_addresses
-               WHERE ${where.join(' AND ')}
-               GROUP BY civic_number
-               ORDER BY CAST(civic_number AS INTEGER), civic_number
-               LIMIT ?`;
-
-  const result = await env.ODA_DB!.prepare(sql).bind(...binds).all<AddressRow & { unit_total: number }>();
-  const all = result.results || [];
+  // min(unit) in the adapter makes the bare columns deterministic: SQLite documents that with
+  // min()/max() the other columns come from the matching row, rather than an arbitrary one.
+  const all = await store.listCivicsInStreet({
+    province: container.province,
+    cityKey: container.cityKey,
+    streetKey: container.streetKey,
+    civicPrefix: civic !== null ? String(civic) : undefined,
+    cursor:
+      cursor && cursor.civicNum !== undefined
+        ? { civicNum: cursor.civicNum, civicStr: cursor.civicStr ?? '' }
+        : undefined,
+    limit,
+  });
   const rows = all.slice(0, limit);
 
   const suggestions = rows.map((row, index) => {
@@ -677,37 +623,24 @@ async function listCivics(
 
 /** Building container -> the units in it. */
 async function listUnits(
-  env: Env,
+  store: AddressStore,
   container: ContainerRef,
   params: SuggestQueryParams,
   limit: number,
   cursor: Cursor | null,
   unit: string
 ): Promise<SuggestResult> {
-  const where = ['province = ?', 'city_key = ?', 'street_key = ?', 'civic_number = ?'];
-  const binds: unknown[] = [container.province, container.cityKey, container.streetKey, container.civic];
-
   // Inside a building the user is typing a unit, so a bare trailing token filters units.
   const prefix = unit || unitPrefixFromQuery(params.q, container);
-  if (prefix) {
-    where.push('UPPER(REPLACE(unit, \' \', \'\')) LIKE ?');
-    binds.push(`${prefix.replace(/\s/g, '')}%`);
-  }
-  if (cursor && cursor.unit !== undefined) {
-    where.push('unit > ?');
-    binds.push(cursor.unit);
-  }
-  binds.push(limit + 1);
-
-  const sql = `SELECT civic_number, unit, postal_code, street_name, street_type, street_direction,
-                      city, province, lat, lon, full_address
-               FROM oda_addresses
-               WHERE ${where.join(' AND ')}
-               ORDER BY CAST(unit AS INTEGER), unit
-               LIMIT ?`;
-
-  const result = await env.ODA_DB!.prepare(sql).bind(...binds).all<AddressRow>();
-  const all = result.results || [];
+  const all = await store.listUnitsInBuilding({
+    province: container.province,
+    cityKey: container.cityKey,
+    streetKey: container.streetKey,
+    civic: container.civic ?? '',
+    unitPrefix: prefix || undefined,
+    cursor: cursor && cursor.unit !== undefined ? { unit: cursor.unit } : undefined,
+    limit,
+  });
   const rows = all.slice(0, limit);
 
   const suggestions = rows.map((row, index) =>

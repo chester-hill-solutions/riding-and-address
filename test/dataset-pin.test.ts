@@ -1,21 +1,32 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createLookupRequestScope, handleLookupRequest } from '../src/lookup-handler';
+import { handleLookupRequest } from '../src/lookup-handler';
+import { createRouteContext, type RouteContext } from '../src/routes';
 import { Env } from '../src/types';
 
-function makeScope(env: Env, request: Request, lookup?: Parameters<typeof handleLookupRequest>[0]['lookup']) {
-  const scope = createLookupRequestScope(env, request, undefined, 'corr', Date.now());
-  return { ...scope, lookup };
+function makeContext(
+  env: Env,
+  request: Request,
+  lookup?: RouteContext['lookup']
+): RouteContext {
+  return createRouteContext({
+    request,
+    env,
+    ctx: {
+      waitUntil: () => {},
+      passThroughOnException: () => {},
+      props: {},
+    } as unknown as ExecutionContext,
+    correlationId: 'corr',
+    startTime: Date.now(),
+    lookup,
+  });
 }
 
 describe('dataset pin', () => {
   it('returns DATASET_UNAVAILABLE when pin does not match current vintage', async () => {
     const env = {} as Env;
     const request = new Request('https://x.test/api/federal?lat=45&lon=-75&dataset=federalridings-2015.geojson');
-    const response = await handleLookupRequest(
-      makeScope(env, request),
-      request,
-      '/api/federal'
-    );
+    const response = await handleLookupRequest(makeContext(env, request));
     expect(response.status).toBe(404);
     const body = (await response.json()) as { code: string };
     expect(body.code).toBe('DATASET_UNAVAILABLE');
@@ -33,14 +44,12 @@ describe('dataset pin', () => {
     const env = {} as Env;
     const request = new Request('https://x.test/api/federal?lat=45&lon=-75&dataset=2024');
     const response = await handleLookupRequest(
-      makeScope(env, request, async () => ({
+      makeContext(env, request, async () => ({
         properties: { FED_NAME: 'Test' },
         riding: 'Test',
         point: { lon: -75, lat: 45 },
         cacheStatus: 'MISS' as const
-      })),
-      request,
-      '/api/federal'
+      }))
     );
     // May 500 if expansion needs more env; must not be DATASET_UNAVAILABLE.
     if (response.status === 404) {

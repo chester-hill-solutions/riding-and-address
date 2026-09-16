@@ -3,19 +3,15 @@
 import {
   Env
 } from './types';
-import { geocodeIfNeeded, geocodeBatch } from './geocoding';
 import {
   handleGeocodeRoute,
   handleReverseRoute,
   handleNormalizeAddressRoute,
-  handleOdaInit,
-  handleOdaStats,
   handleSearchRoute,
 } from './oda-handlers';
 import { isOdaSuggestEnabled } from './oda-config';
-import { createEmbedScript, EMBED_VERSION } from './embed';
 import { performCacheWarming } from './cache';
-import { geocodingExecutor, geocodingCircuitBreaker, initializeCircuitBreakers, r2CircuitBreaker } from './circuit-breaker';
+import { geocodingCircuitBreaker, initializeCircuitBreakers, r2CircuitBreaker } from './circuit-breaker';
 import { incrementMetric, recordTiming } from './metrics';
 import { 
   checkAdminAuth,
@@ -29,7 +25,7 @@ import {
   getCorrelationId,
 } from './utils';
 import { getAllR2Keys } from './datasets';
-import { createLookupRequestScope, handleLookupRequest } from './lookup-handler';
+import { handleLookupRequest } from './lookup-handler';
 import { resolveLookupPath } from './return-selector';
 import {
   initializeSpatialDatabase,
@@ -43,8 +39,9 @@ import {
   processWebhookEvents,
   cleanupWebhookData
 } from './webhooks';
-import { 
+import {
   processBatchLookupWithBatchGeocoding,
+  redactFuseDeniedResult,
   submitBatchToQueue,
   getBatchStatus,
   processQueueJobs
@@ -53,7 +50,7 @@ import { safeParseBatchLookupRequests } from './validation';
 import { QueueManagerDO } from './queue-manager';
 import { ApiKeyUsageDO } from './api-key-usage-do';
 import { CircuitBreakerDO } from './circuit-breaker-do';
-import { dispatch, type RouteContext } from './routes';
+import { createRouteContext, dispatch, type RouteContext } from './routes';
 import {
   apiKeysEnabled,
   authorizeLookupRequest,
@@ -139,9 +136,9 @@ async function handleScheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionC
  * circuit-breaker reset, webhook admin); the branches below cover everything not yet ported.
  */
 async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
-  const { request, env, scope, url, ctx } = routeCtx;
+  const { request, env, url } = routeCtx;
   const pathname = url.pathname;
-  const correlationId = scope.correlationId;
+  const correlationId = routeCtx.correlationId;
 
   // Handle database endpoints
   if (pathname.startsWith('/api/database')) {
@@ -158,7 +155,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
         }), {
           headers: { 
             "content-type": "application/json; charset=UTF-8",
-            ...scope.corsHeaders(request.headers.get('Origin'))
+            ...routeCtx.corsHeaders(request.headers.get('Origin'))
           }
         });
       } catch (error) {
@@ -187,7 +184,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
         }), {
           headers: { 
             "content-type": "application/json; charset=UTF-8",
-            ...scope.corsHeaders(request.headers.get('Origin'))
+            ...routeCtx.corsHeaders(request.headers.get('Origin'))
           }
         });
       } catch (error) {
@@ -210,7 +207,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
         }), {
           headers: {
             "content-type": "application/json; charset=UTF-8",
-            ...scope.corsHeaders(request.headers.get('Origin'))
+            ...routeCtx.corsHeaders(request.headers.get('Origin'))
           }
         });
       } catch (error) {
@@ -232,7 +229,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
         return new Response(JSON.stringify(result), {
           headers: { 
             "content-type": "application/json; charset=UTF-8",
-            ...scope.corsHeaders(request.headers.get('Origin'))
+            ...routeCtx.corsHeaders(request.headers.get('Origin'))
           }
         });
       } catch (error) {
@@ -258,7 +255,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
         return new Response(JSON.stringify(result), {
           headers: { 
             "content-type": "application/json; charset=UTF-8",
-            ...scope.corsHeaders(request.headers.get('Origin'))
+            ...routeCtx.corsHeaders(request.headers.get('Origin'))
           }
         });
       } catch (error) {
@@ -278,7 +275,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
           return new Response(JSON.stringify(result), {
             headers: { 
               "content-type": "application/json; charset=UTF-8",
-              ...scope.corsHeaders(request.headers.get('Origin'))
+              ...routeCtx.corsHeaders(request.headers.get('Origin'))
             }
           });
         } else {
@@ -299,7 +296,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
       }), {
         headers: { 
           "content-type": "application/json; charset=UTF-8",
-          ...scope.corsHeaders(request.headers.get('Origin'))
+          ...routeCtx.corsHeaders(request.headers.get('Origin'))
         }
       });
     }
@@ -321,7 +318,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
       }), {
         headers: { 
           "content-type": "application/json; charset=UTF-8",
-          ...scope.corsHeaders(request.headers.get('Origin'))
+          ...routeCtx.corsHeaders(request.headers.get('Origin'))
         }
       });
     } else {
@@ -355,7 +352,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
         }), {
           headers: { 
             "content-type": "application/json; charset=UTF-8",
-            ...scope.corsHeaders(request.headers.get('Origin'))
+            ...routeCtx.corsHeaders(request.headers.get('Origin'))
           }
         });
       } catch (error) {
@@ -411,43 +408,26 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
           );
         }
 
-        const cb = geocodingExecutor();
-        const results = await processBatchLookupWithBatchGeocoding(
-          env,
-          parsedRequests.data,
-          geocodeIfNeeded,
-          lookupRiding,
-          (e, q, req?, c?) => geocodeBatch(e, q, req, undefined, c ?? cb),
-          request,
-          cb
-        );
+        const results = await processBatchLookupWithBatchGeocoding(routeCtx, parsedRequests.data);
 
         // Same Billable unit as realtime: each successful item without error.
         // Once the fuse denies an increment, redact that item and all remaining
-        // successes so results are not returned free past the hard fuse.
+        // successes so results are not returned free past the hard fuse. The denial
+        // body comes from the one billing shaper, so batch speaks the same dialect.
         if (batchBilling) {
-          let fuseExceeded = false;
+          let fuseDenial: Record<string, unknown> | null = null;
           for (const item of results) {
             if (item.error) continue;
-            if (fuseExceeded) {
-              item.properties = null;
-              item.riding = undefined;
-              item.province_data = undefined;
-              item.error = 'Monthly usage fuse exceeded';
+            if (fuseDenial) {
+              redactFuseDeniedResult(item, fuseDenial);
               continue;
             }
             const billed = await recordSuccessfulBillable(env, batchBilling, {
-              waitUntil: (task) => ctx.waitUntil(task),
+              waitUntil: routeCtx.deferTask,
             });
             if (!billed.allowed) {
-              fuseExceeded = true;
-              item.properties = null;
-              item.riding = undefined;
-              item.province_data = undefined;
-              item.error =
-                typeof billed.body?.error === 'string'
-                  ? billed.body.error
-                  : 'Monthly usage fuse exceeded';
+              fuseDenial = routeCtx.billableDenialBody(billed);
+              redactFuseDeniedResult(item, fuseDenial);
             }
           }
         }
@@ -455,7 +435,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
         return new Response(JSON.stringify({ results }), {
           headers: { 
             "content-type": "application/json; charset=UTF-8",
-            ...scope.corsHeaders(request.headers.get('Origin'))
+            ...routeCtx.corsHeaders(request.headers.get('Origin'))
           }
         });
       } catch (error) {
@@ -470,7 +450,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
         return new Response(JSON.stringify(status), {
           headers: { 
             "content-type": "application/json; charset=UTF-8",
-            ...scope.corsHeaders(request.headers.get('Origin'))
+            ...routeCtx.corsHeaders(request.headers.get('Origin'))
           }
         });
       } catch (error) {
@@ -516,7 +496,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
       return new Response(JSON.stringify(result), {
         headers: { 
           "content-type": "application/json; charset=UTF-8",
-          ...scope.corsHeaders(request.headers.get('Origin'))
+          ...routeCtx.corsHeaders(request.headers.get('Origin'))
         }
       });
     } catch (error) {
@@ -545,7 +525,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
       return new Response(JSON.stringify(result), {
         headers: { 
           "content-type": "application/json; charset=UTF-8",
-          ...scope.corsHeaders(request.headers.get('Origin'))
+          ...routeCtx.corsHeaders(request.headers.get('Origin'))
         }
       });
     } catch (error) {
@@ -570,7 +550,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
       return new Response(JSON.stringify(result), {
         headers: { 
           "content-type": "application/json; charset=UTF-8",
-          ...scope.corsHeaders(request.headers.get('Origin'))
+          ...routeCtx.corsHeaders(request.headers.get('Origin'))
         }
       });
     } catch (error) {
@@ -599,7 +579,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
       return new Response(JSON.stringify(stats), {
         headers: { 
           "content-type": "application/json; charset=UTF-8",
-          ...scope.corsHeaders(request.headers.get('Origin'))
+          ...routeCtx.corsHeaders(request.headers.get('Origin'))
         }
       });
     } catch (error) {
@@ -619,7 +599,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
       return new Response(JSON.stringify(result), {
         headers: { 
           "content-type": "application/json; charset=UTF-8",
-          ...scope.corsHeaders(request.headers.get('Origin'))
+          ...routeCtx.corsHeaders(request.headers.get('Origin'))
         }
       });
     } catch (error) {
@@ -627,68 +607,9 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
     }
   }
   
-  // ODA geolocation admin endpoints
-  if (pathname.startsWith('/api/oda')) {
-    if (pathname === '/api/oda/init' && request.method === 'POST') {
-      if (!checkAdminAuth(request, env)) {
-        return unauthorizedResponse(correlationId);
-      }
-      try {
-        return await handleOdaInit(env);
-      } catch (error) {
-        return internalErrorResponse(error, 'ODA initialization failed', correlationId);
-      }
-    }
-
-    if (pathname === '/api/oda/stats' && request.method === 'GET') {
-      if (!checkAdminAuth(request, env)) {
-        return unauthorizedResponse(correlationId);
-      }
-      try {
-        return await handleOdaStats(env);
-      } catch (error) {
-        return internalErrorResponse(error, 'Failed to get ODA stats', correlationId);
-      }
-    }
-  }
-
-  // Drop-in autocomplete widget. Gated with /api/search: a widget whose only data source is
-  // unregistered would fail silently on the integrator's page, which is worse than a 404.
-  if (pathname === '/embed.js' && request.method === 'GET') {
-    if (!isOdaSuggestEnabled(env)) {
-      return badRequest('Address autocomplete is not enabled', 404, 'NOT_FOUND', correlationId);
-    }
-    return new Response(createEmbedScript(new URL(request.url).origin), {
-      headers: {
-        'content-type': 'application/javascript; charset=UTF-8',
-        'Cache-Control': 'public, max-age=300, s-maxage=3600',
-        'X-Embed-Version': EMBED_VERSION,
-        ...scope.corsHeaders(request.headers.get('Origin')),
-      },
-    });
-  }
-
   // Portal → Worker KV projection (operator secret)
   if (pathname.startsWith('/admin/projection/')) {
-    return handleProjectionRequest(request, env, pathname);
-  }
-
-  // Public demo routes — no Customer key; IP rate-limited; not billable
-  if (pathname.startsWith('/api/demo/') && request.method === 'GET') {
-    const demoLimit = parseInt(env.DEMO_RATE_LIMIT || '30', 10);
-    const demoClient = `demo:${getClientId(request)}`;
-    if (!checkRateLimit({ ...env, RATE_LIMIT: demoLimit }, demoClient)) {
-      return rateLimitExceededResponse(correlationId);
-    }
-    const demoPath = pathname.replace(/^\/api\/demo/, '/api') || '/api';
-    if (demoPath === '/api/geocode') return handleGeocodeRoute(request, env);
-    if (demoPath === '/api/reverse') return handleReverseRoute(request, env);
-    if (demoPath === '/api/normalize-address') return handleNormalizeAddressRoute(request, env);
-    return handleLookupRequest(
-      scope,
-      request,
-      demoPath === '/api' ? '/api/federal' : demoPath
-    );
+    return handleProjectionRequest(routeCtx);
   }
 
   // ODA geolocation endpoints. Rate-limited like the /api catch-all below, but intentionally
@@ -706,8 +627,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
     }
     const auth = await authorizeLookupRequest(env, request, basicAuth);
     if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
-    const response = await handleGeocodeRoute(request, env);
-    return response;
+    return handleGeocodeRoute(routeCtx);
   }
 
   if (pathname === '/api/reverse' && request.method === 'GET') {
@@ -717,7 +637,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
     }
     const auth = await authorizeLookupRequest(env, request, basicAuth);
     if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
-    return handleReverseRoute(request, env);
+    return handleReverseRoute(routeCtx);
   }
 
   if (pathname === '/api/normalize-address' && request.method === 'GET') {
@@ -727,7 +647,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
     }
     const auth = await authorizeLookupRequest(env, request, basicAuth);
     if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
-    return handleNormalizeAddressRoute(request, env);
+    return handleNormalizeAddressRoute(routeCtx);
   }
 
   // Address autocomplete. Must stay above the /api catch-all below, which would otherwise
@@ -756,7 +676,7 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
     // No checkBasicAuth here: /api/search accepts EITHER basic auth or a browser key, and a
     // hard basic-auth gate would 401 the widget before it could ever present its key.
     // handleSearchRoute owns that decision.
-    return handleSearchRoute(scope, request);
+    return handleSearchRoute(routeCtx);
   }
 
   // Main lookup endpoint
@@ -770,12 +690,9 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
     const auth = await authorizeLookupRequest(env, request, basicAuth);
     if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
 
-    return handleLookupRequest(
-      scope,
-      request,
-      pathname,
-      billingFromAuth(auth)
-    );
+    // The catch-all still owns its own auth until it is ported; thread the resolved billing
+    // context through the same field the prelude fills for ported lookup entries.
+    return handleLookupRequest({ ...routeCtx, billing: billingFromAuth(auth) });
   }
   
   return badRequest("Not found", 404, "NOT_FOUND", correlationId)
@@ -793,18 +710,20 @@ export default {
     }
 
     try {
-      const scope = createLookupRequestScope(env, request, ctx, correlationId, startTime);
+      // Build the one request context up front; the prelude fills auth, rate-limit and headers
+      // for ported entries, and the legacy fallback receives the same complete object.
+      const routeCtx = createRouteContext({ request, env, ctx, correlationId, startTime });
 
       // Handle CORS preflight
       if (request.method === 'OPTIONS') {
         const origin = request.headers.get('Origin');
         return new Response(null, {
           status: 200,
-          headers: scope.corsHeaders(origin)
+          headers: routeCtx.corsHeaders(origin)
         });
       }
 
-      return await dispatch(request, env, ctx, { scope, legacyHandler: legacyFetch });
+      return await dispatch(routeCtx, legacyFetch);
     } catch (err: unknown) {
       incrementMetric('errorCount');
       recordTiming('totalLookupTime', Date.now() - startTime);
