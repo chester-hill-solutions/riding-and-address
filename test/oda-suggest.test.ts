@@ -13,11 +13,13 @@ import {
 } from '../src/oda-suggest';
 import { Env, SuggestQueryParams } from '../src/types';
 import { createD1AddressStore } from '../src/address-store';
+import { type OdaMemoryAddressRow } from './helpers/oda-memory-db';
 import {
-  createInMemoryAddressStore,
-  type OdaMemoryAddressRow,
-  type OdaMemoryDb,
-} from './helpers/oda-memory-db';
+  createD1Shim,
+  createOdaSqlite,
+  seedOdaRows,
+  seedStreetSuggest,
+} from './helpers/oda-sqlite';
 
 type MockRow = Record<string, unknown>;
 
@@ -687,14 +689,14 @@ describe('searchSuggestions', () => {
 });
 
 // ---------------------------------------------------------------------------
-// AddressStore adapter agreement.
+// AddressStore agreement against the D1 adapter's real SQL.
 //
-// test/helpers/oda-memory-db.ts re-implements the D1 SQL in JS. These pin the
-// places where it had already drifted from src/address-store.ts, so the two
-// adapters stay in step until the blocked "run real SQLite" move lands.
+// The old JS adapter in oda-memory-db.ts re-implemented the SQL and drifted
+// from it twice. These tests now seed in-memory SQLite and run the real
+// statements, so the divergence cannot silently return.
 // ---------------------------------------------------------------------------
 
-function memoryRow(overrides: Partial<OdaMemoryAddressRow> = {}): OdaMemoryAddressRow {
+function sqliteAddressRow(overrides: Partial<OdaMemoryAddressRow> = {}): OdaMemoryAddressRow {
   return {
     id: 1,
     province: 'ON',
@@ -711,16 +713,6 @@ function memoryRow(overrides: Partial<OdaMemoryAddressRow> = {}): OdaMemoryAddre
     full_address: '250 Main St, Toronto ON',
     search_key: '250|MAIN|ST|ON',
     street_key: 'MAIN|ST',
-    ...overrides,
-  };
-}
-
-function memoryDb(overrides: Partial<OdaMemoryDb> = {}): OdaMemoryDb {
-  return {
-    addresses: [],
-    postalCentroids: new Map(),
-    cityCentroids: new Map(),
-    streetRanges: new Map(),
     ...overrides,
   };
 }
@@ -751,28 +743,34 @@ describe('AddressStore adapter agreement', () => {
   };
 
   it('findAddressAtCivic puts the unit-less row first, matching the D1 ORDER BY', async () => {
-    // Empty unit, two numeric units and a text unit, all in the same building. The old
-    // in-memory sort ordered non-empty units first while the SQL ordered empty first.
-    const rows = [
-      memoryRow({ id: 1, unit: 'PH' }),
-      memoryRow({ id: 2, unit: '101' }),
-      memoryRow({ id: 3, unit: '12' }),
-      memoryRow({ id: 4, unit: '' }),
-    ];
-
-    const { db: d1, sqls } = createCapturingD1();
-    await createD1AddressStore(d1).findAddressAtCivic(civicRef);
+    const { db: capturing, sqls } = createCapturingD1();
+    await createD1AddressStore(capturing).findAddressAtCivic(civicRef);
     expect(sqls[0]).toContain(
       "ORDER BY CASE WHEN a.unit = '' OR a.unit IS NULL THEN 0 ELSE 1 END"
     );
 
-    const store = createInMemoryAddressStore(memoryDb({ addresses: rows }));
-    const result = await store.findAddressAtCivic(civicRef);
+    // Empty unit, two numeric units and a text unit, all in the same building. The old
+    // in-memory sort ordered non-empty units first while the SQL ordered empty first.
+    const { sqlite, close } = createOdaSqlite();
+    try {
+      seedOdaRows(sqlite, {
+        addresses: [
+          sqliteAddressRow({ id: 1, unit: 'PH' }),
+          sqliteAddressRow({ id: 2, unit: '101' }),
+          sqliteAddressRow({ id: 3, unit: '12' }),
+          sqliteAddressRow({ id: 4, unit: '' }),
+        ],
+      });
+      const store = createD1AddressStore(createD1Shim(sqlite));
+      const result = await store.findAddressAtCivic(civicRef);
 
-    // Empty sorts first (CASE ... THEN 0), so the unit-less row wins the SQL LIMIT 1.
-    expect(result?.unit).toBe('');
-    // Distinct non-empty units only: '12', '101', 'PH'.
-    expect(result?.unit_total).toBe(3);
+      // Empty sorts first (CASE ... THEN 0), so the unit-less row wins the SQL LIMIT 1.
+      expect(result?.unit).toBe('');
+      // Distinct non-empty units only: '12', '101', 'PH'.
+      expect(result?.unit_total).toBe(3);
+    } finally {
+      close();
+    }
   });
 
   it('findCityCentroidsByPrefix applies the caller limit, as the SQL LIMIT does', async () => {
@@ -781,43 +779,119 @@ describe('AddressStore adapter agreement', () => {
       { province: 'QC', city_key: 'TORONTO|QC', city: 'Toronto', lat: 45.5, lon: -73.6 },
       { province: 'BC', city_key: 'TORONTO|BC', city: 'Toronto', lat: 49.2, lon: -122.9 },
     ];
-    const store = createInMemoryAddressStore(
-      memoryDb({
+    const { sqlite, close } = createOdaSqlite();
+    try {
+      seedOdaRows(sqlite, {
         cityCentroids: new Map(centroids.map((c) => [`${c.province}|${c.city_key}`, c])),
-      })
-    );
+      });
+      const store = createD1AddressStore(createD1Shim(sqlite));
+      const provinces = ['ON', 'QC', 'BC'];
 
-    const provinces = ['ON', 'QC', 'BC'];
-    expect(
-      await store.findCityCentroidsByPrefix({ provinces, prefix: 'TORONTO', limit: 10 })
-    ).toHaveLength(3);
-    // The old adapter ignored the limit entirely and returned all three.
-    expect(
-      await store.findCityCentroidsByPrefix({ provinces, prefix: 'TORONTO', limit: 2 })
-    ).toHaveLength(2);
+      expect(
+        await store.findCityCentroidsByPrefix({ provinces, prefix: 'TORONTO', limit: 10 })
+      ).toHaveLength(3);
+      // The old adapter ignored the limit entirely and returned all three.
+      expect(
+        await store.findCityCentroidsByPrefix({ provinces, prefix: 'TORONTO', limit: 2 })
+      ).toHaveLength(2);
+    } finally {
+      close();
+    }
   });
 
-  it('findPostalCentroid follows caller province order (the SQL has no ORDER BY)', async () => {
-    const cents = [
-      { province: 'ON', postal_code: 'M5V 2T6', lat: 43.64, lon: -79.39 },
-      { province: 'QC', postal_code: 'M5V 2T6', lat: 45.0, lon: -73.0 },
-    ];
-    const store = createInMemoryAddressStore(
-      memoryDb({
-        postalCentroids: new Map(cents.map((p) => [`${p.province}|${p.postal_code}`, p])),
-      })
-    );
+  it('findPostalCentroid resolves a postal code only within the given provinces', async () => {
+    const { sqlite, close } = createOdaSqlite();
+    try {
+      seedOdaRows(sqlite, {
+        postalCentroids: new Map([
+          ['ON|M5V 2T6', { province: 'ON', postal_code: 'M5V 2T6', lat: 43.64, lon: -79.39 }],
+          ['QC|H2Y 1H2', { province: 'QC', postal_code: 'H2Y 1H2', lat: 45.5, lon: -73.55 }],
+        ]),
+      });
+      const store = createD1AddressStore(createD1Shim(sqlite));
 
-    const onFirst = await store.findPostalCentroid({
-      postal: 'M5V 2T6',
-      provinces: ['ON', 'QC'],
-    });
-    expect(onFirst?.province).toBe('ON');
+      const hit = await store.findPostalCentroid({
+        postal: 'M5V 2T6',
+        provinces: ['ON', 'QC'],
+      });
+      expect(hit?.province).toBe('ON');
 
-    const qcFirst = await store.findPostalCentroid({
-      postal: 'M5V 2T6',
-      provinces: ['QC', 'ON'],
-    });
-    expect(qcFirst?.province).toBe('QC');
+      // The SQL scopes by province, so an out-of-scope postal is not a hit.
+      expect(
+        await store.findPostalCentroid({ postal: 'M5V 2T6', provinces: ['QC'] })
+      ).toBeNull();
+    } finally {
+      close();
+    }
+  });
+});
+
+describe('searchStreetSuggest against real SQLite FTS', () => {
+  const container = (
+    overrides: Partial<Parameters<typeof seedStreetSuggest>[1][number]> = {}
+  ) => ({
+    province: 'ON',
+    city_key: 'TORONTO|ON',
+    street_key: 'MAIN|ST',
+    city: 'Toronto',
+    suggest_text: 'MAIN ST TORONTO ON',
+    min_civic: 1,
+    max_civic: 499,
+    lat: 43.6891,
+    lon: -79.2989,
+    address_count: 250,
+    ...overrides,
+  });
+
+  it('ranks a prefix match through the real D1 adapter', async () => {
+    const { sqlite, close } = createOdaSqlite();
+    try {
+      seedStreetSuggest(sqlite, [
+        container(),
+        container({
+          city_key: 'OTTAWA|ON',
+          city: 'Ottawa',
+          suggest_text: 'MAIN ST OTTAWA ON',
+          lat: 45.4215,
+          lon: -75.6972,
+          address_count: 100,
+        }),
+      ]);
+      const store = createD1AddressStore(createD1Shim(sqlite));
+      const rows = await store.searchStreetSuggest({
+        match: '"MAIN"*',
+        provinces: ['ON'],
+        prefixPattern: 'MAIN%',
+        limit: 10,
+      });
+
+      expect(rows).toHaveLength(2);
+      // The prefix CASE and address_count DESC decide the window; bm25 only breaks ties.
+      expect(rows[0].street_key).toBe('MAIN|ST');
+      expect(rows[0].city).toBe('Toronto');
+      expect(rows[0].address_count).toBe(250);
+      expect(typeof rows[0].rank).toBe('number');
+    } finally {
+      close();
+    }
+  });
+
+  it('covers the autocomplete path end to end through searchSuggestions', async () => {
+    const { sqlite, close } = createOdaSqlite();
+    try {
+      seedStreetSuggest(sqlite, [container()]);
+      const result = await searchSuggestions(
+        createSuggestEnv(createD1Shim(sqlite)),
+        params({ q: 'main st', provinces: ['ON'] })
+      );
+
+      expect(result.suggestions).toHaveLength(1);
+      const [suggestion] = result.suggestions;
+      expect(suggestion.dataLevel).toBe('Street');
+      expect(suggestion.text).toContain('Main St');
+      expect(suggestion.next).toBe('search');
+    } finally {
+      close();
+    }
   });
 });

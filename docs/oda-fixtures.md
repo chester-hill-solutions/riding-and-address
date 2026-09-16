@@ -221,5 +221,5 @@ of 348 can never be recovered. `locationBias` stays a soft signal — it reorder
 never filters (that is `locationRestriction`).
 
 Asserted in `test/oda-suggest.test.ts` ("candidate window ordering"). Those tests assert the
-generated SQL, because the `LIMIT` executes in SQLite and the D1 mock cannot run it — the
-behaviour above was verified against a real database.
+generated SQL directly; `test/helpers/oda-sqlite.ts` can execute the same statements against a real
+in-memory SQLite, and the FTS coverage test does exercise the ranked window end to end.
