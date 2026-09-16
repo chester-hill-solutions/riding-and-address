@@ -22,6 +22,7 @@ import {
   parseAddressQuery,
 } from './oda-normalize';
 import { expandCityCandidates } from './oda-city-aliases';
+import { withCitySource } from './oda-source';
 import { expandStreetAddress } from './geocode-region';
 import { formatFromOdaRow } from './canada-post-format';
 import {
@@ -432,6 +433,60 @@ async function findStreetInterpolated(
   return null;
 }
 
+/**
+ * Resolve a civic + street within a postal code, when no municipality was supplied.
+ *
+ * The exact `search_key` embeds the city, so an address pasted as "2 Welby Cir, M4B 2Y8" cannot
+ * reach the exact tier, and street interpolation bails because it needs a city. Postal codes are
+ * indexed and local, so scoping the street match by postal resolves the actual civic point rather
+ * than falling through to a coarse postal centroid. Placed after street interpolation so a
+ * city-scoped match still wins when a city was given.
+ */
+async function findByPostalStreet(
+  env: Env,
+  parsed: ReturnType<typeof parseAddressQuery>,
+  provinces: string[]
+): Promise<OdaAddressRow | null> {
+  if (!env.ODA_DB || !parsed.postal || !parsed.streetName || !parsed.civic) return null;
+
+  const postal = normalizePostalCode(parsed.postal);
+  if (!postal) return null;
+
+  const streetKeys = buildStreetKeyVariants(parsed);
+  if (streetKeys.length === 0) return null;
+
+  const provincePlaceholders = provinces.map(() => '?').join(',');
+  const streetKeyPlaceholders = streetKeys.map(() => '?').join(',');
+  const civic = parsed.civicParsed?.raw ?? parsed.civic;
+
+  const rows = (await odaQueryAll(
+    env,
+    `
+    SELECT id, province, civic_number, street_name, street_type, street_direction,
+           unit, postal_code, city, lat, lon, full_address
+    FROM oda_addresses
+    WHERE province IN (${provincePlaceholders})
+      AND postal_code = ?
+      AND street_key IN (${streetKeyPlaceholders})
+      AND civic_number = ?
+    LIMIT 20
+  `,
+    [...provinces, postal, ...streetKeys, civic]
+  )) as OdaAddressRow[];
+
+  if (rows.length === 0) return null;
+
+  const rank = new Map(streetKeys.map((key, index) => [key, index]));
+  const keyOf = (row: OdaAddressRow) => buildStreetKey(row.street_name, row.street_type, row.street_direction);
+  const sorted = [...rows].sort((a, b) => {
+    const byKey = (rank.get(keyOf(a)) ?? streetKeys.length) - (rank.get(keyOf(b)) ?? streetKeys.length);
+    if (byKey !== 0) return byKey;
+    return (!a.unit ? 0 : 1) - (!b.unit ? 0 : 1);
+  });
+
+  return sorted[0];
+}
+
 async function findCityCentroid(
   env: Env,
   parsed: ReturnType<typeof parseAddressQuery>,
@@ -661,9 +716,14 @@ async function geocodeWithOdaInner(
 
   const exact = await findExactMatch(env, searchKeys, literalCityKeys, provinces, parsed.unit);
   if (exact) {
-    return assertConfidence(
-      buildResult(exact, 'exact', config, ['civic', 'street', 'city', 'province']),
-      config.minConfidence
+    return withCitySource(
+      env,
+      assertConfidence(
+        buildResult(exact, 'exact', config, ['civic', 'street', 'city', 'province']),
+        config.minConfidence
+      ),
+      exact.city,
+      exact.province
     );
   }
 
@@ -671,9 +731,32 @@ async function geocodeWithOdaInner(
   if (hasStreetAddress) {
     const street = await findStreetInterpolated(env, parsed, provinces);
     if (street) {
-      return assertConfidence(
-        buildResult(street, 'street_interpolated', config, ['street', 'city']),
-        config.minConfidence
+      return withCitySource(
+        env,
+        assertConfidence(
+          buildResult(street, 'street_interpolated', config, ['street', 'city']),
+          config.minConfidence
+        ),
+        street.city,
+        street.province
+      );
+    }
+  }
+
+  // A civic + street + postal with no city: the exact tier cannot key on a city, and street
+  // interpolation needs one. Match the street within the postal code before settling for a
+  // postal centroid.
+  if (parsed.postal && parsed.streetName && parsed.civic) {
+    const byPostal = await findByPostalStreet(env, parsed, provinces);
+    if (byPostal) {
+      return withCitySource(
+        env,
+        assertConfidence(
+          buildResult(byPostal, 'postal_street', config, ['civic', 'street', 'postal']),
+          config.minConfidence
+        ),
+        byPostal.city,
+        byPostal.province
       );
     }
   }
@@ -731,7 +814,7 @@ async function geocodeWithOdaInner(
         ['city', 'province']
       );
       if ((result.confidence ?? 0) >= config.minConfidence) {
-        return result;
+        return withCitySource(env, result, cityCentroid.city, cityCentroid.province);
       }
     }
   }
@@ -750,9 +833,14 @@ async function geocodeWithOdaInner(
   if (hintLon !== undefined && hintLat !== undefined) {
     const nearest = await findNearestNeighbor(env, hintLon, hintLat, config, bounds);
     if (nearest) {
-      return assertConfidence(
-        buildResult(nearest.row, 'nearest_neighbor', config, ['nearest_neighbor'], nearest.distance),
-        config.minConfidence
+      return withCitySource(
+        env,
+        assertConfidence(
+          buildResult(nearest.row, 'nearest_neighbor', config, ['nearest_neighbor'], nearest.distance),
+          config.minConfidence
+        ),
+        nearest.row.city,
+        nearest.row.province
       );
     }
   }
@@ -967,9 +1055,14 @@ export async function reverseGeocodeWithOda(
     );
   }
 
-  return assertConfidence(
-    buildResult(nearest.row, 'nearest_neighbor', config, ['reverse'], nearest.distance),
-    config.minConfidence
+  return withCitySource(
+    env,
+    assertConfidence(
+      buildResult(nearest.row, 'nearest_neighbor', config, ['reverse'], nearest.distance),
+      config.minConfidence
+    ),
+    nearest.row.city,
+    nearest.row.province
   );
 }
 

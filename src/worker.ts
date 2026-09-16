@@ -1014,30 +1014,38 @@ export default {
       // ODA geolocation endpoints. Rate-limited like the /api catch-all below, but intentionally
       // NOT billed: only 200 lookup/search responses are Billable units today; whether geocode
       // responses become billable is an open pricing decision.
+      // The operator credential (BASIC_AUTH) is a secret used for server-to-server bulk work —
+      // geocoding an imported household list is exactly that. Throttling it with the per-IP bucket
+      // that protects public/browser-key traffic makes a large import fail with 429 partway
+      // through, so a valid operator request skips the per-minute limit. Key-based traffic is
+      // unaffected and still holds its own daily/provider ceilings.
       if (pathname === '/api/geocode' && request.method === 'GET') {
-        if (!checkRateLimit(env, getClientId(request))) {
+        const basicAuth = hasValidBasicAuth(request, env);
+        if (!basicAuth && !checkRateLimit(env, getClientId(request))) {
           return rateLimitExceededResponse(correlationId);
         }
-        const auth = await authorizeLookupRequest(env, request, hasValidBasicAuth(request, env));
+        const auth = await authorizeLookupRequest(env, request, basicAuth);
         if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
         const response = await handleGeocodeRoute(request, env);
         return response;
       }
 
       if (pathname === '/api/reverse' && request.method === 'GET') {
-        if (!checkRateLimit(env, getClientId(request))) {
+        const basicAuth = hasValidBasicAuth(request, env);
+        if (!basicAuth && !checkRateLimit(env, getClientId(request))) {
           return rateLimitExceededResponse(correlationId);
         }
-        const auth = await authorizeLookupRequest(env, request, hasValidBasicAuth(request, env));
+        const auth = await authorizeLookupRequest(env, request, basicAuth);
         if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
         return handleReverseRoute(request, env);
       }
 
       if (pathname === '/api/normalize-address' && request.method === 'GET') {
-        if (!checkRateLimit(env, getClientId(request))) {
+        const basicAuth = hasValidBasicAuth(request, env);
+        if (!basicAuth && !checkRateLimit(env, getClientId(request))) {
           return rateLimitExceededResponse(correlationId);
         }
-        const auth = await authorizeLookupRequest(env, request, hasValidBasicAuth(request, env));
+        const auth = await authorizeLookupRequest(env, request, basicAuth);
         if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
         return handleNormalizeAddressRoute(request, env);
       }
@@ -1062,7 +1070,7 @@ export default {
         const searchRateEnv = isDemoKey
           ? { ...env, RATE_LIMIT: parseInt(env.DEMO_RATE_LIMIT || '30', 10) }
           : env;
-        if (!checkRateLimit(searchRateEnv, clientId)) {
+        if (!hasValidBasicAuth(request, env) && !checkRateLimit(searchRateEnv, clientId)) {
           return rateLimitExceededResponse(correlationId);
         }
         // No checkBasicAuth here: /api/search accepts EITHER basic auth or a browser key, and a
@@ -1074,11 +1082,12 @@ export default {
       // Main lookup endpoint
       if (pathname.startsWith('/api')) {
         const clientId = getClientId(request);
-        if (!checkRateLimit(env, clientId)) {
+        const basicAuth = hasValidBasicAuth(request, env);
+        if (!basicAuth && !checkRateLimit(env, clientId)) {
           return rateLimitExceededResponse(correlationId);
         }
 
-        const auth = await authorizeLookupRequest(env, request, hasValidBasicAuth(request, env));
+        const auth = await authorizeLookupRequest(env, request, basicAuth);
         if (!auth.ok) return keyAuthFailureResponse(auth, correlationId);
 
         return handleLookupRequest(

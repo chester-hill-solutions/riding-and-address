@@ -110,6 +110,45 @@ describe('oda-normalize', () => {
     expect(buildCityKey('Toronto', 'ON')).toBe('TORONTO|ON');
   });
 
+  it('parses a pasted address with a comma after the civic and an embedded postal code', () => {
+    // Real failing input: 2 Welby Cir, East York, ON M4B 2Y8 (data stores the type as CIR).
+    const parsed = parseAddressQuery({ address: '2, WELBY CRCL, M4B 2Y8' });
+    expect(parsed.civic).toBe('2');
+    expect(parsed.streetName).toBe('WELBY');
+    expect(parsed.streetType).toBe('CIR');
+    expect(parsed.postal).toBe('M4B 2Y8');
+  });
+
+  it('extracts an embedded city and province from a pasted address', () => {
+    const parsed = parseAddressQuery({ address: '123 Main St, Toronto, ON M5V 2T6' });
+    expect(parsed.civic).toBe('123');
+    expect(parsed.city).toBe('TORONTO');
+    expect(parsed.province).toBe('ON');
+    expect(parsed.postal).toBe('M5V 2T6');
+  });
+
+  it('does not treat a city-only string as a street', () => {
+    const parsed = parseAddressQuery({ address: 'Vancouver, BC' });
+    expect(parsed.city).toBe('VANCOUVER');
+    expect(parsed.province).toBe('BC');
+    expect(parsed.streetName).toBeUndefined();
+  });
+
+  it('keeps unit suffixes intact when a postal code follows', () => {
+    const parsed = parseAddressQuery({ address: '90 Edgewood Ave, Unit # 132, M5V 2T6' });
+    expect(parsed.unit).toBe('132');
+    expect(parsed.streetName).toBe('EDGEWOOD');
+    expect(parsed.postal).toBe('M5V 2T6');
+  });
+
+  it('canonicalises Circle aliases to the stored CIR form', () => {
+    for (const type of ['CRCL', 'CIRCL', 'CIRCLE', 'CIR']) {
+      expect(normalizeStreetType(type)).toBe('CIR');
+    }
+    const parsed = parseAddressQuery({ address: '2 WELBY CRCL' });
+    expect(parsed.streetType).toBe('CIR');
+  });
+
   it('normalizes StatCan ODA CSV rows', () => {
     const row = normalizeOdaCsvRow({
       latitude: '43.88570',

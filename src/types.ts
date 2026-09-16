@@ -89,7 +89,8 @@ export interface OdaAddressComponents {
 }
 
 export interface OdaDataSource {
-  provider: 'statcan-oda';
+  /** `statcan-oda` for the 2021 Open Database of Addresses; `statcan-nar` once a city is refreshed. */
+  provider: 'statcan-oda' | 'statcan-nar';
   version: string;
   province: string;
   canadaPostCertified: false;
@@ -97,6 +98,7 @@ export interface OdaDataSource {
 
 export type OdaGeocodeMethod =
   | 'exact'
+  | 'postal_street'
   | 'postal_centroid'
   | 'street_interpolated'
   | 'city_centroid'

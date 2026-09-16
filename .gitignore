@@ -6,6 +6,7 @@
 /dist/
 .wrangler
 .oda-import
+.nar-import
 .keys
 
 node_modules
@@ -18,3 +19,6 @@ portal/.react-router
 *.tsbuildinfo
 *.geojson
 data/ridings/.raw/
+/CLIPBOARD.md
+/.agent/
+/.repl/

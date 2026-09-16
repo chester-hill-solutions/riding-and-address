@@ -269,8 +269,8 @@ function buildDemoEndpointSpecs(): Record<string, unknown> {
       "Lookup federal and provincial ridings in one call (keyless demo)",
       "/api/combined"
     ),
-    "/api/demo/geocode": demoOda("Forward geocode using ODA (keyless demo)", "/api/geocode", ODA_GEOCODE_PARAMETERS),
-    "/api/demo/reverse": demoOda("Reverse geocode using ODA (keyless demo)", "/api/reverse", ODA_REVERSE_PARAMETERS),
+    "/api/demo/geocode": demoOda("Forward geocode using StatCan address data (ODA/NAR) (keyless demo)", "/api/geocode", ODA_GEOCODE_PARAMETERS),
+    "/api/demo/reverse": demoOda("Reverse geocode using StatCan address data (ODA/NAR) (keyless demo)", "/api/reverse", ODA_REVERSE_PARAMETERS),
     "/api/demo/normalize-address": demoOda(
       "Normalize address to Canada Post-style format (keyless demo)",
       "/api/normalize-address",
@@ -637,7 +637,7 @@ export function createOpenAPISpec(baseUrl: string) {
       ...buildDemoEndpointSpecs(),
       "/api/geocode": {
         get: {
-          summary: "Forward geocode using ODA",
+          summary: "Forward geocode using StatCan address data (ODA or NAR)",
           description: "Geocode an address or postal code using the self-hosted ODA database. Requires ODA_GEOCODING_ENABLED.",
           tags: ["ODA Geolocation"],
           parameters: ODA_GEOCODE_PARAMETERS,
@@ -854,7 +854,7 @@ export function createOpenAPISpec(baseUrl: string) {
       },
       "/api/reverse": {
         get: {
-          summary: "Reverse geocode using ODA",
+          summary: "Reverse geocode using StatCan address data (ODA or NAR)",
           tags: ["ODA Geolocation"],
           parameters: ODA_REVERSE_PARAMETERS,
           responses: {

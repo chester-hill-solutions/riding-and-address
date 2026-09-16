@@ -22,6 +22,14 @@ export interface OdaStats {
     startedAt: string;
     finishedAt: string;
   }>;
+  /** City-scoped NAR refreshes, most recent first. Empty until a city has been migrated. */
+  narImports: Array<{
+    province: string;
+    city: string;
+    narVersion: string;
+    rowCount: number;
+    finishedAt: string;
+  }>;
 }
 
 /** Tables and indexes — safe for `wrangler d1 execute --file` */
@@ -172,6 +180,50 @@ export function buildSuggestPopulateSql(province: string): Array<{ sql: string; 
   ];
 }
 
+/**
+ * Rebuild only the listed city_keys of one province's suggest rows.
+ *
+ * A city-scoped import changes a handful of city_keys, not the whole province, so reusing the
+ * per-province rebuild above would rewrite hundreds of thousands of unrelated rows over the
+ * wire. This mirrors it row-for-row — same join, same text, same FTS insert — restricted by
+ * city_key. Idempotent per city.
+ */
+export function buildSuggestPopulateCitiesSql(
+  province: string,
+  cityKeys: string[]
+): Array<{ sql: string; params: string[] }> {
+  const placeholders = cityKeys.map(() => '?').join(', ');
+  const cityParams = [province, ...cityKeys];
+  return [
+    {
+      sql: `DELETE FROM oda_suggest_fts WHERE rowid IN (
+              SELECT id FROM oda_street_suggest WHERE province = ? AND city_key IN (${placeholders}))`,
+      params: cityParams,
+    },
+    {
+      sql: `DELETE FROM oda_street_suggest WHERE province = ? AND city_key IN (${placeholders})`,
+      params: cityParams,
+    },
+    {
+      sql: `INSERT INTO oda_street_suggest
+              (province, city_key, street_key, city, suggest_text, min_civic, max_civic, lat, lon, address_count)
+            SELECT r.province, r.city_key, r.street_key, c.city,
+                   REPLACE(r.street_key, '|', ' ') || ' '
+                     || SUBSTR(c.city_key, 1, INSTR(c.city_key, '|') - 1) || ' ' || r.province,
+                   r.min_civic, r.max_civic, r.lat, r.lon, r.address_count
+            FROM oda_street_ranges r
+            JOIN oda_city_centroids c ON c.province = r.province AND c.city_key = r.city_key
+            WHERE r.province = ? AND r.city_key IN (${placeholders})`,
+      params: cityParams,
+    },
+    {
+      sql: `INSERT INTO oda_suggest_fts(rowid, suggest_text)
+            SELECT id, suggest_text FROM oda_street_suggest WHERE province = ? AND city_key IN (${placeholders})`,
+      params: cityParams,
+    },
+  ];
+}
+
 /** Probe sqlite_master so callers can degrade gracefully when the suggest tables aren't built. */
 export async function tableExists(db: D1Database, table: string): Promise<boolean> {
   try {
@@ -205,7 +257,7 @@ export async function initializeOdaDatabase(env: Env): Promise<boolean> {
 
 export async function getOdaStats(env: Env): Promise<OdaStats> {
   if (!env.ODA_DB) {
-    return { enabled: false, provinces: {}, postalCentroids: 0, cityCentroids: 0, streetRanges: 0, streetSuggest: 0, streetSuggestStaleProvinces: [], imports: [] };
+    return { enabled: false, provinces: {}, postalCentroids: 0, cityCentroids: 0, streetRanges: 0, streetSuggest: 0, streetSuggestStaleProvinces: [], imports: [], narImports: [] };
   }
 
   // Counted separately, and never inside the try block below: the suggest tables may not be built
@@ -213,6 +265,7 @@ export async function getOdaStats(env: Env): Promise<OdaStats> {
   // addresses for every province.
   const streetSuggest = await countStreetSuggest(env.ODA_DB);
   const streetSuggestStaleProvinces = await findStaleSuggestProvinces(env.ODA_DB);
+  const narImports = await readNarImports(env.ODA_DB);
 
   try {
     const provinceCounts = await env.ODA_DB.prepare(`
@@ -256,10 +309,37 @@ export async function getOdaStats(env: Env): Promise<OdaStats> {
         startedAt: row.started_at as string,
         finishedAt: row.finished_at as string,
       })),
+      narImports,
     };
   } catch (error) {
     console.error('Failed to get ODA stats:', error);
-    return { enabled: true, provinces: {}, postalCentroids: 0, cityCentroids: 0, streetRanges: 0, streetSuggest, streetSuggestStaleProvinces, imports: [] };
+    return { enabled: true, provinces: {}, postalCentroids: 0, cityCentroids: 0, streetRanges: 0, streetSuggest, streetSuggestStaleProvinces, imports: [], narImports };
+  }
+}
+
+/**
+ * City-scoped NAR provenance, guarded by tableExists for the same reason as the suggest counts:
+ * the table is created by the NAR importer and a fresh database will not have it.
+ */
+async function readNarImports(db: D1Database): Promise<OdaStats['narImports']> {
+  if (!(await tableExists(db, 'nar_city_imports'))) return [];
+  try {
+    const result = await db
+      .prepare(
+        `SELECT province, city, nar_version, row_count, finished_at
+         FROM nar_city_imports ORDER BY finished_at DESC LIMIT 20`
+      )
+      .all<{ province: string; city: string; nar_version: string; row_count: number; finished_at: string }>();
+    return (result.results || []).map((row) => ({
+      province: row.province,
+      city: row.city,
+      narVersion: row.nar_version,
+      rowCount: row.row_count,
+      finishedAt: row.finished_at,
+    }));
+  } catch (error) {
+    console.error('Failed to read nar_city_imports:', error);
+    return [];
   }
 }
 
