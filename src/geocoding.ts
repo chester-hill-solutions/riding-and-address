@@ -5,7 +5,6 @@ import {
   GoogleAddressComponents,
   GoogleGeocodeLocation,
   OdaGeocodeMetadata,
-  Metrics,
   DeferTaskFn,
   CircuitBreakerExecutor,
   CanadaPostStyleAddress,
@@ -16,7 +15,12 @@ import { readTimestampedEntry, writeTimestampedEntry } from './kv-cache';
 import { withRetry, withTimeout, NonRetriableError } from './utils';
 import { CircuitBreakerOpenError } from './circuit-breaker';
 import { isPostalOnlyQuery, wantsPostalCentroidOnly } from './geocode-query';
-import { recordTiming } from './metrics';
+import {
+  metricsSink,
+  odaMissMetricFor,
+  EXTERNAL_PROVIDER_METRIC,
+  type MetricsSink,
+} from './metrics';
 import { 
   safeValidateGeoGratis,
   safeValidateGoogleGeocode,
@@ -777,21 +781,9 @@ function candidateToGeocodeResult(candidate: GeocoderCandidate): GeocodeResult {
 /**
  * Fallback instrumentation. A local miss is attributed to its contract code so the rate can be
  * broken down by cause; external calls are counted per provider so spend and health are visible.
+ * The registration maps live in `metrics.ts` (single source of truth, shared with the summary).
  * See docs/plans/reduce-external-geocoder-fallback.md.
  */
-const ODA_MISS_METRIC: Record<string, keyof Metrics> = {
-  ADDRESS_NOT_FOUND: 'geocodingOdaMissNotFound',
-  AMBIGUOUS_LOCATION: 'geocodingOdaMissAmbiguous',
-  PROVINCE_NOT_LOADED: 'geocodingOdaMissProvinceNotLoaded',
-  LOW_CONFIDENCE_GEOCODE: 'geocodingOdaMissLowConfidence',
-};
-
-const EXTERNAL_PROVIDER_METRIC: Record<string, keyof Metrics> = {
-  google: 'geocodingExternalGoogle',
-  mapbox: 'geocodingExternalMapbox',
-  nominatim: 'geocodingExternalNominatim',
-};
-
 function remainingMs(budgetMs: number, startTime: number): number {
   return Math.max(0, budgetMs - (Date.now() - startTime));
 }
@@ -805,7 +797,7 @@ export type GeocodeStageContext = {
   qp: QueryParams;
   query: string;
   request?: Request;
-  metrics?: GeocodingMetricsSink;
+  metrics?: MetricsSink;
   circuitBreaker?: CircuitBreakerExecutor;
   deferTask?: DeferTaskFn;
   /** Overall geocoding budget for this request (ms). */
@@ -824,23 +816,24 @@ export type GeocodeStage = (ctx: GeocodeStageContext) => Promise<GeocodeResult |
 
 export async function runOdaGeocodeStage(ctx: GeocodeStageContext): Promise<GeocodeResult | null> {
   const { env, qp, circuitBreaker, deferTask, metrics, budgetMs, startTime, stages } = ctx;
+  const sink = metrics ?? metricsSink;
 
   const odaCacheKey = generateGeocodingCacheKey(qp, 'oda');
   const odaCached = await getCachedGeocoding(env, odaCacheKey);
   if (odaCached) {
-    metrics?.incrementMetric('geocodingCacheHits');
+    sink.incrementMetric('geocodingCacheHits');
     return odaCached;
   }
 
-  metrics?.incrementMetric('geocodingCacheMisses');
+  sink.incrementMetric('geocodingCacheMisses');
   const odaStageMs = stageLimit(budgetMs, startTime, stages.oda);
   const odaStarted = Date.now();
 
   const runPostalCentroid = wantsPostalCentroidOnly(qp) || isPostalOnlyQuery(qp);
   const odaFn = async (): Promise<GeocodeResult> => {
     const result = runPostalCentroid
-      ? await geocodePostalCentroidWithOda(env, qp)
-      : await geocodeWithOda(env, qp);
+      ? await geocodePostalCentroidWithOda(env, qp, undefined, sink)
+      : await geocodeWithOda(env, qp, undefined, sink);
     return result;
   };
 
@@ -851,13 +844,13 @@ export async function runOdaGeocodeStage(ctx: GeocodeStageContext): Promise<Geoc
         })
       : odaFn();
     const odaResult = (await withTimeout(odaPromise, odaStageMs, 'ODA geocoding')) as GeocodeResult;
-    recordTiming('geocodingOdaTime', Date.now() - odaStarted);
+    sink.recordTiming('geocodingOdaTime', Date.now() - odaStarted);
     await runOrDefer(deferTask, setCachedGeocoding(env, odaCacheKey, odaResult, 'oda'));
-    metrics?.incrementMetric('geocodingSuccesses');
-    metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
+    sink.incrementMetric('geocodingSuccesses');
+    sink.recordTiming('totalGeocodingTime', Date.now() - startTime);
     return odaResult;
   } catch (error) {
-    recordTiming('geocodingOdaTime', Date.now() - odaStarted);
+    sink.recordTiming('geocodingOdaTime', Date.now() - odaStarted);
     if (wantsPostalCentroidOnly(qp)) {
       throw error;
     }
@@ -865,12 +858,12 @@ export async function runOdaGeocodeStage(ctx: GeocodeStageContext): Promise<Geoc
       console.warn(
         `[GEOCODING] ODA circuit breaker open, falling back to GeoGratis/${env.GEOCODER || 'nominatim'}`
       );
-      metrics?.incrementMetric('geocodingCircuitBreakerTrips');
+      sink.incrementMetric('geocodingCircuitBreakerTrips');
     } else if (error instanceof OdaGeocodeError) {
       console.warn(
         `[GEOCODING] ODA miss (${error.code}), falling back to GeoGratis/${env.GEOCODER || 'nominatim'}`
       );
-      metrics?.incrementMetric(ODA_MISS_METRIC[error.code] ?? 'geocodingOdaMissOther');
+      sink.incrementMetric(odaMissMetricFor(error.code));
     } else {
       throw error;
     }
@@ -886,6 +879,7 @@ export async function runOdaGeocodeStage(ctx: GeocodeStageContext): Promise<Geoc
 
 export async function runGeoGratisStage(ctx: GeocodeStageContext): Promise<GeocodeResult | null> {
   const { env, qp, query, deferTask, metrics, budgetMs, startTime, stages } = ctx;
+  const sink = metrics ?? metricsSink;
 
   const geogratisCacheKey = generateGeocodingCacheKey(qp, 'geogratis');
   const geogratisCached = await getGeocodingCacheEntry(env, geogratisCacheKey);
@@ -897,8 +891,8 @@ export async function runGeoGratisStage(ctx: GeocodeStageContext): Promise<Geoco
     const hasRegionHints = !!(qp.state || qp.city);
 
     if ((!isInterpolated || hasRegionHints) && !hasPoorScore) {
-      metrics?.incrementMetric('geocodingCacheHits');
-      metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
+      sink.incrementMetric('geocodingCacheHits');
+      sink.recordTiming('totalGeocodingTime', Date.now() - startTime);
       return { lon: geogratisCached.lon, lat: geogratisCached.lat };
     } else {
       console.warn(
@@ -911,15 +905,15 @@ export async function runGeoGratisStage(ctx: GeocodeStageContext): Promise<Geoco
   const geogratisStarted = Date.now();
   try {
     const geogratisStageMs = stageLimit(budgetMs, startTime, stages.geogratis);
-    metrics?.incrementMetric('geocodingExternalCalls');
-    metrics?.incrementMetric('geocodingExternalGeogratis');
+    sink.incrementMetric('geocodingExternalCalls');
+    sink.incrementMetric(EXTERNAL_PROVIDER_METRIC.geogratis);
     const geogratisCandidates = await withTimeout(
       executeProviderChain([geogratisProvider], { env, qp, query, timeoutMs: geogratisStageMs }),
       geogratisStageMs,
       'GeoGratis geocoding'
     );
     const geogratisResult = geogratisCandidates[0];
-    recordTiming('geocodingGeoGratisTime', Date.now() - geogratisStarted);
+    sink.recordTiming('geocodingGeoGratisTime', Date.now() - geogratisStarted);
 
     if (geogratisResult) {
       const isInterpolated = geogratisResult.qualifier === 'INTERPOLATED_POSITION';
@@ -947,8 +941,8 @@ export async function runGeoGratisStage(ctx: GeocodeStageContext): Promise<Geoco
             geogratisResult.score
           )
         );
-        metrics?.incrementMetric('geocodingSuccesses');
-        metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
+        sink.incrementMetric('geocodingSuccesses');
+        sink.recordTiming('totalGeocodingTime', Date.now() - startTime);
         return { lon: geogratisResult.lon, lat: geogratisResult.lat } as GeocodeResult;
       }
     } else {
@@ -956,7 +950,7 @@ export async function runGeoGratisStage(ctx: GeocodeStageContext): Promise<Geoco
       console.warn(`[GEOCODING] GeoGratis failed, falling back to ${env.GEOCODER || 'nominatim'}`);
     }
   } catch (error) {
-    recordTiming('geocodingGeoGratisTime', Date.now() - geogratisStarted);
+    sink.recordTiming('geocodingGeoGratisTime', Date.now() - geogratisStarted);
     // GeoGratis threw an error
     console.warn(`[GEOCODING] GeoGratis error, falling back to ${env.GEOCODER || 'nominatim'}:`, error instanceof Error ? error.message : 'Unknown error');
   }
@@ -966,6 +960,7 @@ export async function runGeoGratisStage(ctx: GeocodeStageContext): Promise<Geoco
 
 export async function runExternalFallbackStage(ctx: GeocodeStageContext): Promise<GeocodeResult | null> {
   const { env, qp, query, request, metrics, circuitBreaker, deferTask, budgetMs, startTime, stages } = ctx;
+  const sink = metrics ?? metricsSink;
 
   const fallbackStarted = Date.now();
   // Fallback order is data: the configured provider heads the chain, followed by its
@@ -982,19 +977,19 @@ export async function runExternalFallbackStage(ctx: GeocodeStageContext): Promis
       provider !== 'google' ||
       googleResultMatchesRegion(qp, cached.addressComponents, cached.normalizedAddress);
     if (regionOk) {
-      metrics?.incrementMetric('geocodingCacheHits');
-      metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
+      sink.incrementMetric('geocodingCacheHits');
+      sink.recordTiming('totalGeocodingTime', Date.now() - startTime);
       return { lon: cached.lon, lat: cached.lat } as GeocodeResult;
     }
     console.warn('[GEOCODING] Cached Google result outside requested region, fetching fresh result');
   }
 
-  metrics?.incrementMetric('geocodingCacheMisses');
+  sink.incrementMetric('geocodingCacheMisses');
 
   // Use circuit breaker and retry for geocoding
-  metrics?.incrementMetric('geocodingExternalCalls');
+  sink.incrementMetric('geocodingExternalCalls');
   const providerMetric = EXTERNAL_PROVIDER_METRIC[provider];
-  if (providerMetric) metrics?.incrementMetric(providerMetric);
+  if (providerMetric) sink.incrementMetric(providerMetric);
 
   let result: GeocodeResult;
   try {
@@ -1003,16 +998,16 @@ export async function runExternalFallbackStage(ctx: GeocodeStageContext): Promis
     const fallbackPromise = executeProviderChain(chain, input, circuitBreaker);
 
     result = candidateToGeocodeResult((await withTimeout(fallbackPromise, fallbackStageMs, 'Fallback geocoding'))[0]);
-    recordTiming('geocodingFallbackTime', Date.now() - fallbackStarted);
+    sink.recordTiming('geocodingFallbackTime', Date.now() - fallbackStarted);
 
-    metrics?.incrementMetric('geocodingSuccesses');
+    sink.incrementMetric('geocodingSuccesses');
   } catch (error) {
-    recordTiming('geocodingFallbackTime', Date.now() - fallbackStarted);
+    sink.recordTiming('geocodingFallbackTime', Date.now() - fallbackStarted);
     console.error(`[GEOCODING] Geocoding failed after ${Date.now() - startTime}ms:`, error instanceof Error ? error.message : 'Unknown error');
-    metrics?.incrementMetric('geocodingFailures');
+    sink.incrementMetric('geocodingFailures');
     if (error instanceof CircuitBreakerOpenError) {
       console.error(`[GEOCODING] Circuit breaker is OPEN for provider: ${provider}`);
-      metrics?.incrementMetric('geocodingCircuitBreakerTrips');
+      sink.incrementMetric('geocodingCircuitBreakerTrips');
     }
     throw error;
   }
@@ -1020,7 +1015,7 @@ export async function runExternalFallbackStage(ctx: GeocodeStageContext): Promis
   // Cache the result
   await runOrDefer(deferTask, setCachedGeocoding(env, cacheKey, result, provider));
 
-  metrics?.recordTiming('totalGeocodingTime', Date.now() - startTime);
+  sink.recordTiming('totalGeocodingTime', Date.now() - startTime);
   return result;
 }
 
@@ -1063,14 +1058,9 @@ export function buildGeocodeStages(env: Env): GeocodeStage[] {
  * @returns Promise resolving to {lon, lat, normalizedAddress?} coordinates
  * @throws Error if geocoding fails for all providers
  */
-export type GeocodingMetricsSink = {
-  incrementMetric: (key: keyof Metrics, value?: number) => void;
-  recordTiming: (key: keyof Metrics, duration: number) => void;
-};
-
 export type GeocodeIfNeededOptions = {
   request?: Request;
-  metrics?: GeocodingMetricsSink;
+  metrics?: MetricsSink;
   circuitBreaker?: CircuitBreakerExecutor;
   deferTask?: DeferTaskFn;
 };
@@ -1092,6 +1082,7 @@ export async function geocodeIfNeeded(
   options: GeocodeIfNeededOptions = {}
 ): Promise<GeocodeResult> {
   const { request, metrics, circuitBreaker, deferTask } = options;
+  const sink = metrics ?? metricsSink;
 
   if (typeof qp.lat === "number" && typeof qp.lon === "number") {
     return { lon: qp.lon, lat: qp.lat };
@@ -1106,7 +1097,7 @@ export async function geocodeIfNeeded(
     qp,
     query,
     request,
-    metrics,
+    metrics: sink,
     circuitBreaker,
     deferTask,
     budgetMs: timeoutMs,
@@ -1114,7 +1105,7 @@ export async function geocodeIfNeeded(
     stages: timeoutConfig.stages,
   };
 
-  metrics?.incrementMetric('geocodingRequests');
+  sink.incrementMetric('geocodingRequests');
 
   return withTimeout(runGeocodeStages(ctx, buildGeocodeStages(env)), timeoutMs, "Geocoding");
 }
@@ -1291,15 +1282,14 @@ export async function geocodeBatch(
   env: Env, 
   queries: QueryParams[], 
   request?: Request,
-  metrics?: {
-    incrementMetric: (key: keyof Metrics, value?: number) => void;
-    recordTiming: (key: keyof Metrics, duration: number) => void;
-  },
+  metrics?: MetricsSink,
   circuitBreaker?: CircuitBreakerExecutor
 ): Promise<GeocodeBatchResult[]> {
   if (!BATCH_GEOCODING_CONFIG.ENABLED || queries.length === 0) {
     return [];
   }
+
+  const sink = metrics ?? metricsSink;
 
   if (isOdaEnabled(env)) {
     const allPostalOrCoords = queries.every(
@@ -1309,7 +1299,7 @@ export async function geocodeBatch(
         q.geocodeMethod === 'postal_centroid'
     );
     if (allPostalOrCoords) {
-      const odaResults = await geocodeBatchWithOda(env, queries);
+      const odaResults = await geocodeBatchWithOda(env, queries, sink);
       return odaResults.map((r) => ({
         lon: r.lon,
         lat: r.lat,
@@ -1337,7 +1327,7 @@ export async function geocodeBatch(
         // GeoGratis-first individual geocoding
         for (const query of batch) {
           try {
-            const result = await geocodeIfNeeded(env, query, { request, metrics, circuitBreaker });
+            const result = await geocodeIfNeeded(env, query, { request, metrics: sink, circuitBreaker });
             results.push(geocodeResultToBatchResult(result));
           } catch (error) {
             results.push({
@@ -1354,7 +1344,7 @@ export async function geocodeBatch(
 
       for (const query of batch) {
         try {
-          const result = await geocodeIfNeeded(env, query, { request, metrics, circuitBreaker });
+          const result = await geocodeIfNeeded(env, query, { request, metrics: sink, circuitBreaker });
           results.push(geocodeResultToBatchResult(result));
         } catch (individualError) {
           results.push({

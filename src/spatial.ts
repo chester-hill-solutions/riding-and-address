@@ -1,5 +1,6 @@
 import { Env, GeoJSONFeature, GeoJSONFeatureCollection, GeoJSONGeometry } from './types';
 import { isPointInPolygon } from './utils';
+import type { DatasetSource } from './dataset-source';
 
 // Spatial database configuration
 // ENABLED can be set via environment variable SPATIAL_DB_ENABLED
@@ -618,7 +619,7 @@ export function getSpatialDatasetCleanupOrder(useRtree: boolean): SpatialDataset
 export async function syncGeoJSONToDatabase(
   env: Env,
   dataset: string,
-  loadGeo: (env: Env, r2Key: string) => Promise<GeoJSONFeatureCollection>
+  source: DatasetSource
 ): Promise<SpatialInsertResult & { success: boolean }> {
   const dbConfig = getSpatialDbConfig(env);
   if (!dbConfig.ENABLED || !env.RIDING_DB) {
@@ -626,8 +627,8 @@ export async function syncGeoJSONToDatabase(
   }
 
   try {
-    // Load GeoJSON data from R2
-    const featureCollection = await loadGeo(env, dataset);
+    // Load GeoJSON data through the dataset-source port
+    const featureCollection = await source.load(dataset);
 
     // Initialize database if needed
     await initializeSpatialDatabase(env);
