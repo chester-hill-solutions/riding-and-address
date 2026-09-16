@@ -37,7 +37,7 @@ function isPortalPath(pathname: string): boolean {
 }
 
 function isApiWorkerPath(pathname: string): boolean {
-  if (pathname.startsWith('/api/')) {
+  if (pathname === '/api' || pathname.startsWith('/api/')) {
     return !(pathname.startsWith('/api/auth/') || pathname === '/api/stripe' || pathname.startsWith('/api/stripe/'));
   }
   return (
