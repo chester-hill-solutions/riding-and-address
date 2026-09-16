@@ -15,6 +15,17 @@ export function narZipUrl(version: string): string {
   return `${NAR_DEFAULTS.PRODUCT_BASE_URL}/${version}.zip`;
 }
 
+/**
+ * Collapse whitespace in SQL destined for `wrangler d1 execute --command`.
+ *
+ * The command reaches wrangler through the shell and `JSON.stringify` turns a template literal's
+ * newlines into a literal `\n` inside the SQL, which SQLite then rejects. Multi-line statements
+ * (e.g. the provenance read) must be flattened first.
+ */
+export function normalizeSqlForCli(sql: string): string {
+  return sql.replace(/\s+/g, ' ').trim();
+}
+
 /** StatCan province code as it appears in NAR filenames (`Address_35_…` for Ontario). */
 export function provinceNumericCode(province: string): string | undefined {
   return Object.entries(PROVINCE_ID_TO_CODE).find(([, code]) => code === province)?.[0];

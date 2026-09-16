@@ -40,6 +40,7 @@ import {
   NAR_DEFAULTS,
   NAR_DELETE_CHUNK_ROWS,
   narZipUrl,
+  normalizeSqlForCli,
   selectNarEntries,
   getNarSchemaSql,
   buildNarAddressDeleteChunkSql,
@@ -339,8 +340,12 @@ function createHttpWriter(config: {
 }
 
 function queryD1Json<T>(database: string, remote: boolean, command: string): Array<{ results?: T[] }> {
+  // `--command` reaches wrangler through the shell, and JSON.stringify turns a template literal's
+  // newlines into a literal `\n` inside the SQL, which SQLite rejects. Collapse whitespace so any
+  // multi-line statement is safe to pass.
+  const sql = normalizeSqlForCli(command);
   const output = execSync(
-    `npx wrangler d1 execute ${database} ${remoteFlag(remote)} --command ${JSON.stringify(command)} --json`,
+    `npx wrangler d1 execute ${database} ${remoteFlag(remote)} --command ${JSON.stringify(sql)} --json`,
     { encoding: 'utf-8' }
   );
   return JSON.parse(output) as Array<{ results?: T[] }>;

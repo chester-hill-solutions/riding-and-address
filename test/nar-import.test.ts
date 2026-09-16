@@ -7,6 +7,7 @@ import {
   buildNarProvenanceSql,
   buildNarStreetRangeDeleteChunkSql,
   getNarSchemaSql,
+  normalizeSqlForCli,
   parseNarCityQueue,
   pickNextNarCity,
   provinceNumericCode,
@@ -30,6 +31,15 @@ const archiveEntries = [
 ];
 
 describe('nar-import', () => {
+  it('flattens multi-line SQL so it survives `wrangler d1 execute --command`', () => {
+    // A template literal's newlines become a literal \n inside the shell argument, which SQLite
+    // rejects; --list/--next read provenance with a multi-line statement.
+    const sql = normalizeSqlForCli(`SELECT province, city_key, city, nar_version
+       FROM nar_city_imports WHERE nar_version = '202606'`);
+    expect(sql).toBe("SELECT province, city_key, city, nar_version FROM nar_city_imports WHERE nar_version = '202606'");
+    expect(sql).not.toMatch(/[\r\n\t]/);
+  });
+
   it('maps a province code to its StatCan numeric code', () => {
     expect(provinceNumericCode('ON')).toBe('35');
     expect(provinceNumericCode('QC')).toBe('24');
