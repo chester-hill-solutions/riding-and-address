@@ -60,6 +60,14 @@ export interface Env {
   ODA_SUGGEST_MIN_QUERY_LENGTH?: string;
   ODA_SUGGEST_CANDIDATE_WINDOW?: string;
   ODA_SUGGEST_CACHE_TTL?: string;
+  /** Cloudflare Email Service send binding (webhook inbox). Unbound → the inbox returns 503. */
+  SEND_EMAIL?: SendEmail;
+  /** Secret path token for POST /hooks/inbox/<token>. Unset → the inbox is disabled. */
+  INBOX_TOKEN?: string;
+  /** From address for inbox mail; must be on a domain onboarded for Email Sending. */
+  INBOX_FROM?: string;
+  /** Default recipient for inbox mail (also constrained by the binding's destination_address). */
+  INBOX_TO?: string;
 }
 
 // ODA geocoding types
