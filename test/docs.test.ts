@@ -4,6 +4,7 @@ import { createOpenAPISpec, createApiReference } from '../src/docs';
 import { createEmbedDocsPage } from '../src/embed-docs';
 import { createEmbedScript, EMBED_EVENTS, EMBED_SCRIPT_ATTRIBUTES, EMBED_VERSION } from '../src/embed';
 import { PROVINCIAL_DATASETS } from '../src/datasets';
+import { ROUTES } from '../src/routes';
 import pkg from '../package.json';
 
 /**
@@ -99,28 +100,34 @@ describe('OpenAPI document', () => {
     }
   });
 
-  it('keeps operator-only endpoints out of the public spec', () => {
-    // These routes exist but are gated behind the operator BASIC_AUTH secret (or are internal
-    // machinery like the spatial DB and queue workers). Publishing them in customer-facing docs
-    // just invites 401s and support noise.
-    const paths = Object.keys(spec().paths);
-    const internalPrefixes = [
-      '/admin',
-      '/api/oda/',
-      '/api/queue/',
-      '/api/database',
-      '/api/boundaries',
-      '/api/cache/',
-      '/api/geocoding/',
-      '/api/webhooks',
-      '/webhooks',
-      '/metrics',
-      '/cache-warming',
-    ];
-    for (const path of paths) {
-      const match = internalPrefixes.find((prefix) => path === prefix || path.startsWith(prefix));
-      expect(match, `${path} is operator-only and must not be documented publicly`).toBeUndefined();
+  it('classifies every route table entry', () => {
+    // The table is the single source of truth for ownership, auth and docs visibility. Every
+    // entry must answer all four questions; only API entries carry a handler.
+    for (const entry of ROUTES) {
+      const label = Array.isArray(entry.path) ? entry.path.join(', ') : entry.path;
+      expect(['api', 'portal'], label).toContain(entry.owner);
+      expect(['public', 'internal'], label).toContain(entry.visibility);
+      expect(['public', 'admin', 'key', 'admin-optional'], label).toContain(entry.auth);
+      expect(entry.methods.length, `${label} declares no methods`).toBeGreaterThan(0);
+      if (entry.owner === 'api') {
+        expect(entry.handler, `${label} is API-owned but carries no handler`).toBeDefined();
+      } else {
+        expect(entry.handler, `${label} is portal-owned and must not carry a handler`).toBeUndefined();
+      }
     }
+  });
+
+  it('documents exactly the route table’s public API entries', () => {
+    // Replaces the hand-maintained `internalPrefixes` deny-list: the spec's path set and the
+    // public API entries are two views of one inventory, so they must be equal in both directions.
+    const specPaths = new Set(Object.keys(spec().paths));
+    const publicPaths = new Set(
+      ROUTES.filter((entry) => entry.owner === 'api' && entry.visibility === 'public').flatMap(
+        (entry) => (Array.isArray(entry.path) ? entry.path : [entry.path])
+      )
+    );
+
+    expect([...publicPaths].sort()).toEqual([...specPaths].sort());
   });
 });
 
