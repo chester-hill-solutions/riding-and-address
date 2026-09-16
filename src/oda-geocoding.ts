@@ -1,5 +1,6 @@
 import {
   Env,
+  Metrics,
   QueryParams,
   OdaAddressComponents,
   OdaDataSource,
@@ -23,6 +24,7 @@ import {
 } from './oda-normalize';
 import { expandCityCandidates } from './oda-city-aliases';
 import { withCitySource } from './oda-source';
+import { incrementMetric } from './metrics';
 import { expandStreetAddress } from './geocode-region';
 import { formatFromOdaRow } from './canada-post-format';
 import {
@@ -99,6 +101,16 @@ function rowToComponents(row: OdaAddressRow): OdaAddressComponents {
   };
 }
 
+/** Per-method usage counter, so the local resolution mix is visible. */
+const ODA_METHOD_METRIC: Record<OdaGeocodeMethod, keyof Metrics> = {
+  exact: 'geocodingOdaMethodExact',
+  postal_street: 'geocodingOdaMethodPostalStreet',
+  postal_centroid: 'geocodingOdaMethodPostalCentroid',
+  street_interpolated: 'geocodingOdaMethodStreetInterpolated',
+  city_centroid: 'geocodingOdaMethodCityCentroid',
+  nearest_neighbor: 'geocodingOdaMethodNearest',
+};
+
 function buildResult(
   row: Partial<OdaAddressRow> & { lat: number; lon: number; province: string },
   method: OdaGeocodeMethod,
@@ -107,6 +119,7 @@ function buildResult(
   distanceMeters?: number,
   confidenceOverride?: number
 ): OdaGeocodeResult {
+  incrementMetric(ODA_METHOD_METRIC[method]);
   const mailingAddress = formatFromOdaRow({
     civic_number: row.civic_number,
     street_name: row.street_name,

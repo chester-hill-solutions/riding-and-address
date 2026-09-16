@@ -82,7 +82,13 @@ why it is Wave 0.
 
 ---
 
-## Wave 0 — Instrument and baseline  *(do first, no behaviour change)*
+## Wave 0 — Instrument and baseline  *(implemented 2026-09-15; baseline window still to be captured)*
+
+Landed as `Metrics.geocodingOdaMethod*` (per local method), `geocodingOdaMiss*` (per contract
+code), and `geocodingExternal*` (per provider). `getMetricsSummary().geocodingFallback` reports the
+method mix, miss reasons, provider calls, and a derived `fallbackRate` (external calls as a share
+of local + external resolutions): `test/metrics.test.ts`. Remaining from this wave: capture a
+baseline over a fixed window and freeze the labelled miss corpus.
 
 1. Add counters: `geocodingOdaMethod{exact,street,postal,city,nearest}`,
    `geocodingOdaMiss{reason}`, `geocodingProviderCalls{geogratis,google,mapbox,nominatim}`,
