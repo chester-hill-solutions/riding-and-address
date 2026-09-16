@@ -10,6 +10,17 @@
   // Required for node:async_hooks (portal request-scoped D1/env context) and CHS auth/Stripe deps.
   "compatibility_flags": ["nodejs_compat"],
 
+  // Cloudflare Email Service send binding. Powers the webhook inbox
+  // (POST /hooks/inbox/<token> in src/worker.ts), which emails an arbitrary payload to a verified
+  // destination. The `from` domain must be onboarded with
+  // `wrangler email sending enable <domain>`; only the one destination is permitted here.
+  "send_email": [
+    {
+      "name": "SEND_EMAIL",
+      "destination_address": "narfin@chsolutions.ca"
+    }
+  ],
+
   // Bind an R2 bucket that will store the large GeoJSON files
   // Create the bucket with: wrangler r2 bucket create ridings
   "r2_buckets": [
@@ -136,6 +147,9 @@
     "PUBLIC_API_BASE_URL": "https://riding-lookup.chester-hill-solutions.workers.dev",
     "PAID_CHECKOUT_ENABLED": "false",
     "EMAIL_FROM": "CanCoder <noreply@example.com>",
+    // Webhook inbox (src/worker.ts /hooks/inbox/<token>). INBOX_TOKEN is a secret.
+    "INBOX_FROM": "alerts@email.chesterhillsolutions.ca",
+    "INBOX_TO": "narfin@chsolutions.ca",
     "FOUNDER_USER_IDS": "",
     // Public pk_* for the marketing try-it embed (origin-allowlisted to this Worker's own
     // origin, 5k/day). Safe as a plain var: browser keys are public identifiers by design.

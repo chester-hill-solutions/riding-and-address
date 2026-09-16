@@ -50,6 +50,8 @@ function isApiWorkerPath(pathname: string): boolean {
     pathname === '/metrics' ||
     pathname === '/cache-warming' ||
     pathname.startsWith('/webhooks') ||
+    // Webhook inbox (src/worker.ts /hooks/inbox/<token>). Without this the portal swallows it.
+    pathname.startsWith('/hooks/') ||
     pathname.startsWith('/batch') ||
     pathname.startsWith('/queue') ||
     pathname.startsWith('/admin/')
