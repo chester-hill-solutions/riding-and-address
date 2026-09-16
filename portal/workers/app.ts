@@ -1,5 +1,6 @@
 import { createRequestHandler } from 'react-router';
 import apiWorker, { ApiKeyUsageDO, CircuitBreakerDO, QueueManagerDO } from '../../src/worker';
+import { ownerOf } from '../../src/routes';
 import type { CloudflareEnv } from '~/lib/cloudflare-env';
 import { runWithCloudflareContext } from '~/lib/cloudflare-context.server';
 
@@ -16,45 +17,6 @@ const requestHandler = createRequestHandler(
   () => import('virtual:react-router/server-build'),
   import.meta.env.MODE
 );
-
-/**
- * Routes the plan locks in one Worker: portal owns `/`, `/login`, `/signup`, `/app/*`,
- * `/api/auth/*`, and `/api/stripe/*`; the API worker (src/worker.ts) owns everything else
- * (other `/api/*`, `/docs`, `/swagger`, `/embed.js`, `/health`, `/metrics`, `/webhooks`,
- * `/batch`, `/queue/*`, `/admin/*`, `/cache-warming`).
- */
-function isPortalPath(pathname: string): boolean {
-  return (
-    pathname === '/' ||
-    pathname === '/login' ||
-    pathname === '/signup' ||
-    pathname === '/app' ||
-    pathname.startsWith('/app/') ||
-    pathname.startsWith('/api/auth/') ||
-    pathname === '/api/stripe' ||
-    pathname.startsWith('/api/stripe/')
-  );
-}
-
-function isApiWorkerPath(pathname: string): boolean {
-  if (pathname === '/api' || pathname.startsWith('/api/')) {
-    return !(pathname.startsWith('/api/auth/') || pathname === '/api/stripe' || pathname.startsWith('/api/stripe/'));
-  }
-  return (
-    pathname === '/docs' ||
-    pathname.startsWith('/docs/') ||
-    pathname === '/embed/docs' ||
-    pathname === '/swagger' ||
-    pathname === '/embed.js' ||
-    pathname === '/health' ||
-    pathname === '/metrics' ||
-    pathname === '/cache-warming' ||
-    pathname.startsWith('/webhooks') ||
-    pathname.startsWith('/batch') ||
-    pathname.startsWith('/queue') ||
-    pathname.startsWith('/admin/')
-  );
-}
 
 async function handlePortalRequest(
   request: Request,
@@ -76,13 +38,12 @@ export default {
   async fetch(request: Request, env: CloudflareEnv, ctx: ExecutionContext): Promise<Response> {
     const pathname = new URL(request.url).pathname;
 
-    if (isPortalPath(pathname)) {
-      return handlePortalRequest(request, env, ctx);
-    }
-    if (isApiWorkerPath(pathname)) {
+    // The route table (src/routes.ts) is the single source of truth. Any path it classifies as
+    // API-owned is forwarded to the API worker; everything else — including portal 404s and
+    // future portal routes — is served by the portal, which owns "/".
+    if (ownerOf(pathname) === 'api') {
       return apiWorker.fetch(request, env, ctx);
     }
-    // Everything else (portal 404s, future portal routes) — portal owns "/".
     return handlePortalRequest(request, env, ctx);
   },
   async scheduled(event: ScheduledEvent, env: CloudflareEnv, ctx: ExecutionContext): Promise<void> {

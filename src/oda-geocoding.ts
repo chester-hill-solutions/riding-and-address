@@ -29,9 +29,9 @@ import { incrementMetric } from './metrics';
 import { expandStreetAddress } from './geocode-region';
 import { formatFromOdaRow } from './canada-post-format';
 import {
-  beginOdaD1QueryTracking,
-  endOdaD1QueryTracking,
+  createOdaD1Tracker,
   recordOdaD1Query,
+  type OdaD1Tracker,
 } from './oda-d1-tracker';
 
 export class OdaGeocodeError extends Error {
@@ -210,13 +210,25 @@ function streetKeyOrderSql(streetKeys: string[]): { orderBy: string; orderParams
   };
 }
 
-async function odaQueryFirst(env: Env, sql: string, params: unknown[]): Promise<unknown> {
-  recordOdaD1Query();
+async function odaQueryFirst(
+  env: Env,
+  sql: string,
+  params: unknown[],
+  tracker?: OdaD1Tracker
+): Promise<unknown> {
+  if (tracker) tracker.record();
+  else recordOdaD1Query();
   return env.ODA_DB!.prepare(sql).bind(...params).first();
 }
 
-async function odaQueryAll(env: Env, sql: string, params: unknown[]): Promise<unknown[]> {
-  recordOdaD1Query();
+async function odaQueryAll(
+  env: Env,
+  sql: string,
+  params: unknown[],
+  tracker?: OdaD1Tracker
+): Promise<unknown[]> {
+  if (tracker) tracker.record();
+  else recordOdaD1Query();
   const result = await env.ODA_DB!.prepare(sql).bind(...params).all();
   return result.results || [];
 }
@@ -254,7 +266,8 @@ async function findExactMatch(
   searchKeys: string[],
   literalCityKeys: Set<string>,
   provinces: string[],
-  unit: string | undefined
+  unit: string | undefined,
+  tracker?: OdaD1Tracker
 ): Promise<OdaAddressRow | null> {
   const allKeys = searchKeys.filter((key) => key.replace(/\|/g, '').trim());
   if (!env.ODA_DB || allKeys.length === 0) return null;
@@ -281,7 +294,8 @@ async function findExactMatch(
     WHERE search_key IN (${searchKeyPlaceholders}) AND province IN (${provincePlaceholders}) ${unitFilter}
     LIMIT ${EXACT_FETCH_LIMIT}
   `,
-    [...usableKeys, ...provinces, ...unitParams]
+    [...usableKeys, ...provinces, ...unitParams],
+    tracker
   )) as (OdaAddressRow & { search_key: string })[];
 
   const rank = new Map(usableKeys.map((key, index) => [key, index]));
@@ -316,7 +330,8 @@ async function findExactMatch(
 async function findPostalCentroid(
   env: Env,
   postal: string,
-  provinces: string[]
+  provinces: string[],
+  tracker?: OdaD1Tracker
 ): Promise<{ lat: number; lon: number; province: string; postal_code: string } | null> {
   if (!env.ODA_DB) return null;
   const placeholders = provinces.map(() => '?').join(',');
@@ -329,7 +344,8 @@ async function findPostalCentroid(
     WHERE postal_code = ? AND province IN (${placeholders})
     LIMIT 1
   `,
-    [postal, ...provinces]
+    [postal, ...provinces],
+    tracker
   );
 
   return result as { lat: number; lon: number; province: string; postal_code: string } | null;
@@ -338,7 +354,8 @@ async function findPostalCentroid(
 async function findStreetInterpolated(
   env: Env,
   parsed: ReturnType<typeof parseAddressQuery>,
-  provinces: string[]
+  provinces: string[],
+  tracker?: OdaD1Tracker
 ): Promise<OdaAddressRow | null> {
   if (!env.ODA_DB || !parsed.city || !parsed.streetName) return null;
 
@@ -374,7 +391,8 @@ async function findStreetInterpolated(
         ORDER BY ${orderBy}
         LIMIT 1
       `,
-        [...provinces, ...cityKeyList, ...streetKeys, civic, normalizedUnit, ...orderParams]
+        [...provinces, ...cityKeyList, ...streetKeys, civic, normalizedUnit, ...orderParams],
+        tracker
       );
       if (exact) return exact as OdaAddressRow;
       return null;
@@ -391,7 +409,8 @@ async function findStreetInterpolated(
       ORDER BY ${orderBy}
       LIMIT 1
     `,
-      [...provinces, ...cityKeyList, ...streetKeys, civic, ...orderParams]
+      [...provinces, ...cityKeyList, ...streetKeys, civic, ...orderParams],
+      tracker
     );
     if (exact) return exact as OdaAddressRow;
 
@@ -406,7 +425,8 @@ async function findStreetInterpolated(
       ORDER BY ${orderBy}, ABS(CAST(civic_number AS INTEGER) - ?) ASC
       LIMIT 1
     `,
-      [...provinces, ...cityKeyList, ...streetKeys, ...orderParams, parsed.civicParsed.numeric]
+      [...provinces, ...cityKeyList, ...streetKeys, ...orderParams, parsed.civicParsed.numeric],
+      tracker
     );
     if (nearest) return nearest as OdaAddressRow;
   }
@@ -420,7 +440,8 @@ async function findStreetInterpolated(
     ORDER BY ${orderBy}
     LIMIT 1
   `,
-    [...provinces, ...cityKeyList, ...streetKeys, ...orderParams]
+    [...provinces, ...cityKeyList, ...streetKeys, ...orderParams],
+    tracker
   )) as { lat: number; lon: number; province: string; street_key?: string } | null;
 
   if (range) {
@@ -457,7 +478,8 @@ async function findStreetInterpolated(
 async function findByPostalStreet(
   env: Env,
   parsed: ReturnType<typeof parseAddressQuery>,
-  provinces: string[]
+  provinces: string[],
+  tracker?: OdaD1Tracker
 ): Promise<OdaAddressRow | null> {
   if (!env.ODA_DB || !parsed.postal || !parsed.streetName || !parsed.civic) return null;
 
@@ -483,7 +505,8 @@ async function findByPostalStreet(
       AND civic_number = ?
     LIMIT 20
   `,
-    [...provinces, postal, ...streetKeys, civic]
+    [...provinces, postal, ...streetKeys, civic],
+    tracker
   )) as OdaAddressRow[];
 
   if (rows.length === 0) return null;
@@ -503,7 +526,8 @@ async function findCityCentroid(
   env: Env,
   parsed: ReturnType<typeof parseAddressQuery>,
   provinces: string[],
-  maxAmbiguousMatches: number
+  maxAmbiguousMatches: number,
+  tracker?: OdaD1Tracker
 ): Promise<{ lat: number; lon: number; province: string; city: string } | null> {
   if (!env.ODA_DB || !parsed.city) return null;
   const placeholders = provinces.map(() => '?').join(',');
@@ -524,7 +548,8 @@ async function findCityCentroid(
       ORDER BY ${cityOrder}
       LIMIT 1
     `,
-      [prov, ...cityKeyList, ...cityKeyList]
+      [prov, ...cityKeyList, ...cityKeyList],
+      tracker
     );
     if (result) return result as { lat: number; lon: number; province: string; city: string };
   }
@@ -536,7 +561,8 @@ async function findCityCentroid(
     WHERE province IN (${placeholders}) AND city_key LIKE ?
     LIMIT ${maxAmbiguousMatches + 1}
   `,
-    [...provinces, `${normalizeSearchToken(parsed.city)}|%`]
+    [...provinces, `${normalizeSearchToken(parsed.city)}|%`],
+    tracker
   );
 
   if (matches.length > maxAmbiguousMatches) {
@@ -564,7 +590,8 @@ async function findNearestNeighbor(
   lon: number,
   lat: number,
   config: ReturnType<typeof getOdaConfig>,
-  bounds?: { province?: string; cityKey?: string; postal?: string }
+  bounds?: { province?: string; cityKey?: string; postal?: string },
+  tracker?: OdaD1Tracker
 ): Promise<{ row: OdaAddressRow; distance: number } | null> {
   if (!env.ODA_DB) return null;
 
@@ -597,7 +624,7 @@ async function findNearestNeighbor(
     query += ` LIMIT ?`;
     params.push(config.nnMaxCandidates);
 
-    const results = await odaQueryAll(env, query, params);
+    const results = await odaQueryAll(env, query, params, tracker);
     candidates = results as unknown as OdaAddressRow[];
     if (candidates.length >= 1) break;
   }
@@ -624,24 +651,35 @@ function postalCentroidWithinHintDistance(
   return distance <= maxDistanceMeters;
 }
 
-export async function geocodeWithOda(env: Env, qp: QueryParams): Promise<OdaGeocodeResult> {
+export async function geocodeWithOda(
+  env: Env,
+  qp: QueryParams,
+  tracker?: OdaD1Tracker
+): Promise<OdaGeocodeResult> {
   const config = getOdaConfig(env);
   if (!env.ODA_DB) {
     throw new OdaGeocodeError('ODA database not configured', 'ODA_NOT_CONFIGURED', 503);
   }
 
-  beginOdaD1QueryTracking();
+  // A caller-supplied tracker is owned (and ended) by that caller; otherwise this call
+  // creates its own so no state is shared with a concurrent request.
+  if (tracker) {
+    return geocodeWithOdaInner(env, qp, config, tracker);
+  }
+
+  const owned = createOdaD1Tracker();
   try {
-    return await geocodeWithOdaInner(env, qp, config);
+    return await geocodeWithOdaInner(env, qp, config, owned);
   } finally {
-    endOdaD1QueryTracking();
+    owned.end();
   }
 }
 
 async function geocodeWithOdaInner(
   env: Env,
   qp: QueryParams,
-  config: ReturnType<typeof getOdaConfig>
+  config: ReturnType<typeof getOdaConfig>,
+  tracker: OdaD1Tracker
 ): Promise<OdaGeocodeResult> {
   const parsed = parseAddressQuery({
     address: qp.address ? expandStreetAddress(qp.address) : undefined,
@@ -726,7 +764,14 @@ async function geocodeWithOdaInner(
   const searchKeys = cities.flatMap((city) => streetReadings.map((r) => keyFor(city, r)));
   const literalCityKeys = new Set(streetReadings.map((r) => keyFor(cities[0], r)));
 
-  const exact = await findExactMatch(env, searchKeys, literalCityKeys, provinces, parsed.unit);
+  const exact = await findExactMatch(
+    env,
+    searchKeys,
+    literalCityKeys,
+    provinces,
+    parsed.unit,
+    tracker
+  );
   if (exact) {
     return withCitySource(
       env,
@@ -741,7 +786,7 @@ async function geocodeWithOdaInner(
 
   const hasStreetAddress = !!parsed.city && !!(parsed.streetName || parsed.civic);
   if (hasStreetAddress) {
-    const street = await findStreetInterpolated(env, parsed, provinces);
+    const street = await findStreetInterpolated(env, parsed, provinces, tracker);
     if (street) {
       return withCitySource(
         env,
@@ -759,7 +804,7 @@ async function geocodeWithOdaInner(
   // interpolation needs one. Match the street within the postal code before settling for a
   // postal centroid.
   if (parsed.postal && parsed.streetName && parsed.civic) {
-    const byPostal = await findByPostalStreet(env, parsed, provinces);
+    const byPostal = await findByPostalStreet(env, parsed, provinces, tracker);
     if (byPostal) {
       return withCitySource(
         env,
@@ -776,7 +821,7 @@ async function geocodeWithOdaInner(
   if (parsed.postal) {
     const postal = normalizePostalCode(parsed.postal);
     if (postal) {
-      const centroid = await findPostalCentroid(env, postal, provinces);
+      const centroid = await findPostalCentroid(env, postal, provinces, tracker);
       if (
         centroid &&
         postalCentroidWithinHintDistance(centroid, qp, config.maxPostalCentroidDistanceMeters)
@@ -806,7 +851,13 @@ async function geocodeWithOdaInner(
   }
 
   if (parsed.city) {
-    const cityCentroid = await findCityCentroid(env, parsed, provinces, config.maxAmbiguousMatches);
+    const cityCentroid = await findCityCentroid(
+      env,
+      parsed,
+      provinces,
+      config.maxAmbiguousMatches,
+      tracker
+    );
     if (cityCentroid) {
       const result = buildResult(
         {
@@ -843,7 +894,7 @@ async function geocodeWithOdaInner(
   const hintLon = qp.lon;
   const hintLat = qp.lat;
   if (hintLon !== undefined && hintLat !== undefined) {
-    const nearest = await findNearestNeighbor(env, hintLon, hintLat, config, bounds);
+    const nearest = await findNearestNeighbor(env, hintLon, hintLat, config, bounds, tracker);
     if (nearest) {
       return withCitySource(
         env,
@@ -864,7 +915,11 @@ async function geocodeWithOdaInner(
  * Postal-centroid-only lookup (skips civic exact match and street interpolation).
  * Used for postal-only queries and geocode_method=postal_centroid.
  */
-export async function geocodePostalCentroidWithOda(env: Env, qp: QueryParams): Promise<OdaGeocodeResult> {
+export async function geocodePostalCentroidWithOda(
+  env: Env,
+  qp: QueryParams,
+  tracker?: OdaD1Tracker
+): Promise<OdaGeocodeResult> {
   const config = getOdaConfig(env);
   if (!env.ODA_DB) {
     throw new OdaGeocodeError('ODA database not configured', 'ODA_NOT_CONFIGURED', 503);
@@ -884,7 +939,7 @@ export async function geocodePostalCentroidWithOda(env: Env, qp: QueryParams): P
     throw new OdaGeocodeError('Invalid postal code', 'INVALID_QUERY', 400);
   }
 
-  const centroid = await findPostalCentroid(env, postal, provinces);
+  const centroid = await findPostalCentroid(env, postal, provinces, tracker);
   if (!centroid) {
     throw new OdaGeocodeError('Postal code not found in ODA database', 'ADDRESS_NOT_FOUND', 404);
   }
@@ -1047,14 +1102,15 @@ export async function geocodeBatchWithOda(
 export async function reverseGeocodeWithOda(
   env: Env,
   lat: number,
-  lon: number
+  lon: number,
+  tracker?: OdaD1Tracker
 ): Promise<OdaGeocodeResult> {
   const config = getOdaConfig(env);
   if (!env.ODA_DB) {
     throw new OdaGeocodeError('ODA database not configured', 'ODA_NOT_CONFIGURED', 503);
   }
 
-  const nearest = await findNearestNeighbor(env, lon, lat, config);
+  const nearest = await findNearestNeighbor(env, lon, lat, config, undefined, tracker);
   if (!nearest) {
     throw new OdaGeocodeError('No nearby address found', 'NO_NEARBY_ADDRESS', 404);
   }
