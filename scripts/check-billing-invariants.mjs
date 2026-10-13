@@ -240,6 +240,44 @@ for (const relPath of BILLABLE_CALLSITE_FILES) {
   }
 }
 
+// ── Rule: utcMonth is defined exactly once, in src/time.ts ───────────────────
+// Shared UTC calendar helper (issue #85). Duplicating it re-contaminates billing locality,
+// and importing it from the Durable Object module drags storage into a pure date formatter.
+{
+  const UTCMONTH_DEF_RE = /export function utcMonth\b/;
+  const definers = [];
+  for (const file of files) {
+    const r = rel(file);
+    if (!r.startsWith('src/')) continue;
+    const lines = readFileSync(file, 'utf8').split('\n');
+    lines.forEach((line, i) => {
+      if (UTCMONTH_DEF_RE.test(line)) definers.push(`${r}:${i + 1}`);
+    });
+  }
+  if (definers.length !== 1 || !definers[0].startsWith('src/time.ts:')) {
+    fail(
+      'utc-month-definition',
+      path.join(ROOT, 'src/time.ts'),
+      1,
+      `utcMonth must be defined exactly once, in src/time.ts (found: ${definers.join(', ') || 'none'})`
+    );
+  }
+}
+
+// ── Rule: src/billing.ts must not import the Durable Object module ───────────
+{
+  const billingFile = path.join(ROOT, 'src/billing.ts');
+  const billingSrc = readFileSync(billingFile, 'utf8');
+  if (/from\s+['"]\.\/api-key-usage-do['"]/.test(billingSrc)) {
+    fail(
+      'billing-do-import',
+      billingFile,
+      1,
+      "src/billing.ts must not import './api-key-usage-do' — take utcMonth from src/time.ts (issue #85)"
+    );
+  }
+}
+
 if (violations.length) {
   console.error(`billing-invariants: ${violations.length} violation(s)\n`);
   for (const v of violations) {
@@ -249,4 +287,4 @@ if (violations.length) {
   process.exit(1);
 }
 
-console.log('billing-invariants: ok (void-stripe-meter, key-status, price/allowance literals, billable call sites)');
+console.log('billing-invariants: ok (void-stripe-meter, key-status, price/allowance literals, billable call sites, shared utc-month)');

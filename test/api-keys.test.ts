@@ -9,11 +9,15 @@ import {
   clearApiKeyCache,
   apiKeysEnabled,
   httpStatusForKeyDenial,
+  loadApiKey,
+  putBrowserKey,
+  deleteApiKey,
   type ApiKeyRecord,
   type KeyDenialReason,
 } from '../src/api-keys';
-import { utcDay, consumeDailyQuota } from '../src/api-key-usage-do';
-import { clearCustomerCache, type CustomerRecord } from '../src/customer';
+import { utcDay } from '../src/time';
+import { consumeDailyQuota } from '../src/api-key-usage-do';
+import { clearCustomerCache, loadCustomer, putCustomer, deleteCustomer, type CustomerRecord } from '../src/customer';
 import { Env } from '../src/types';
 
 /**
@@ -357,5 +361,60 @@ describe('httpStatusForKeyDenial', () => {
     for (const [reason, status] of Object.entries(expected) as [KeyDenialReason, number][]) {
       expect(httpStatusForKeyDenial(reason)).toBe(status);
     }
+  });
+});
+
+describe('api-keys KV contract', () => {
+  function createKvEnv() {
+    const store = new Map<string, unknown>();
+    const get = vi.fn(async (key: string): Promise<unknown> => store.get(key) ?? null);
+    const put = vi.fn(async (key: string, value: string): Promise<void> => {
+      store.set(key, JSON.parse(value));
+    });
+    const remove = vi.fn(async (key: string): Promise<void> => {
+      store.delete(key);
+    });
+    const env = { API_KEYS: { get, put, delete: remove } } as unknown as Env;
+    return { env, store, get, put, remove };
+  }
+
+  it('loadApiKey reads key:<id> through the port', async () => {
+    const { env, get } = createKvEnv();
+
+    await loadApiKey(env, 'pk_live_abc');
+
+    expect(get).toHaveBeenCalledWith('key:pk_live_abc', 'json');
+  });
+
+  it('putBrowserKey writes key:<id> through the port', async () => {
+    const { env, store } = createKvEnv();
+
+    await putBrowserKey(env, KEY);
+
+    expect(store.get('key:pk_live_abc')).toMatchObject({ id: 'pk_live_abc', kind: 'browser' });
+  });
+
+  it('deleteApiKey deletes key:<id> through the port', async () => {
+    const { env, store, remove } = createKvEnv();
+    store.set('key:pk_live_abc', KEY);
+
+    await deleteApiKey(env, 'pk_live_abc');
+
+    expect(remove).toHaveBeenCalledWith('key:pk_live_abc');
+    expect(store.has('key:pk_live_abc')).toBe(false);
+  });
+
+  it('customer helpers read and write customer:<id> through the port', async () => {
+    const { env, store, get, remove } = createKvEnv();
+    store.set('customer:cust_acme', CUSTOMER);
+
+    await expect(loadCustomer(env, 'cust_acme')).resolves.toMatchObject({ id: 'cust_acme' });
+    expect(get).toHaveBeenCalledWith('customer:cust_acme', 'json');
+
+    await putCustomer(env, CUSTOMER);
+    expect(store.get('customer:cust_acme')).toMatchObject({ id: 'cust_acme' });
+
+    await deleteCustomer(env, 'cust_acme');
+    expect(remove).toHaveBeenCalledWith('customer:cust_acme');
   });
 });

@@ -5,6 +5,7 @@ import {
   geocodeLabelMatchesRegion,
   selectGeoGratisResult,
 } from '../src/geocode-region';
+import { STREET_TYPE_CANONICAL, STREET_TYPE_QUERY_TOKENS } from '../src/oda-normalize';
 
 describe('expandStreetAddress', () => {
   it('appends Ave when civic address has no street type', () => {
@@ -13,6 +14,23 @@ describe('expandStreetAddress', () => {
 
   it('does not modify addresses that already include a type', () => {
     expect(expandStreetAddress('757 Victoria Park Ave')).toBe('757 Victoria Park Ave');
+  });
+
+  it('recognises every token derived from the canonical vocabulary', () => {
+    // Both suffix patterns are generated from STREET_TYPE_QUERY_TOKENS, so this fails if either
+    // drifts from the shared vocabulary.
+    for (const token of STREET_TYPE_QUERY_TOKENS) {
+      expect(expandStreetAddress(`123 Main ${token}`)).toBe(`123 Main ${token}`);
+    }
+    for (const alias of Object.keys(STREET_TYPE_CANONICAL)) {
+      expect(STREET_TYPE_QUERY_TOKENS).toContain(alias);
+    }
+  });
+
+  it('treats the circle aliases as types in both patterns', () => {
+    // Regression: STREET_TYPE_ANY accepted CRCL/CIRCL while STREET_TYPE_SUFFIX did not.
+    expect(expandStreetAddress('2 Welby CRCL')).toBe('2 Welby CRCL');
+    expect(expandStreetAddress('2 Welby CIRCL')).toBe('2 Welby CIRCL');
   });
 });
 

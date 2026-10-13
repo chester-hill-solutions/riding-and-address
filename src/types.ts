@@ -89,7 +89,8 @@ export interface OdaAddressComponents {
 }
 
 export interface OdaDataSource {
-  provider: 'statcan-oda';
+  /** `statcan-oda` for the 2021 Open Database of Addresses; `statcan-nar` once a city is refreshed. */
+  provider: 'statcan-oda' | 'statcan-nar';
   version: string;
   province: string;
   canadaPostCertified: false;
@@ -97,6 +98,7 @@ export interface OdaDataSource {
 
 export type OdaGeocodeMethod =
   | 'exact'
+  | 'postal_street'
   | 'postal_centroid'
   | 'street_interpolated'
   | 'city_centroid'
@@ -566,6 +568,25 @@ export interface Metrics {
   odaD1Reads: number;
   odaD1QueriesMaxPerRequest: number;
   odaStageTimeouts: number;
+  // Geocoding fallback instrumentation: which local method resolved a request, why the local
+  // stage missed, and how often each external provider was called. Without these the external
+  // fallback rate is unobservable (see docs/plans/reduce-external-geocoder-fallback.md).
+  geocodingOdaMethodExact: number;
+  geocodingOdaMethodPostalStreet: number;
+  geocodingOdaMethodPostalCentroid: number;
+  geocodingOdaMethodStreetInterpolated: number;
+  geocodingOdaMethodCityCentroid: number;
+  geocodingOdaMethodNearest: number;
+  geocodingOdaMissNotFound: number;
+  geocodingOdaMissAmbiguous: number;
+  geocodingOdaMissProvinceNotLoaded: number;
+  geocodingOdaMissLowConfidence: number;
+  geocodingOdaMissOther: number;
+  geocodingExternalCalls: number;
+  geocodingExternalGeogratis: number;
+  geocodingExternalGoogle: number;
+  geocodingExternalMapbox: number;
+  geocodingExternalNominatim: number;
   totalR2Time: number;
   totalBatchTime: number;
   totalWebhookTime: number;

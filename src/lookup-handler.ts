@@ -1,17 +1,19 @@
-import { Env, CircuitBreakerExecuteOptions } from './types';
 import { geocodeIfNeeded } from './geocoding';
-import { geocodingCircuitBreaker } from './circuit-breaker';
+import { geocodingExecutor } from './circuit-breaker';
 import { incrementMetric, recordTiming } from './metrics';
 import { parseQuery, badRequest, internalErrorResponse } from './utils';
 import { getTimeoutConfig } from './config';
-import {
-  performExpandedLookup,
-  expandedLookupResponseFields,
-  type LookupRidingFn,
-} from './lookup-expansion';
+import { performExpandedLookup, expandedLookupResponseFields } from './lookup-expansion';
 import { resolveLookupPath } from './return-selector';
-import { BillableAuthContext, recordSuccessfulBillable } from './billing';
+import { recordSuccessfulBillable } from './billing';
+import { cachedLookupRiding } from './riding-lookup';
 import { FEDERAL_DATASET, PROVINCIAL_DATASETS } from './datasets';
+import type { RouteContext } from './route-context';
+import {
+  handleGeocodeRoute,
+  handleNormalizeAddressRoute,
+  handleReverseRoute,
+} from './oda-handlers';
 
 function datasetMetaForPath(pathname: string): { id: string; year: number; name: string } {
   if (pathname === '/api' || pathname === '/api/federal' || pathname === '/api/combined') {
@@ -24,17 +26,15 @@ function datasetMetaForPath(pathname: string): { id: string; year: number; name:
   return { id: FEDERAL_DATASET.r2Key, year: FEDERAL_DATASET.year, name: FEDERAL_DATASET.name };
 }
 
-export async function handleLookupRequest(
-  request: Request,
-  env: Env,
-  pathname: string,
-  lookupRiding: LookupRidingFn,
-  correlationId: string,
-  startTime: number,
-  getCorsHeaders: (origin?: string | null) => Record<string, string>,
-  ctx?: ExecutionContext,
-  billing?: BillableAuthContext | null
-): Promise<Response> {
+/**
+ * The lookup handler. Auth, rate limiting and the response-header policy have already run in the
+ * dispatcher prelude; this reads everything it needs — request, env, correlation id, timing, CORS,
+ * defer seam and the resolved Billable Customer — from the one `RouteContext`.
+ */
+export async function handleLookupRequest(ctx: RouteContext): Promise<Response> {
+  const { request, env, correlationId, startTime, corsHeaders, deferTask, billing } = ctx;
+  const lookupRiding = ctx.deps?.lookup ?? cachedLookupRiding;
+  const pathname = ctx.url.pathname;
   const { lookupPathname } = resolveLookupPath(pathname);
   const { validation } = parseQuery(request);
 
@@ -44,8 +44,7 @@ export async function handleLookupRequest(
 
   const sanitizedQuery = validation.sanitized!;
   const origin = request.headers.get('Origin');
-  const url = new URL(request.url);
-  const pin = url.searchParams.get('dataset') || url.searchParams.get('pin');
+  const pin = ctx.url.searchParams.get('dataset') || ctx.url.searchParams.get('pin');
   const datasetMeta = datasetMetaForPath(lookupPathname);
 
   if (pin && pin !== datasetMeta.id && pin !== String(datasetMeta.year)) {
@@ -61,43 +60,26 @@ export async function handleLookupRequest(
   incrementMetric('lookupRequests');
 
   const timeoutConfig = getTimeoutConfig(env);
-  const circuitBreaker = geocodingCircuitBreaker
-    ? {
-        execute: (key: string, fn: () => Promise<unknown>, options?: CircuitBreakerExecuteOptions) =>
-          geocodingCircuitBreaker!.execute(key, fn, options),
-      }
-    : undefined;
-
-  const deferTask = ctx
-    ? (task: Promise<unknown>) => {
-        ctx.waitUntil(task);
-      }
-    : undefined;
+  const circuitBreaker = geocodingExecutor();
 
   try {
     const expanded = await performExpandedLookup(env, lookupPathname, sanitizedQuery, lookupRiding, {
       request,
       circuitBreaker,
-      geocodeIfNeeded: (env, query, req, cb) =>
-        geocodeIfNeeded(env, query, req, undefined, cb, deferTask),
+      geocodeIfNeeded: (env, query, opts) =>
+        geocodeIfNeeded(env, query, { ...opts, deferTask }),
       geocodingTimeoutMs: timeoutConfig.geocoding,
       deferTask,
     });
 
     recordTiming('totalLookupTime', Date.now() - startTime);
 
-    if (billing?.customer && billing.key) {
+    if (billing) {
       const billed = await recordSuccessfulBillable(env, billing, {
         waitUntil: deferTask,
       });
       if (!billed.allowed) {
-        return new Response(JSON.stringify({ ...billed.body, correlationId }), {
-          status: billed.status,
-          headers: {
-            'content-type': 'application/json; charset=UTF-8',
-            ...getCorsHeaders(origin),
-          },
-        });
+        return ctx.billableDenial(billed);
       }
     }
 
@@ -113,7 +95,7 @@ export async function handleLookupRequest(
         headers: {
           'content-type': 'application/json; charset=UTF-8',
           'X-Cache-Status': expanded.cacheStatus,
-          ...getCorsHeaders(origin),
+          ...corsHeaders(origin),
         },
       }
     );
@@ -123,4 +105,23 @@ export async function handleLookupRequest(
     // instead of being sent to the client.
     return internalErrorResponse(error, 'Lookup error', correlationId, 'LOOKUP_ERROR');
   }
+}
+
+/** A copy of `ctx` whose `url.pathname` is the real route the demo path mirrors. */
+function withLookupPath(ctx: RouteContext, pathname: string): RouteContext {
+  const url = new URL(ctx.url.toString());
+  url.pathname = pathname;
+  return { ...ctx, url };
+}
+
+/**
+ * Keyless demo mirrors. Re-pointed at the real route, never inheriting its policy: a demo request
+ * is public, per-IP rate-limited, and never a Billable unit (so `billing` stays null).
+ */
+export function handleDemoRoute(ctx: RouteContext): Promise<Response> {
+  const demoPath = ctx.url.pathname.replace(/^\/api\/demo/, '/api') || '/api';
+  if (demoPath === '/api/geocode') return handleGeocodeRoute(ctx);
+  if (demoPath === '/api/reverse') return handleReverseRoute(ctx);
+  if (demoPath === '/api/normalize-address') return handleNormalizeAddressRoute(ctx);
+  return handleLookupRequest(withLookupPath(ctx, demoPath === '/api' ? '/api/federal' : demoPath));
 }

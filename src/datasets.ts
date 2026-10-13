@@ -1,4 +1,5 @@
 import { Env } from './types';
+import { r2DatasetSource, type DatasetSource } from './dataset-source';
 
 export type DatasetStatus = 'live' | 'registered';
 
@@ -160,8 +161,15 @@ export type DatasetAvailability = {
 
 /**
  * Head-check each registered riding dataset in R2 (does not download full GeoJSON).
+ *
+ * `checkRidingDatasets` keeps its `env` entry point for the health route; `checkDatasetsFromSource`
+ * is the port-shaped core so callers (and tests) can supply an in-memory adapter.
  */
 export async function checkRidingDatasets(env: Env): Promise<DatasetAvailability[]> {
+  return checkDatasetsFromSource(r2DatasetSource(env));
+}
+
+export async function checkDatasetsFromSource(source: DatasetSource): Promise<DatasetAvailability[]> {
   const results: DatasetAvailability[] = [];
 
   const entries: Array<{ key: RidingDatasetKey; route: string; status: DatasetStatus }> = [
@@ -172,7 +180,7 @@ export async function checkRidingDatasets(env: Env): Promise<DatasetAvailability
   for (const entry of entries) {
     let present = false;
     try {
-      const head = await env.RIDINGS.head(entry.key);
+      const head = await source.head(entry.key);
       present = head !== null;
     } catch {
       present = false;

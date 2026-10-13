@@ -18,6 +18,13 @@ export const GEOCODING_STAGE_TIMEOUTS = {
   fallback: 5000,
 } as const;
 
+/** The one timeout vocabulary the geocoding cascade stages read from. */
+export type GeocodingStageTimeouts = {
+  oda: number;
+  geogratis: number;
+  fallback: number;
+};
+
 // Retry configuration
 export const RETRY_CONFIG = {
   maxAttempts: 3,

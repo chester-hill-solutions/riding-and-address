@@ -153,27 +153,25 @@ describe('D1 bound-parameter budget', () => {
   // D1 rejects a statement with too many bound variables. City aliases and street-tail
   // readings multiply, and "399 The West Mall" in Toronto is the worst case in the data:
   // it once produced ~205 parameters and failed live with "too many SQL variables", which
-  // no fixture-backed test caught. Keep the ceiling honest.
+  // no fixture-backed test caught. Keep the ceiling honest by driving the production D1
+  // adapter — the fixture store deliberately bypasses `prepare`.
   function countingEnv(seen: number[]): Env {
-    const { d1 } = createOdaFixtureEnv(
-      join(process.cwd(), 'test/fixtures/oda/fixture-street-types.csv')
-    );
-    const spy = {
-      prepare: (sql: string) => {
-        const inner = (d1 as unknown as { prepare: (s: string) => unknown }).prepare(sql) as {
-          bind: (...p: unknown[]) => unknown;
-        };
-        return {
-          bind: (...params: unknown[]) => {
-            seen.push(params.length);
-            return inner.bind(...params);
-          },
-        };
-      },
+    const recording = {
+      prepare: () => ({
+        bind: (...params: unknown[]) => {
+          seen.push(params.length);
+          return {
+            first: async () => null,
+            all: async () => ({ results: [], success: true, meta: {} }),
+            run: async () => ({ success: true, meta: {} }),
+          };
+        },
+      }),
+      batch: async () => [],
     } as unknown as D1Database;
     return {
       RIDINGS: {} as R2Bucket,
-      ODA_DB: spy,
+      ODA_DB: recording,
       ODA_GEOCODING_ENABLED: 'true',
       ODA_PROVINCES: 'ON',
       ODA_MIN_CONFIDENCE: '0.6',
@@ -182,11 +180,13 @@ describe('D1 bound-parameter budget', () => {
 
   it('stays within a safe parameter count for the worst-case query', async () => {
     const seen: number[] = [];
-    await geocodeWithOda(countingEnv(seen), {
-      address: '399 The West Mall',
-      city: 'Toronto',
-      state: 'ON',
-    });
+    await expect(
+      geocodeWithOda(countingEnv(seen), {
+        address: '399 The West Mall',
+        city: 'Toronto',
+        state: 'ON',
+      })
+    ).rejects.toBeDefined();
     expect(seen.length).toBeGreaterThan(0);
     expect(Math.max(...seen)).toBeLessThanOrEqual(100);
   });

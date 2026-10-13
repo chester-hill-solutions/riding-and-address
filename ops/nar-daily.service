@@ -1,0 +1,15 @@
+[Unit]
+Description=CanCoder NAR daily city refresh
+Documentation=file:///path/to/riding-and-address/docs/nar-data-import.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Credentials: CLOUDFLARE_ACCOUNT_ID, optionally CLOUDFLARE_API_TOKEN and NAR_ALERT_WEBHOOK.
+EnvironmentFile=-/etc/cancoder/nar-daily.env
+WorkingDirectory=/path/to/riding-and-address
+ExecStart=/path/to/riding-and-address/scripts/nar-daily.sh
+# The import is network-bound and can run for a while.
+TimeoutStartSec=4h
+Nice=10

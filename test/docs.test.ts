@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { createOpenAPISpec, createApiReference } from '../src/docs';
-import { createLandingPage } from '../src/landing-page';
+import { createEmbedDocsPage } from '../src/embed-docs';
+import { createEmbedScript, EMBED_EVENTS, EMBED_SCRIPT_ATTRIBUTES, EMBED_VERSION } from '../src/embed';
 import { PROVINCIAL_DATASETS } from '../src/datasets';
+import { ROUTES } from '../src/routes';
 import pkg from '../package.json';
 
 /**
- * The OpenAPI spec and landing page are hand-maintained and were previously untested, which is
- * how three tags went missing, `securitySchemes` ended up outside `components`, and endpoints
+ * The OpenAPI spec and API reference page are hand-maintained and were previously untested, which
+ * is how three tags went missing, `securitySchemes` ended up outside `components`, and endpoints
  * reached production undocumented. These tests are cheap and catch that drift.
  */
 
@@ -14,6 +17,7 @@ const BASE = 'https://lookup.test';
 
 interface Operation {
   summary?: string;
+  description?: string;
   tags?: string[];
   parameters?: Array<{ name: string; required?: boolean; in: string }>;
   responses?: Record<string, unknown>;
@@ -96,28 +100,37 @@ describe('OpenAPI document', () => {
     }
   });
 
-  it('keeps operator-only endpoints out of the public spec', () => {
-    // These routes exist but are gated behind the operator BASIC_AUTH secret (or are internal
-    // machinery like the spatial DB and queue workers). Publishing them in customer-facing docs
-    // just invites 401s and support noise.
-    const paths = Object.keys(spec().paths);
-    const internalPrefixes = [
-      '/admin',
-      '/api/oda/',
-      '/api/queue/',
-      '/api/database',
-      '/api/boundaries',
-      '/api/cache/',
-      '/api/geocoding/',
-      '/api/webhooks',
-      '/webhooks',
-      '/metrics',
-      '/cache-warming',
-    ];
-    for (const path of paths) {
-      const match = internalPrefixes.find((prefix) => path === prefix || path.startsWith(prefix));
-      expect(match, `${path} is operator-only and must not be documented publicly`).toBeUndefined();
+  it('classifies every route table entry', () => {
+    // The table is the single source of truth for ownership, auth and docs visibility. Every
+    // entry must answer all four questions; only API entries carry a handler.
+    for (const entry of ROUTES) {
+      const label = Array.isArray(entry.path) ? entry.path.join(', ') : entry.path;
+      expect(['api', 'portal'], label).toContain(entry.owner);
+      expect(['public', 'internal'], label).toContain(entry.visibility);
+      expect(
+        ['public', 'admin', 'admin-optional', 'key', 'search', 'batch', 'projection'],
+        label
+      ).toContain(entry.auth);
+      expect(entry.methods.length, `${label} declares no methods`).toBeGreaterThan(0);
+      if (entry.owner === 'api') {
+        expect(entry.handler, `${label} is API-owned but carries no handler`).toBeDefined();
+      } else {
+        expect(entry.handler, `${label} is portal-owned and must not carry a handler`).toBeUndefined();
+      }
     }
+  });
+
+  it('documents exactly the route table’s public API entries', () => {
+    // Replaces the hand-maintained `internalPrefixes` deny-list: the spec's path set and the
+    // public API entries are two views of one inventory, so they must be equal in both directions.
+    const specPaths = new Set(Object.keys(spec().paths));
+    const publicPaths = new Set(
+      ROUTES.filter((entry) => entry.owner === 'api' && entry.visibility === 'public').flatMap(
+        (entry) => (Array.isArray(entry.path) ? entry.path : [entry.path])
+      )
+    );
+
+    expect([...publicPaths].sort()).toEqual([...specPaths].sort());
   });
 });
 
@@ -159,10 +172,6 @@ describe('GET /api/search is documented', () => {
     expect(description).toMatch(/riding/i);
     expect(description).toMatch(/\/api\/federal|\/api\/combined/);
   });
-
-  it('is listed on the landing page', () => {
-    expect(createLandingPage(BASE)).toContain('/api/search');
-  });
 });
 
 describe('keyless demo tier', () => {
@@ -203,14 +212,87 @@ describe('keyless demo tier', () => {
   });
 });
 
-describe('landing page', () => {
-  it('lists every provincial route', () => {
-    const html = createLandingPage(BASE);
-    for (const dataset of PROVINCIAL_DATASETS) {
-      expect(html, `${dataset.path} missing from landing page`).toContain(dataset.path);
+/**
+ * `src/embed.ts` defines the widget contract once; the `/docs/embed` page, the OpenAPI description,
+ * and `docs/oda-geolocation-contract.md` are all copies. The served source is the runtime source of
+ * truth (`scriptOptions()` reads the `data-*` keys; `emit()` dispatches the events), so these tests
+ * assert every copy against the exported lists and the lists against the source.
+ */
+describe('embed widget contract', () => {
+  const servedSource = () => createEmbedScript(BASE);
+
+  function markdownContract(): string {
+    return readFileSync('docs/oda-geolocation-contract.md', 'utf-8');
+  }
+
+  /** `includeProvince` -> `data-include-province`; the inverse of dataset's kebab-to-camel. */
+  function toDataAttribute(datasetKey: string): string {
+    return `data-${datasetKey.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
+  }
+
+  it('matches the keys scriptOptions() reads in the served source', () => {
+    // scriptOptions() reads each option as `data.<key>`, which is the only `data.` in the source.
+    const parserKeys = [...servedSource().matchAll(/data\.([A-Za-z]\w*)/g)].map((m) => m[1]);
+    expect(parserKeys.length, 'scriptOptions() no longer reads any data-* key').toBeGreaterThan(0);
+    expect(new Set(parserKeys.map(toDataAttribute))).toEqual(new Set(EMBED_SCRIPT_ATTRIBUTES));
+  });
+
+  it('matches the events the served source emits', () => {
+    // emit() dispatches 'ridinglookup:' + type, so the full names never appear literally.
+    const emitted = [...servedSource().matchAll(/emit\('([a-z]+)'/g)].map((m) => `ridinglookup:${m[1]}`);
+    expect(emitted.length, 'the served source emits no events').toBeGreaterThan(0);
+    expect(new Set(emitted)).toEqual(new Set(EMBED_EVENTS));
+  });
+
+  it('keeps the markdown contract in step with the exported lists', () => {
+    const md = markdownContract();
+    // Scope attributes to the "Script tag attributes" paragraph; other links contain "data-import".
+    const paragraph = md.match(/\*\*Script tag attributes:\*\*([\s\S]*?)\n\n/)?.[1] ?? '';
+    const attributes = [...new Set(paragraph.match(/data-[a-z][a-z-]*/g) ?? [])].sort();
+    const events = [...new Set(md.match(/ridinglookup:[a-z]+/g) ?? [])].sort();
+    expect(attributes).toEqual([...EMBED_SCRIPT_ATTRIBUTES].sort());
+    expect(events).toEqual([...EMBED_EVENTS].sort());
+  });
+
+  it('lists the contract in the served OpenAPI description', () => {
+    const description = spec().paths['/embed.js'].get.description ?? '';
+    for (const attribute of EMBED_SCRIPT_ATTRIBUTES) expect(description).toContain(attribute);
+    for (const event of EMBED_EVENTS) expect(description).toContain(event);
+  });
+});
+
+describe('embed widget docs page', () => {
+  it('shows the one-tag install snippet pointed at this deployment', () => {
+    const html = createEmbedDocsPage(BASE);
+    expect(html).toContain(`${BASE}/embed.js`);
+    expect(html).toContain('data-province="ON"');
+    expect(html).toContain('defer');
+  });
+
+  it('reports the widget version shipped by src/embed.ts', () => {
+    expect(createEmbedDocsPage(BASE)).toContain(EMBED_VERSION);
+  });
+
+  it('documents every script-tag attribute the widget reads', () => {
+    const html = createEmbedDocsPage(BASE);
+    for (const attribute of EMBED_SCRIPT_ATTRIBUTES) {
+      expect(html, `${attribute} is undocumented`).toContain(attribute);
     }
   });
 
+  it('documents the events integrators listen for', () => {
+    const html = createEmbedDocsPage(BASE);
+    for (const event of EMBED_EVENTS) {
+      expect(html, `${event} is undocumented`).toContain(event);
+    }
+  });
+
+  it('links back to the API reference', () => {
+    expect(createEmbedDocsPage(BASE)).toContain(`href="${BASE}/docs"`);
+  });
+});
+
+describe('API reference page', () => {
   it('points the API reference at the spec endpoint', () => {
     expect(createApiReference(BASE)).toContain(`${BASE}/api/docs`);
   });

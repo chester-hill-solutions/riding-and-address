@@ -3,8 +3,7 @@ import type { Route } from './+types/app.admin';
 import { isFounder, requireSessionUserId } from '~/lib/auth.server';
 import { getDb } from '~/lib/db.server';
 import { customerBilling } from '~/db/schema';
-import { eq } from 'drizzle-orm';
-import { upsertCustomerProjection } from '~/lib/projection.server';
+import { setBatchEnabled } from '~/lib/billing-mutations.server';
 import { Panel } from '~/components/Panel';
 import { FormFeedback } from '~/components/FormFeedback';
 import { SubmitButton } from '~/components/SubmitButton';
@@ -32,32 +31,9 @@ export async function action({ request }: Route.ActionArgs) {
   const form = await request.formData();
   const customerId = String(form.get('customerId') || '');
   const batchEnabled = form.get('batchEnabled') === 'on';
-  const rows = await getDb()
-    .select()
-    .from(customerBilling)
-    .where(eq(customerBilling.customerId, customerId))
-    .limit(1);
-  const billing = rows[0];
-  if (!billing) return { error: 'Customer not found' };
 
   try {
-    await getDb()
-      .update(customerBilling)
-      .set({
-        batchEnabled,
-        plan: batchEnabled ? 'enterprise' : billing.plan,
-        updatedAt: new Date(),
-      })
-      .where(eq(customerBilling.customerId, customerId));
-
-    await upsertCustomerProjection({
-      id: billing.customerId,
-      plan: batchEnabled ? 'enterprise' : billing.plan,
-      fuseLimit: billing.fuseLimit,
-      fuseSoftWarn: billing.fuseSoftWarn,
-      batchEnabled,
-      stripeCustomerId: billing.stripeCustomerId || undefined,
-    });
+    await setBatchEnabled({ customerId, batchEnabled });
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'Could not update the Customer' };
   }

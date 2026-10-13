@@ -14,23 +14,29 @@ The API provides lookup endpoints for different levels of government:
 
 ### Provincial Coverage
 
-| Province/Territory | Riding endpoint | Riding data | ODA geocoding |
-|---------------------|-----------------|-------------|---------------|
-| Ontario | `GET /api/on` | live | StatCan ODA |
-| Quebec | `GET /api/qc` | live | StatCan ODA |
-| British Columbia | `GET /api/bc` | live | StatCan ODA |
-| Alberta | `GET /api/ab` | live | StatCan ODA |
-| Nova Scotia | `GET /api/ns` | live | StatCan ODA |
-| New Brunswick | `GET /api/nb` | live | StatCan ODA |
-| Manitoba | `GET /api/mb` | live | StatCan ODA |
-| Saskatchewan | `GET /api/sk` | live | StatCan ODA |
-| Prince Edward Island | `GET /api/pe` | live | StatCan ODA |
-| Northwest Territories | `GET /api/nt` | live | StatCan ODA |
+| Province/Territory | Riding endpoint | Riding data | Address geocoding |
+|---------------------|-----------------|-------------|-------------------|
+| Ontario | `GET /api/on` | live | StatCan ODA · NAR |
+| Quebec | `GET /api/qc` | live | StatCan ODA · NAR |
+| British Columbia | `GET /api/bc` | live | StatCan ODA · NAR |
+| Alberta | `GET /api/ab` | live | StatCan ODA · NAR |
+| Nova Scotia | `GET /api/ns` | live | StatCan ODA · NAR |
+| New Brunswick | `GET /api/nb` | live | StatCan ODA · NAR |
+| Manitoba | `GET /api/mb` | live | StatCan ODA · NAR |
+| Saskatchewan | `GET /api/sk` | live | StatCan ODA · NAR |
+| Prince Edward Island | `GET /api/pe` | live | StatCan ODA · NAR |
+| Northwest Territories | `GET /api/nt` | live | StatCan ODA · NAR |
 | Newfoundland and Labrador | `GET /api/nl` | live | fallback geocoders |
 | Nunavut | `GET /api/nu` | live | fallback geocoders |
 | Yukon | `GET /api/yt` | live | fallback geocoders |
 
-**Riding data** (`live`) means boundary GeoJSON is in R2. **ODA geocoding** uses [StatCan ODA v1.0](https://www.statcan.gc.ca/en/lode/databases/oda) in D1 for the listed provinces; NL, NU, and YT are not in ODA and use GeoGratis/Google fallbacks for address lookup.
+**Riding data** (`live`) means boundary GeoJSON is in R2. **Address geocoding** uses StatCan data in
+D1: the [ODA v1.0](https://www.statcan.gc.ca/en/lode/databases/oda) (2021) is being replaced by the
+[National Address Register](https://www150.statcan.gc.ca/n1/en/catalogue/46260002) **city by city**,
+so a province can contain both vintages at once; each response reports which one it used via
+`dataSource`. NL, NU, and YT are in neither source yet and use GeoGratis/Google fallbacks. See
+[nar-data-import.md](docs/nar-data-import.md) and
+[reduce-external-geocoder-fallback.md](docs/plans/reduce-external-geocoder-fallback.md).
 
 ### Query Parameters
 
@@ -215,10 +221,10 @@ Event-driven notifications for batch completion:
 
 - `GET /api/webhooks` — List configured webhooks
 - `POST /api/webhooks` — Create new webhook
-- `PUT /api/webhooks/{id}` — Update webhook configuration
-- `DELETE /api/webhooks/{id}` — Remove webhook
 - `GET /api/webhooks/events` — View webhook event history
 - `GET /api/webhooks/deliveries` — View delivery attempts
+
+The `/webhooks/*` alias serves the same surface.
 
 #### Documentation
 Interactive API documentation:
@@ -339,6 +345,8 @@ npm run keys -- customer create --id cust_acme --plan free --remote
 npm run keys -- create-server --customer cust_acme --remote
 npm run keys -- create-browser --customer cust_acme --origins "https://acme.com" --remote
 ```
+
+> The `keys` script resolves `portal/wrangler.jsonc` automatically, so run it from the repo root.
 
 #### 9) Set environment variables
 Configure in `wrangler.jsonc` under `"vars"`:

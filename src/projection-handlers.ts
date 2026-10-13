@@ -19,18 +19,23 @@ import {
 } from './customer';
 import { peekCustomerUsage } from './billing';
 import { timingSafeEqual } from './utils';
+import type { RouteContext } from './route-context';
 
-function unauthorized(): Response {
+/** The one 401 body for the projection Bearer gate; `runPrelude` returns it before dispatch. */
+export function projectionUnauthorizedResponse(): Response {
   return new Response(JSON.stringify({ error: 'Unauthorized', code: 'PROJECTION_UNAUTHORIZED' }), {
     status: 401,
     headers: { 'content-type': 'application/json; charset=UTF-8' },
   });
 }
 
-function json(body: unknown, status = 200): Response {
+function json(ctx: RouteContext, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json; charset=UTF-8' },
+    headers: {
+      'content-type': 'application/json; charset=UTF-8',
+      ...ctx.corsHeaders(ctx.request.headers.get('Origin')),
+    },
   });
 }
 
@@ -123,44 +128,43 @@ export async function revokeKeyProjectionCore(env: Env, id: string): Promise<{ d
   return { deleted: id };
 }
 
-export async function handleProjectionRequest(
-  request: Request,
-  env: Env,
-  pathname: string
-): Promise<Response> {
-  if (!checkProjectionAuth(request, env)) return unauthorized();
+export async function handleProjectionRequest(ctx: RouteContext): Promise<Response> {
+  const { request, env } = ctx;
+  const pathname = ctx.url.pathname;
+
+  // The Bearer gate runs in `runPrelude` (entry auth: 'projection'); this wrapper only routes.
   if (!env.API_KEYS) {
-    return json({ error: 'API_KEYS binding not configured', code: 'API_KEYS_MISSING' }, 503);
+    return json(ctx, { error: 'API_KEYS binding not configured', code: 'API_KEYS_MISSING' }, 503);
   }
 
   if (pathname === '/admin/projection/customers' && request.method === 'PUT') {
     const body = (await request.json()) as Partial<CustomerRecord> & { id: string };
-    if (!body.id) return json({ error: 'id required' }, 400);
-    return json(await upsertCustomerProjectionCore(env, body));
+    if (!body.id) return json(ctx, { error: 'id required' }, 400);
+    return json(ctx, await upsertCustomerProjectionCore(env, body));
   }
 
   if (pathname.startsWith('/admin/projection/customers/') && request.method === 'DELETE') {
     const id = pathname.split('/').pop()!;
-    return json(await deleteCustomerProjectionCore(env, id));
+    return json(ctx, await deleteCustomerProjectionCore(env, id));
   }
 
   if (pathname.startsWith('/admin/projection/customers/') && pathname.endsWith('/usage')) {
     const id = pathname.split('/')[4];
-    return json(await usageProjectionCore(env, id));
+    return json(ctx, await usageProjectionCore(env, id));
   }
 
   if (pathname === '/admin/projection/keys' && request.method === 'POST') {
     const body = (await request.json()) as MintKeyInput;
     if (!body.customerId || !body.kind) {
-      return json({ error: 'customerId and kind required' }, 400);
+      return json(ctx, { error: 'customerId and kind required' }, 400);
     }
-    return json(await mintKeyProjectionCore(env, body));
+    return json(ctx, await mintKeyProjectionCore(env, body));
   }
 
   if (pathname.startsWith('/admin/projection/keys/') && request.method === 'DELETE') {
     const id = decodeURIComponent(pathname.slice('/admin/projection/keys/'.length));
-    return json(await revokeKeyProjectionCore(env, id));
+    return json(ctx, await revokeKeyProjectionCore(env, id));
   }
 
-  return json({ error: 'Not found' }, 404);
+  return json(ctx, { error: 'Not found' }, 404);
 }

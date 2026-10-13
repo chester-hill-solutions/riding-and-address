@@ -53,6 +53,17 @@ const FIXTURE_CASES: GeocodeCase[] = [
     },
   },
   {
+    id: 'case-1b street-range interpolation (absent civic on a known street)',
+    // Exercises findStreetRange: civic 200 is not in the fixture, but MAIN|ST has a
+    // street range for TORONTO|ON, so the lookup interpolates instead of falling through.
+    query: { address: '200 Main St', city: 'Toronto', state: 'ON' },
+    expect: {
+      geocodeMethod: 'street_interpolated',
+      latClose: 43.65325,
+      lonClose: -79.38325,
+    },
+  },
+  {
     id: 'case-2 postal centroid',
     query: { postal: 'M5V2T6', state: 'ON' },
     expect: {
@@ -152,6 +163,20 @@ const FIXTURE_CASES: GeocodeCase[] = [
       geocodeMethod: 'exact',
       latClose: 43.692101,
       lonClose: -79.288688,
+    },
+  },
+  {
+    id: 'case-15 postal-scoped street without a city',
+    // Real case: "2 Welby Cir, M4B 2Y8" has a postal code but no municipality. The exact tier
+    // keys on the city, so the postal code has to scope the street match instead of falling
+    // through to a postal centroid.
+    query: { address: '757 Victoria Park Ave', postal: 'M4C1N2' },
+    expect: {
+      geocodeMethod: 'postal_street',
+      confidence: 0.9,
+      latClose: 43.692101,
+      lonClose: -79.288688,
+      matchedFields: ['civic', 'street', 'postal'],
     },
   },
   {

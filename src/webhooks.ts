@@ -1,5 +1,6 @@
 import { Env, WebhookConfig, WebhookEvent, WebhookDelivery } from './types';
 import { TIME_CONSTANTS } from './config';
+import { readJsonEntry, writeJsonEntry, deleteEntry } from './kv-cache';
 
 // Webhook configuration
 export const WEBHOOK_CONFIG = {
@@ -21,9 +22,6 @@ const WEBHOOK_INDEX_KEY = 'webhook:index';
 const WEBHOOK_EVENT_INDEX_KEY = 'webhook:event:index';
 const WEBHOOK_DELIVERY_INDEX_KEY = 'webhook:delivery:index';
 
-// Track if webhook processing has been initialized
-let webhookProcessingInitialized = false;
-
 // ID generation functions
 export function generateWebhookId(): string {
   return `webhook_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -39,43 +37,37 @@ export function generateDeliveryId(): string {
 
 // Helper functions for KV storage
 async function getWebhookConfig(env: Env, webhookId: string): Promise<WebhookConfig | null> {
-  if (!env.WEBHOOKS) {
-    return null;
-  }
-  const data = await env.WEBHOOKS.get(`${WEBHOOK_CONFIG_PREFIX}${webhookId}`, 'json');
-  return data as WebhookConfig | null;
+  return readJsonEntry<WebhookConfig>(env.WEBHOOKS, `${WEBHOOK_CONFIG_PREFIX}${webhookId}`);
 }
 
 async function setWebhookConfig(env: Env, webhookId: string, config: WebhookConfig): Promise<void> {
   if (!env.WEBHOOKS) return;
-  await env.WEBHOOKS.put(`${WEBHOOK_CONFIG_PREFIX}${webhookId}`, JSON.stringify(config));
+  await writeJsonEntry(env.WEBHOOKS, `${WEBHOOK_CONFIG_PREFIX}${webhookId}`, config);
   // Update index
   const index = await getWebhookIndex(env);
   if (!index.includes(webhookId)) {
     index.push(webhookId);
-    await env.WEBHOOKS.put(WEBHOOK_INDEX_KEY, JSON.stringify(index));
+    await writeJsonEntry(env.WEBHOOKS, WEBHOOK_INDEX_KEY, index);
   }
 }
 
 async function deleteWebhookConfig(env: Env, webhookId: string): Promise<void> {
   if (!env.WEBHOOKS) return;
-  await env.WEBHOOKS.delete(`${WEBHOOK_CONFIG_PREFIX}${webhookId}`);
+  await deleteEntry(env.WEBHOOKS, `${WEBHOOK_CONFIG_PREFIX}${webhookId}`);
   // Update index
   const index = await getWebhookIndex(env);
   const newIndex = index.filter(id => id !== webhookId);
-  await env.WEBHOOKS.put(WEBHOOK_INDEX_KEY, JSON.stringify(newIndex));
+  await writeJsonEntry(env.WEBHOOKS, WEBHOOK_INDEX_KEY, newIndex);
 }
 
 async function getWebhookIndex(env: Env): Promise<string[]> {
-  if (!env.WEBHOOKS) return [];
-  const data = await env.WEBHOOKS.get(WEBHOOK_INDEX_KEY, 'json');
-  return (data as string[]) || [];
+  const data = await readJsonEntry<string[]>(env.WEBHOOKS, WEBHOOK_INDEX_KEY);
+  return data || [];
 }
 
 async function getEventIndex(env: Env): Promise<string[]> {
-  if (!env.WEBHOOKS) return [];
-  const data = await env.WEBHOOKS.get(WEBHOOK_EVENT_INDEX_KEY, 'json');
-  return (data as string[]) || [];
+  const data = await readJsonEntry<string[]>(env.WEBHOOKS, WEBHOOK_EVENT_INDEX_KEY);
+  return data || [];
 }
 
 async function addEventToIndex(env: Env, eventId: string): Promise<void> {
@@ -83,14 +75,13 @@ async function addEventToIndex(env: Env, eventId: string): Promise<void> {
   const index = await getEventIndex(env);
   if (!index.includes(eventId)) {
     index.push(eventId);
-    await env.WEBHOOKS.put(WEBHOOK_EVENT_INDEX_KEY, JSON.stringify(index));
+    await writeJsonEntry(env.WEBHOOKS, WEBHOOK_EVENT_INDEX_KEY, index);
   }
 }
 
 async function getDeliveryIndex(env: Env): Promise<string[]> {
-  if (!env.WEBHOOKS) return [];
-  const data = await env.WEBHOOKS.get(WEBHOOK_DELIVERY_INDEX_KEY, 'json');
-  return (data as string[]) || [];
+  const data = await readJsonEntry<string[]>(env.WEBHOOKS, WEBHOOK_DELIVERY_INDEX_KEY);
+  return data || [];
 }
 
 async function addDeliveryToIndex(env: Env, deliveryId: string): Promise<void> {
@@ -98,7 +89,7 @@ async function addDeliveryToIndex(env: Env, deliveryId: string): Promise<void> {
   const index = await getDeliveryIndex(env);
   if (!index.includes(deliveryId)) {
     index.push(deliveryId);
-    await env.WEBHOOKS.put(WEBHOOK_DELIVERY_INDEX_KEY, JSON.stringify(index));
+    await writeJsonEntry(env.WEBHOOKS, WEBHOOK_DELIVERY_INDEX_KEY, index);
   }
 }
 
@@ -150,7 +141,7 @@ export async function createWebhookEvent(env: Env, webhookId: string, eventType:
   };
   
   if (env.WEBHOOKS) {
-    await env.WEBHOOKS.put(`${WEBHOOK_EVENT_PREFIX}${eventId}`, JSON.stringify(event));
+    await writeJsonEntry(env.WEBHOOKS, `${WEBHOOK_EVENT_PREFIX}${eventId}`, event);
     await addEventToIndex(env, eventId);
   }
   
@@ -184,8 +175,7 @@ export async function createWebhookSignature(secret: string, payload: string): P
 export async function deliverWebhook(env: Env, webhookId: string, eventId: string): Promise<boolean> {
   const webhook = await getWebhookConfig(env, webhookId);
   if (!env.WEBHOOKS) return false;
-  const eventData = await env.WEBHOOKS.get(`${WEBHOOK_EVENT_PREFIX}${eventId}`, 'json');
-  const event = eventData as WebhookEvent | null;
+  const event = await readJsonEntry<WebhookEvent>(env.WEBHOOKS, `${WEBHOOK_EVENT_PREFIX}${eventId}`);
   
   if (!webhook || !event || !webhook.active) {
     return false;
@@ -237,8 +227,8 @@ export async function deliverWebhook(env: Env, webhookId: string, eventId: strin
       event.attempts++;
       event.lastAttempt = endTime;
       if (env.WEBHOOKS) {
-        await env.WEBHOOKS.put(`${WEBHOOK_EVENT_PREFIX}${eventId}`, JSON.stringify(event));
-        await env.WEBHOOKS.put(`${WEBHOOK_DELIVERY_PREFIX}${deliveryId}`, JSON.stringify(delivery));
+        await writeJsonEntry(env.WEBHOOKS, `${WEBHOOK_EVENT_PREFIX}${eventId}`, event);
+        await writeJsonEntry(env.WEBHOOKS, `${WEBHOOK_DELIVERY_PREFIX}${deliveryId}`, delivery);
         await addDeliveryToIndex(env, deliveryId);
       }
       return true;
@@ -246,13 +236,13 @@ export async function deliverWebhook(env: Env, webhookId: string, eventId: strin
       delivery.status = 'failed';
       delivery.error = `HTTP ${response.status}: ${delivery.responseBody}`;
       if (env.WEBHOOKS) {
-        await env.WEBHOOKS.put(`${WEBHOOK_DELIVERY_PREFIX}${deliveryId}`, JSON.stringify(delivery));
+        await writeJsonEntry(env.WEBHOOKS, `${WEBHOOK_DELIVERY_PREFIX}${deliveryId}`, delivery);
         await addDeliveryToIndex(env, deliveryId);
       }
       
       applyWebhookFailure(event, endTime);
       if (env.WEBHOOKS) {
-        await env.WEBHOOKS.put(`${WEBHOOK_EVENT_PREFIX}${eventId}`, JSON.stringify(event));
+        await writeJsonEntry(env.WEBHOOKS, `${WEBHOOK_EVENT_PREFIX}${eventId}`, event);
       }
       
       return false;
@@ -263,13 +253,13 @@ export async function deliverWebhook(env: Env, webhookId: string, eventId: strin
     delivery.status = 'failed';
     delivery.error = error instanceof Error ? error.message : 'Unknown error';
     if (env.WEBHOOKS) {
-      await env.WEBHOOKS.put(`${WEBHOOK_DELIVERY_PREFIX}${deliveryId}`, JSON.stringify(delivery));
+      await writeJsonEntry(env.WEBHOOKS, `${WEBHOOK_DELIVERY_PREFIX}${deliveryId}`, delivery);
       await addDeliveryToIndex(env, deliveryId);
     }
     
     applyWebhookFailure(event, endTime);
     if (env.WEBHOOKS) {
-      await env.WEBHOOKS.put(`${WEBHOOK_EVENT_PREFIX}${eventId}`, JSON.stringify(event));
+      await writeJsonEntry(env.WEBHOOKS, `${WEBHOOK_EVENT_PREFIX}${eventId}`, event);
     }
     
     return false;
@@ -288,9 +278,8 @@ export async function processWebhookEvents(env: Env): Promise<void> {
   // Find events that need processing
   const eventIndex = await getEventIndex(env);
   for (const eventId of eventIndex) {
-    const eventData = await env.WEBHOOKS.get(`${WEBHOOK_EVENT_PREFIX}${eventId}`, 'json');
-    if (eventData) {
-      const event = eventData as WebhookEvent;
+    const event = await readJsonEntry<WebhookEvent>(env.WEBHOOKS, `${WEBHOOK_EVENT_PREFIX}${eventId}`);
+    if (event) {
       if (event.status === 'pending' && (!event.nextRetry || now >= event.nextRetry)) {
         eventsToProcess.push(event);
       }
@@ -318,54 +307,33 @@ export async function cleanupWebhookData(env: Env): Promise<void> {
   const eventIndex = await getEventIndex(env);
   const eventsToDelete: string[] = [];
   for (const eventId of eventIndex) {
-    const eventData = await env.WEBHOOKS.get(`${WEBHOOK_EVENT_PREFIX}${eventId}`, 'json');
-    if (eventData) {
-      const event = eventData as WebhookEvent;
+    const event = await readJsonEntry<WebhookEvent>(env.WEBHOOKS, `${WEBHOOK_EVENT_PREFIX}${eventId}`);
+    if (event) {
       if (now - event.createdAt > maxAge) {
-        await env.WEBHOOKS.delete(`${WEBHOOK_EVENT_PREFIX}${eventId}`);
+        await deleteEntry(env.WEBHOOKS, `${WEBHOOK_EVENT_PREFIX}${eventId}`);
         eventsToDelete.push(eventId);
       }
     }
   }
   // Update index
   const newEventIndex = eventIndex.filter(id => !eventsToDelete.includes(id));
-  await env.WEBHOOKS.put(WEBHOOK_EVENT_INDEX_KEY, JSON.stringify(newEventIndex));
+  await writeJsonEntry(env.WEBHOOKS, WEBHOOK_EVENT_INDEX_KEY, newEventIndex);
   
   // Clean up old deliveries
   const deliveryIndex = await getDeliveryIndex(env);
   const deliveriesToDelete: string[] = [];
   for (const deliveryId of deliveryIndex) {
-    const deliveryData = await env.WEBHOOKS.get(`${WEBHOOK_DELIVERY_PREFIX}${deliveryId}`, 'json');
-    if (deliveryData) {
-      const delivery = deliveryData as WebhookDelivery;
+    const delivery = await readJsonEntry<WebhookDelivery>(env.WEBHOOKS, `${WEBHOOK_DELIVERY_PREFIX}${deliveryId}`);
+    if (delivery) {
       if (now - delivery.attemptedAt > maxAge) {
-        await env.WEBHOOKS.delete(`${WEBHOOK_DELIVERY_PREFIX}${deliveryId}`);
+        await deleteEntry(env.WEBHOOKS, `${WEBHOOK_DELIVERY_PREFIX}${deliveryId}`);
         deliveriesToDelete.push(deliveryId);
       }
     }
   }
   // Update index
   const newDeliveryIndex = deliveryIndex.filter(id => !deliveriesToDelete.includes(id));
-  await env.WEBHOOKS.put(WEBHOOK_DELIVERY_INDEX_KEY, JSON.stringify(newDeliveryIndex));
-}
-
-// Initialize webhook processing
-export function initializeWebhookProcessing(_env: Env): void {
-  // Guard: only initialize once
-  if (webhookProcessingInitialized) {
-    return;
-  }
-  
-  if (!WEBHOOK_CONFIG.ENABLED) {
-    return;
-  }
-  
-  // Mark as initialized
-  webhookProcessingInitialized = true;
-  
-  // Note: Webhook processing and cleanup are now handled via Cron Triggers
-  // in the scheduled handler rather than setInterval, which is more reliable
-  // in Cloudflare Workers and avoids keeping isolates alive.
+  await writeJsonEntry(env.WEBHOOKS, WEBHOOK_DELIVERY_INDEX_KEY, newDeliveryIndex);
 }
 
 // Trigger webhook for batch completion
@@ -459,9 +427,8 @@ export async function getWebhookEvents(env: Env, webhookId?: string): Promise<We
   const eventIndex = await getEventIndex(env);
   const events: WebhookEvent[] = [];
   for (const eventId of eventIndex) {
-    const eventData = await env.WEBHOOKS.get(`${WEBHOOK_EVENT_PREFIX}${eventId}`, 'json');
-    if (eventData) {
-      const event = eventData as WebhookEvent;
+    const event = await readJsonEntry<WebhookEvent>(env.WEBHOOKS, `${WEBHOOK_EVENT_PREFIX}${eventId}`);
+    if (event) {
       if (!webhookId || event.webhookId === webhookId) {
         events.push(event);
       }
@@ -475,9 +442,8 @@ export async function getWebhookDeliveries(env: Env, webhookId?: string): Promis
   const deliveryIndex = await getDeliveryIndex(env);
   const deliveries: WebhookDelivery[] = [];
   for (const deliveryId of deliveryIndex) {
-    const deliveryData = await env.WEBHOOKS.get(`${WEBHOOK_DELIVERY_PREFIX}${deliveryId}`, 'json');
-    if (deliveryData) {
-      const delivery = deliveryData as WebhookDelivery;
+    const delivery = await readJsonEntry<WebhookDelivery>(env.WEBHOOKS, `${WEBHOOK_DELIVERY_PREFIX}${deliveryId}`);
+    if (delivery) {
       if (!webhookId || delivery.webhookId === webhookId) {
         deliveries.push(delivery);
       }

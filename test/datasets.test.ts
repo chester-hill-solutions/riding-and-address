@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
   checkRidingDatasets,
+  checkDatasetsFromSource,
   allRequiredDatasetsPresent,
   missingDatasetKeys,
   getAllR2Keys,
   getLiveR2Keys,
   getLiveWarmTargets,
 } from '../src/datasets';
+import { inMemoryDatasetSource } from '../src/dataset-source';
+import type { GeoJSONFeatureCollection } from '../src/types';
 import { Env } from '../src/types';
 
 function mockR2(present: Set<string>): Env['RIDINGS'] {
@@ -46,6 +49,31 @@ describe('checkRidingDatasets', () => {
     const env = { RIDINGS: mockR2(new Set()) } as Env;
     const datasets = await checkRidingDatasets(env);
     expect(datasets.map((d) => d.key)).toEqual(getAllR2Keys());
+  });
+});
+
+describe('checkDatasetsFromSource (in-memory DatasetSource)', () => {
+  const emptyCollection: GeoJSONFeatureCollection = { type: 'FeatureCollection', features: [] };
+
+  it('reports every key present when the in-memory source holds them all', async () => {
+    const source = inMemoryDatasetSource(
+      Object.fromEntries(getAllR2Keys().map((key) => [key, emptyCollection]))
+    );
+    const datasets = await checkDatasetsFromSource(source);
+    expect(allRequiredDatasetsPresent(datasets)).toBe(true);
+    expect(missingDatasetKeys(datasets)).toEqual([]);
+  });
+
+  it('reports a missing key without touching R2', async () => {
+    const source = inMemoryDatasetSource(
+      Object.fromEntries(
+        getAllR2Keys()
+          .filter((key) => key !== 'bcridings-2022.geojson')
+          .map((key) => [key, emptyCollection])
+      )
+    );
+    const datasets = await checkDatasetsFromSource(source);
+    expect(missingDatasetKeys(datasets)).toEqual(['bcridings-2022.geojson']);
   });
 });
 

@@ -1,4 +1,7 @@
 import { Env } from './types';
+import { utcDay } from './time';
+
+// `utcDay`/`utcMonth` live in `src/time.ts`; import them from there.
 
 /**
  * Per-key daily request counter — the fuse behind the browser API keys.
@@ -99,11 +102,6 @@ function json(body: unknown): Response {
   });
 }
 
-/** UTC so the reset boundary does not move with the caller's timezone. */
-export function utcDay(nowMs: number): string {
-  return new Date(nowMs).toISOString().slice(0, 10);
-}
-
 function dayBefore(day: string, days: number): string {
   const ms = Date.parse(`${day}T00:00:00Z`) - days * 86400_000;
   return utcDay(ms);
@@ -117,82 +115,10 @@ export interface UsageResult {
   month?: string;
 }
 
-/** UTC calendar month `YYYY-MM`. */
-export function utcMonth(nowMs: number): string {
-  return new Date(nowMs).toISOString().slice(0, 7);
-}
-
 function monthBefore(month: string, months: number): string {
   const [y, m] = month.split('-').map(Number);
   const d = new Date(Date.UTC(y, m - 1 - months, 1));
   return d.toISOString().slice(0, 7);
-}
-
-/**
- * Monthly Customer fuse ledger.
- *
- * Fail-CLOSED when a hard fuse is enforced (`monthlyLimit > 0`) and the DO is
- * missing or errors — otherwise free-tier abuse is unbounded during outages.
- * When `monthlyLimit <= 0` (unlimited / soft-warn counting path), fail-open so
- * availability is not tied to the counter (Stripe sync remains eventual per ADR 0002).
- */
-function monthlyFailClosed(
-  monthlyLimit: number,
-  month: string
-): UsageResult {
-  return { allowed: false, count: 0, limit: monthlyLimit, day: month, month };
-}
-
-function monthlyFailOpen(monthlyLimit: number, month: string): UsageResult {
-  return { allowed: true, count: 0, limit: monthlyLimit, day: month, month };
-}
-
-export async function consumeMonthlyQuota(
-  env: Env,
-  customerId: string,
-  monthlyLimit: number,
-  nowMs: number = Date.now()
-): Promise<UsageResult> {
-  const month = utcMonth(nowMs);
-  if (!env.API_KEY_USAGE) {
-    return monthlyLimit > 0 ? monthlyFailClosed(monthlyLimit, month) : monthlyFailOpen(monthlyLimit, month);
-  }
-
-  try {
-    const id = env.API_KEY_USAGE.idFromName(`customer:${customerId}`);
-    const stub = env.API_KEY_USAGE.get(id);
-    const response = await stub.fetch(
-      `https://usage/consume?month=${month}&limit=${monthlyLimit}`,
-      { method: 'POST' }
-    );
-    const result = (await response.json()) as UsageResult;
-    return { ...result, month: result.month || month };
-  } catch (error) {
-    console.warn(`[ApiKeyUsage] monthly counter unavailable for ${customerId}:`, error);
-    return monthlyLimit > 0 ? monthlyFailClosed(monthlyLimit, month) : monthlyFailOpen(monthlyLimit, month);
-  }
-}
-
-export async function peekMonthlyQuota(
-  env: Env,
-  customerId: string,
-  monthlyLimit: number,
-  nowMs: number = Date.now()
-): Promise<UsageResult> {
-  const month = utcMonth(nowMs);
-  if (!env.API_KEY_USAGE) {
-    return monthlyLimit > 0 ? monthlyFailClosed(monthlyLimit, month) : monthlyFailOpen(monthlyLimit, month);
-  }
-
-  try {
-    const id = env.API_KEY_USAGE.idFromName(`customer:${customerId}`);
-    const stub = env.API_KEY_USAGE.get(id);
-    const response = await stub.fetch(`https://usage/peek?month=${month}&limit=${monthlyLimit}`);
-    const result = (await response.json()) as UsageResult;
-    return { ...result, month: result.month || month };
-  } catch {
-    return monthlyLimit > 0 ? monthlyFailClosed(monthlyLimit, month) : monthlyFailOpen(monthlyLimit, month);
-  }
 }
 
 /**
@@ -223,25 +149,6 @@ export async function consumeDailyQuota(
     return (await response.json()) as UsageResult;
   } catch (error) {
     console.warn(`[ApiKeyUsage] counter unavailable for ${keyId}:`, error);
-    return { allowed: true, count: 0, limit: dailyLimit, day };
-  }
-}
-
-export async function peekDailyQuota(
-  env: Env,
-  keyId: string,
-  dailyLimit: number,
-  nowMs: number = Date.now()
-): Promise<UsageResult> {
-  const day = utcDay(nowMs);
-  if (!env.API_KEY_USAGE) return { allowed: true, count: 0, limit: dailyLimit, day };
-
-  try {
-    const id = env.API_KEY_USAGE.idFromName(keyId);
-    const stub = env.API_KEY_USAGE.get(id);
-    const response = await stub.fetch(`https://usage/peek?day=${day}&limit=${dailyLimit}`);
-    return (await response.json()) as UsageResult;
-  } catch {
     return { allowed: true, count: 0, limit: dailyLimit, day };
   }
 }

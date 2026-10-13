@@ -147,6 +147,7 @@ export function TryRidingForm({ apiBaseUrl, demoBrowserKey }: TryRidingFormProps
   );
   const [message, setMessage] = useState('');
   const [result, setResult] = useState<RidingResult | null>(null);
+  const [rawPayload, setRawPayload] = useState<EmbedRidingDetail | null>(null);
   const [activeSample, setActiveSample] = useState<string | null>(null);
 
   useEffect(() => {
@@ -162,12 +163,14 @@ export function TryRidingForm({ apiBaseUrl, demoBrowserKey }: TryRidingFormProps
       awaitingRidingRef.current = true;
       setStatus('loading');
       setMessage('');
+      setRawPayload(null);
       setActiveSample(null);
     };
 
     const onRiding = (event: Event) => {
       awaitingRidingRef.current = false;
       const detail = (event as CustomEvent<EmbedRidingDetail>).detail;
+      setRawPayload(detail ?? null);
       const federal =
         (typeof detail.riding === 'string' && detail.riding.trim() ? detail.riding.trim() : null) ||
         ridingName(detail.properties);
@@ -203,6 +206,7 @@ export function TryRidingForm({ apiBaseUrl, demoBrowserKey }: TryRidingFormProps
       awaitingRidingRef.current = false;
       setStatus('error');
       setResult(null);
+      setRawPayload(null);
       setMessage('Lookup failed — try another address.');
     };
 
@@ -267,6 +271,7 @@ export function TryRidingForm({ apiBaseUrl, demoBrowserKey }: TryRidingFormProps
     setStatus('ready');
     setMessage('');
     setResult(null);
+    setRawPayload(null);
     // Native setter so the embed's input handler sees the value.
     const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
     proto?.set?.call(input, sample.query);
@@ -353,6 +358,15 @@ export function TryRidingForm({ apiBaseUrl, demoBrowserKey }: TryRidingFormProps
             </div>
             {result.queryLabel ? <p className="try-embed__query">{result.queryLabel}</p> : null}
           </div>
+        ) : null}
+
+        {rawPayload ? (
+          <details className="try-embed__json">
+            <summary>Full response</summary>
+            <pre>
+              <code>{JSON.stringify(rawPayload, null, 2)}</code>
+            </pre>
+          </details>
         ) : null}
       </div>
     </div>

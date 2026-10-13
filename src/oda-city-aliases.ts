@@ -99,3 +99,36 @@ export function expandCityCandidates(
 
   return candidates;
 }
+
+/**
+ * Collapse a municipality spelling to the canonical city token.
+ *
+ * The NAR still files Toronto's addresses under its six pre-amalgamation names, so a discovered
+ * city list would otherwise contain TORONTO, NORTH YORK, SCARBOROUGH, … as six separate entries
+ * and the rotation would refresh the same city six times. This folds them back to one, using the
+ * same alias map the lookup cascade uses — so discovery, the queue, and queries all agree.
+ */
+export function canonicalCityToken(city: string, province?: string): string {
+  const normalized = normalizeSearchToken(city);
+  if (!normalized) return '';
+
+  // Already a canonical key ("TORONTO|ON").
+  if (CITY_ALIASES[`${normalized}|${province ?? ''}`]) return normalized;
+
+  // An alias listed under some canonical key.
+  for (const [key, aliases] of Object.entries(CITY_ALIASES)) {
+    const [canonical, keyProvince] = key.split('|');
+    if (province && keyProvince !== province) continue;
+    if (aliases.some((alias) => normalizeSearchToken(alias) === normalized)) return canonical;
+  }
+
+  // "CITY OF HAMILTON" → "HAMILTON", and the stripped form may itself have aliases.
+  for (const prefix of ADMIN_PREFIXES) {
+    if (normalized.startsWith(`${prefix} `)) {
+      const canonical = canonicalCityToken(normalized.slice(prefix.length + 1), province);
+      if (canonical) return canonical;
+    }
+  }
+
+  return normalized;
+}

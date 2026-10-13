@@ -467,6 +467,34 @@ button:hover:not(:disabled) {
   line-height: 1.4;
 }
 
+.try-embed__json {
+  margin: 1.15rem 0 0;
+}
+
+.try-embed__json summary {
+  cursor: pointer;
+  color: rgb(210 228 245 / 85%);
+  font-size: 0.82rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.try-embed__json pre {
+  margin: 0.6rem 0 0;
+  max-height: 340px;
+  overflow: auto;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: var(--radius-sm);
+  background: rgb(6 28 56 / 55%);
+  color: #e8f3ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre;
+  tab-size: 2;
+}
+
 .try-embed__result--loading .try-embed__riding {
   opacity: 0.72;
 }

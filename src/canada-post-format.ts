@@ -1,32 +1,11 @@
 import { CanadaPostStyleAddress } from './types';
-import { foldAccents, normalizePostalCode, normalizeProvince, normalizeStreetDirection } from './oda-normalize';
-
-/** Mailing display: abbreviate street types for Canada Post-style output */
-const STREET_TYPE_MAILING: Record<string, string> = {
-  ST: 'ST',
-  STREET: 'ST',
-  AVE: 'AVE',
-  AVENUE: 'AVE',
-  RD: 'RD',
-  ROAD: 'RD',
-  BLVD: 'BLVD',
-  BOULEVARD: 'BLVD',
-  CRES: 'CRES',
-  CRESCENT: 'CRES',
-  DR: 'DR',
-  DRIVE: 'DR',
-  CRT: 'CRT',
-  COURT: 'CRT',
-  PL: 'PL',
-  PLACE: 'PL',
-  PKY: 'PKY',
-  PARKWAY: 'PKY',
-  HWY: 'HWY',
-  HIGHWAY: 'HWY',
-  RUE: 'RUE',
-  CH: 'CH',
-  CHEMIN: 'CH',
-};
+import {
+  foldAccents,
+  normalizePostalCode,
+  normalizeProvince,
+  normalizeStreetDirection,
+  normalizeStreetType,
+} from './oda-normalize';
 
 export interface AddressParts {
   civicNumber?: string;
@@ -39,16 +18,16 @@ export interface AddressParts {
   postalCode?: string;
 }
 
-function mailingStreetType(type: string | undefined): string {
-  if (!type) return '';
-  const key = foldAccents(type).replace(/[^A-Z]/g, '');
-  return STREET_TYPE_MAILING[key] || key;
+/** Join non-empty address lines into the canonical comma-separated query form. */
+export function joinAddressLines(parts: ReadonlyArray<string | undefined | null>): string {
+  return parts.filter(Boolean).join(', ');
 }
 
 function buildCivicStreetLine(parts: AddressParts): string {
   const civic = parts.civicNumber ? foldAccents(parts.civicNumber) : '';
   const name = parts.streetName ? foldAccents(parts.streetName) : '';
-  const type = mailingStreetType(parts.streetType);
+  // Mailing abbreviations derive from the same canonical map the import and search paths use.
+  const type = normalizeStreetType(parts.streetType);
   const dir = parts.streetDirection ? normalizeStreetDirection(parts.streetDirection) : '';
   return [civic, name, type, dir].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
 }
@@ -80,9 +59,13 @@ export function formatCanadaPostAddress(parts: AddressParts): CanadaPostStyleAdd
 
   const cityProvincePostal = [municipality, province, postalCode].filter(Boolean).join('  ');
   const formattedMultiline = [line1, line2, cityProvincePostal, 'CANADA'].filter(Boolean).join('\n');
-  const formattedSingleLine = [line1, line2, `${municipality} ${province}`.trim(), postalCode, 'CANADA']
-    .filter(Boolean)
-    .join(', ')
+  const formattedSingleLine = joinAddressLines([
+    line1,
+    line2,
+    `${municipality} ${province}`.trim(),
+    postalCode,
+    'CANADA',
+  ])
     .replace(/\s+/g, ' ')
     .trim();
 

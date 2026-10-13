@@ -1,10 +1,29 @@
 // Documentation and UI functions
 
 import { getAllProvincialPaths, PROVINCIAL_DATASETS } from './datasets';
+import { EMBED_EVENTS, EMBED_SCRIPT_ATTRIBUTES } from './embed';
+import { jsonHeaders, type RouteContext } from './route-context';
 
 const PROVINCIAL_DATASET_STEMS = PROVINCIAL_DATASETS.map((d) => d.r2Key.replace(/\.geojson$/, ''));
 
-export { createLandingPage } from './landing-page';
+/** `/api/docs` — the machine-readable OpenAPI document. */
+export function handleOpenApiDocs(ctx: RouteContext): Response {
+  const baseUrl = `${ctx.url.protocol}//${ctx.url.host}`;
+  return new Response(JSON.stringify(createOpenAPISpec(baseUrl)), {
+    headers: jsonHeaders(ctx),
+  });
+}
+
+/** `/docs` + mirrors — the interactive Scalar reference. */
+export function handleApiReference(ctx: RouteContext): Response {
+  const baseUrl = `${ctx.url.protocol}//${ctx.url.host}`;
+  return new Response(createApiReference(baseUrl), {
+    headers: {
+      'content-type': 'text/html; charset=UTF-8',
+      ...ctx.corsHeaders(ctx.request.headers.get('Origin')),
+    },
+  });
+}
 
 /**
  * Version of the Scalar bundle loaded from CDN by the API reference page.
@@ -269,8 +288,8 @@ function buildDemoEndpointSpecs(): Record<string, unknown> {
       "Lookup federal and provincial ridings in one call (keyless demo)",
       "/api/combined"
     ),
-    "/api/demo/geocode": demoOda("Forward geocode using ODA (keyless demo)", "/api/geocode", ODA_GEOCODE_PARAMETERS),
-    "/api/demo/reverse": demoOda("Reverse geocode using ODA (keyless demo)", "/api/reverse", ODA_REVERSE_PARAMETERS),
+    "/api/demo/geocode": demoOda("Forward geocode using StatCan address data (ODA/NAR) (keyless demo)", "/api/geocode", ODA_GEOCODE_PARAMETERS),
+    "/api/demo/reverse": demoOda("Reverse geocode using StatCan address data (ODA/NAR) (keyless demo)", "/api/reverse", ODA_REVERSE_PARAMETERS),
     "/api/demo/normalize-address": demoOda(
       "Normalize address to Canada Post-style format (keyless demo)",
       "/api/normalize-address",
@@ -637,7 +656,7 @@ export function createOpenAPISpec(baseUrl: string) {
       ...buildDemoEndpointSpecs(),
       "/api/geocode": {
         get: {
-          summary: "Forward geocode using ODA",
+          summary: "Forward geocode using StatCan address data (ODA or NAR)",
           description: "Geocode an address or postal code using the self-hosted ODA database. Requires ODA_GEOCODING_ENABLED.",
           tags: ["ODA Geolocation"],
           parameters: ODA_GEOCODE_PARAMETERS,
@@ -837,6 +856,9 @@ export function createOpenAPISpec(baseUrl: string) {
             "",
             "    <script src='/embed.js' data-province='ON' defer></script>",
             "",
+            `Supported script attributes: ${EMBED_SCRIPT_ATTRIBUTES.join(", ")}.`,
+            `Events: ${EMBED_EVENTS.join(", ")}.`,
+            "",
             "It finds the address field in each form, fills the address on selection, and emits",
             "the riding as a `ridinglookup:riding` event. Pass data-demo='true' (or attach({ demo: true }))",
             "to resolve via keyless /api/demo/* — used by the portal marketing try-it. Requires",
@@ -854,7 +876,7 @@ export function createOpenAPISpec(baseUrl: string) {
       },
       "/api/reverse": {
         get: {
-          summary: "Reverse geocode using ODA",
+          summary: "Reverse geocode using StatCan address data (ODA or NAR)",
           tags: ["ODA Geolocation"],
           parameters: ODA_REVERSE_PARAMETERS,
           responses: {

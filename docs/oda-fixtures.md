@@ -32,6 +32,17 @@ Fixture CSV: `test/fixtures/oda/fixture.csv`
 - `confidence`: `0.85`
 - `mailingAddress.postalCode`: `M5V 2T6`
 
+## Case 2b: Postal-scoped street without a city (ON)
+
+**Query:** `GET /api/geocode?address=757%20Victoria%20Park%20Ave&postal=M4C%201N2`
+
+**Expected:**
+- `geocodeMethod`: `postal_street`
+- `confidence`: `0.9`
+- `matchedFields` includes `civic`, `street`, `postal`
+- Resolves the exact civic point instead of the postal centroid (relevant for pasted addresses
+  like `2, WELBY CRCL, M4B 2Y8` that carry a postal code but no city)
+
 ## Case 3: Unit address formatting (ON)
 
 **Query:** exact match on address with unit `1205`
@@ -210,5 +221,5 @@ of 348 can never be recovered. `locationBias` stays a soft signal — it reorder
 never filters (that is `locationRestriction`).
 
 Asserted in `test/oda-suggest.test.ts` ("candidate window ordering"). Those tests assert the
-generated SQL, because the `LIMIT` executes in SQLite and the D1 mock cannot run it — the
-behaviour above was verified against a real database.
+generated SQL directly; `test/helpers/oda-sqlite.ts` can execute the same statements against a real
+in-memory SQLite, and the FTS coverage test does exercise the ranked window end to end.

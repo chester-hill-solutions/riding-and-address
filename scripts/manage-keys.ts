@@ -14,7 +14,7 @@
  *   npm run keys -- origins pk_live_... --origins "https://acme.com" --remote
  */
 import { execSync } from 'node:child_process';
-import { writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
+import { writeFileSync, unlinkSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   generateApiKey,
@@ -28,6 +28,13 @@ import { defaultFuseLimit, DEFAULT_FREE_MONTHLY_ALLOWANCE, type CustomerPlan, ty
 
 const BINDING = 'API_KEYS';
 const DEFAULT_DAILY_LIMIT = 100_000;
+
+/** Portal wrangler config (combined Worker) so `wrangler kv` can find the API_KEYS namespace. */
+const PORTAL_CONFIG = 'portal/wrangler.jsonc';
+
+function resolveConfigArg(): string {
+  return existsSync(PORTAL_CONFIG) ? `-c ${PORTAL_CONFIG}` : '';
+}
 
 interface Options {
   command: string;
@@ -87,7 +94,7 @@ function parseArgs(argv: string[]): Options {
 
 function kv(options: Options, args: string): string {
   const scope = options.remote ? '--remote' : '--local';
-  return execSync(`npx wrangler kv ${args} --binding ${options.namespace} ${scope}`, {
+  return execSync(`npx wrangler kv ${args} --binding ${options.namespace} ${scope} ${resolveConfigArg()}`, {
     encoding: 'utf-8',
   });
 }

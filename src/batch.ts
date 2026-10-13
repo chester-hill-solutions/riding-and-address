@@ -3,48 +3,41 @@ import {
   BatchLookupRequest,
   BatchLookupResponse,
   BatchJob,
-  QueryParams,
-  GoogleAddressComponents,
-  CircuitBreakerExecutor,
 } from './types';
 import { parseBatchLookupRequests } from './validation';
-import { type GeocodeBatchResult } from './geocoding';
+import { geocodeBatch } from './geocoding';
+import { geocodingExecutor } from './circuit-breaker';
 import { incrementMetric, recordTiming } from './metrics';
 import {
   performExpandedLookup,
   expandedLookupResponseFields,
   type NormalizedAddressContext,
-  type LookupRidingFn,
 } from './lookup-expansion';
+import { cachedLookupRiding } from './riding-lookup';
+import type { RouteContext } from './route-context';
+import * as queueClient from './queue-client';
+
+export const BATCH_CONFIG = {
+  DEFAULT_BATCH_SIZE: 10,
+  MAX_BATCH_SIZE: 100,
+  TIMEOUT: 300000,
+  RETRY_ATTEMPTS: 3,
+  RETRY_DELAY: 1000,
+};
 
 // Maximum batch size limits
-export const MAX_BATCH_SIZE = 100;
+export const MAX_BATCH_SIZE = BATCH_CONFIG.MAX_BATCH_SIZE;
 export const MAX_REQUEST_BODY_SIZE = 10 * 1024 * 1024; // 10MB
 
 // Process batch lookup with batch geocoding (GeoGratis-first). Optional normalization via Google when key configured.
 export async function processBatchLookupWithBatchGeocoding(
-  env: Env,
-  requests: BatchLookupRequest[],
-  geocodeIfNeeded: (
-    env: Env,
-    query: QueryParams,
-    request?: Request
-  ) => Promise<{
-    lon: number;
-    lat: number;
-    normalizedAddress?: string;
-    addressComponents?: GoogleAddressComponents;
-  }>,
-  lookupRiding: LookupRidingFn,
-  geocodeBatchFn: (
-    env: Env,
-    queries: QueryParams[],
-    request?: Request,
-    circuitBreaker?: CircuitBreakerExecutor
-  ) => Promise<GeocodeBatchResult[]>,
-  request?: Request,
-  circuitBreaker?: CircuitBreakerExecutor
+  ctx: RouteContext,
+  requests: BatchLookupRequest[]
 ): Promise<BatchLookupResponse[]> {
+  const { env, request } = ctx;
+  const lookupRiding = ctx.deps?.lookup ?? cachedLookupRiding;
+  const circuitBreaker = geocodingExecutor();
+
   if (requests.length > MAX_BATCH_SIZE) {
     throw new Error(`Batch size exceeds maximum of ${MAX_BATCH_SIZE} requests`);
   }
@@ -142,7 +135,7 @@ export async function processBatchLookupWithBatchGeocoding(
 
     if (geocodingNeeded.length > 0) {
       const queries = geocodingNeeded.map((item) => item.request.query);
-      const geocodingResults = await geocodeBatchFn(env, queries, request, circuitBreaker);
+      const geocodingResults = await geocodeBatch(env, queries, { request, circuitBreaker });
 
       for (let i = 0; i < geocodingNeeded.length; i++) {
         const { request: batchRequest, index } = geocodingNeeded[i];
@@ -200,6 +193,22 @@ export async function processBatchLookupWithBatchGeocoding(
   }
 }
 
+/**
+ * The one Fuse-denial dialect for a batch item. A batch cannot return the billing shaper's HTTP
+ * response per item, so it applies the same wire body (`billableDenialBody`) as the lookup and
+ * search routes: redact the payload and carry the shaper's error text.
+ */
+export function redactFuseDeniedResult(
+  item: BatchLookupResponse,
+  denialBody: Record<string, unknown>
+): void {
+  item.properties = null;
+  item.riding = undefined;
+  item.province_data = undefined;
+  item.error =
+    typeof denialBody.error === 'string' ? denialBody.error : 'Monthly usage fuse exceeded';
+}
+
 // Queue-based batch processing using Durable Objects
 export async function submitBatchToQueue(env: Env, requests: unknown): Promise<{ batchId: string; status: string }> {
   const validatedRequests = parseBatchLookupRequests(requests);
@@ -208,71 +217,15 @@ export async function submitBatchToQueue(env: Env, requests: unknown): Promise<{
     throw new Error(`Batch size exceeds maximum of ${MAX_BATCH_SIZE} requests`);
   }
 
-  if (!env.QUEUE_MANAGER) {
-    throw new Error('Queue manager not configured');
-  }
-
-  const queueManagerId = env.QUEUE_MANAGER.idFromName('main-queue');
-  const queueManager = env.QUEUE_MANAGER.get(queueManagerId);
-
-  const response = await queueManager.fetch(
-    new Request('https://queue.local/queue/submit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requests: validatedRequests }),
-    })
-  );
-
-  if (!response.ok) {
-    const error = (await response.json()) as { error?: string };
-    throw new Error(error.error || 'Failed to submit batch to queue');
-  }
-
-  return await response.json();
+  return queueClient.submitBatch(env, validatedRequests);
 }
 
-export async function getBatchStatus(env: Env, batchId: string): Promise<unknown> {
-  if (!env.QUEUE_MANAGER) {
-    throw new Error('Queue manager not configured');
-  }
-
-  const queueManagerId = env.QUEUE_MANAGER.idFromName('main-queue');
-  const queueManager = env.QUEUE_MANAGER.get(queueManagerId);
-
-  const response = await queueManager.fetch(
-    new Request(`https://queue.local/queue/status?batchId=${batchId}`)
-  );
-
-  if (!response.ok) {
-    const error = (await response.json()) as { error?: string };
-    throw new Error(error.error || 'Failed to get batch status');
-  }
-
-  return await response.json();
+export function getBatchStatus(env: Env, batchId: string): Promise<unknown> {
+  return queueClient.getBatchStatus(env, batchId);
 }
 
-export async function processQueueJobs(env: Env, maxJobs: number = 10): Promise<unknown> {
-  if (!env.QUEUE_MANAGER) {
-    throw new Error('Queue manager not configured');
-  }
-
-  const queueManagerId = env.QUEUE_MANAGER.idFromName('main-queue');
-  const queueManager = env.QUEUE_MANAGER.get(queueManagerId);
-
-  const response = await queueManager.fetch(
-    new Request('https://queue.local/queue/process', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ maxJobs }),
-    })
-  );
-
-  if (!response.ok) {
-    const error = (await response.json()) as { error?: string };
-    throw new Error(error.error || 'Failed to process queue jobs');
-  }
-
-  return await response.json();
+export function processQueueJobs(env: Env, maxJobs: number = 10): Promise<unknown> {
+  return queueClient.processJobs(env, maxJobs);
 }
 
 export function createBatchJob(requests: BatchLookupRequest[]): BatchJob {
@@ -309,10 +262,3 @@ export function updateBatchJobStatus(
   return updatedJob;
 }
 
-export const BATCH_CONFIG = {
-  DEFAULT_BATCH_SIZE: 10,
-  MAX_BATCH_SIZE: 100,
-  TIMEOUT: 300000,
-  RETRY_ATTEMPTS: 3,
-  RETRY_DELAY: 1000,
-};

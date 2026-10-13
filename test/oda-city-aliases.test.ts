@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { join } from 'path';
-import { expandCityCandidates } from '../src/oda-city-aliases';
+import { canonicalCityToken, expandCityCandidates } from '../src/oda-city-aliases';
 import { geocodeWithOda, OdaGeocodeError } from '../src/oda-geocoding';
 import { createOdaFixtureEnv } from './helpers/oda-memory-db';
 import { Env } from '../src/types';
@@ -15,6 +15,27 @@ function aliasEnv(): Env {
     ODA_MIN_CONFIDENCE: '0.6',
   };
 }
+
+describe('canonicalCityToken', () => {
+  it('folds the six pre-amalgamation municipalities back to Toronto', () => {
+    for (const name of ['TORONTO', 'North York', 'Scarborough', 'Etobicoke', 'York', 'East York']) {
+      expect(canonicalCityToken(name, 'ON')).toBe('TORONTO');
+    }
+  });
+
+  it('folds Quebec City to Quebec', () => {
+    expect(canonicalCityToken('Quebec City', 'QC')).toBe('QUEBEC');
+  });
+
+  it('strips administrative prefixes and resolves the stripped aliases', () => {
+    expect(canonicalCityToken('City of Hamilton', 'ON')).toBe('HAMILTON');
+    expect(canonicalCityToken('Town of Huntsville', 'ON')).toBe('HUNTSVILLE');
+  });
+
+  it('leaves an ordinary city unchanged', () => {
+    expect(canonicalCityToken('Mississauga', 'ON')).toBe('MISSISSAUGA');
+  });
+});
 
 describe('expandCityCandidates', () => {
   it('puts the caller spelling first so it can outrank aliases', () => {

@@ -7,6 +7,8 @@ import {
   CircuitBreakerExecutor,
   DeferTaskFn,
 } from './types';
+import type { GeocodeIfNeededFn } from './geocoding';
+import { runOrDefer } from './utils';
 import { generateLookupCacheKey, getCachedLookupResult, setCachedLookupResult } from './cache';
 import { pickDataset, provincePathFromFederalProperties } from './datasets';
 import { withTimeout } from './utils';
@@ -49,30 +51,7 @@ export type LookupRidingFn = (
   lat: number
 ) => Promise<LookupResult>;
 
-export type GeocodeIfNeededFn = (
-  env: Env,
-  query: QueryParams,
-  request?: Request,
-  circuitBreaker?: CircuitBreakerExecutor
-) => Promise<{
-  lon: number;
-  lat: number;
-  normalizedAddress?: string;
-  addressComponents?: GoogleAddressComponents;
-  mailingAddress?: CanadaPostStyleAddress;
-  geocodeMethod?: string;
-  confidence?: number;
-}>;
-
-export type { DeferTaskFn };
-
-async function runOrDefer(deferTask: DeferTaskFn | undefined, task: Promise<void>): Promise<void> {
-  if (deferTask) {
-    deferTask(task);
-  } else {
-    await task;
-  }
-}
+export type { GeocodeIfNeededFn };
 
 type ProvinceFetchResult = {
   data: ProvinceData | null;
@@ -348,7 +327,10 @@ async function resolveCoordinates(
     throw new Error('Coordinates required: provide lat/lon or enable geocoding');
   }
   const geocodeResult = await withTimeout(
-    options.geocodeIfNeeded(env, sanitizedQuery, options.request, options.circuitBreaker),
+    options.geocodeIfNeeded(env, sanitizedQuery, {
+      request: options.request,
+      circuitBreaker: options.circuitBreaker
+    }),
     options.geocodingTimeoutMs,
     'Geocoding'
   );

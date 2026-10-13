@@ -1,3 +1,11 @@
+/**
+ * ODA fixture parser and summary.
+ *
+ * There is deliberately no in-memory adapter here any more: the D1 adapter's real SQL runs
+ * against in-memory SQLite in `test/helpers/oda-sqlite.ts`, seeded from the rows this module
+ * parses. Keeping the parser separate is what lets the fixture feed the real statements without
+ * a second, hand-written ranking that can drift from them.
+ */
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { normalizeOdaCsvRow } from '../../src/oda-normalize';
@@ -34,6 +42,8 @@ export interface OdaMemoryDb {
     { province: string; city_key: string; street_key: string; lat: number; lon: number }
   >;
 }
+
+export { createOdaFixtureEnv, createOdaSqliteEnv } from './oda-sqlite';
 
 function parseCsvLine(line: string, headers: string[]): Record<string, string> {
   const values: string[] = [];
@@ -135,326 +145,18 @@ export function loadOdaFixtureDb(fixturePath?: string): OdaMemoryDb {
     });
   }
 
-  for (const [rangeKey, acc] of streetRanges) {
-    const [cityKey, streetKey] = rangeKey.split('|');
-    const province = cityKey.split('|')[1] ?? 'ON';
-    db.streetRanges.set(`${province}|${cityKey}|${streetKey}`, {
+  for (const acc of streetRanges.values()) {
+    // The accumulator already carries the real keys; re-splitting the map key collapsed
+    // `TORONTO|ON|MAIN|ST` into `(TORONTO, ON)` and seeded unusable rows.
+    const province = acc.cityKey.split('|')[1] ?? 'ON';
+    db.streetRanges.set(`${province}|${acc.cityKey}|${acc.streetKey}`, {
       province,
-      city_key: cityKey,
-      street_key: streetKey,
+      city_key: acc.cityKey,
+      street_key: acc.streetKey,
       lat: acc.latSum / acc.count,
       lon: acc.lonSum / acc.count,
     });
   }
 
   return db;
-}
-
-function sqlKind(sql: string): string {
-  const s = sql.replace(/\s+/g, ' ').toUpperCase();
-  if (s.includes('SEARCH_KEY IN') && s.includes('ODA_ADDRESSES')) return 'exact';
-  if (s.includes('ODA_POSTAL_CENTROIDS')) return 'postal';
-  if (s.includes('STREET_KEY IN') && s.includes('CIVIC_NUMBER =')) return 'street_in_exact';
-  if (s.includes('STREET_KEY IN') && s.includes('ORDER BY ABS(CAST(CIVIC_NUMBER')) return 'street_in_nearest';
-  if (s.includes('STREET_KEY IN') && s.includes('ODA_STREET_RANGES')) return 'street_in_range';
-  if (s.includes('CIVIC_NUMBER =')) return 'street_exact';
-  if (s.includes('ORDER BY ABS(CAST(CIVIC_NUMBER')) return 'street_nearest';
-  if (s.includes('ODA_STREET_RANGES')) return 'street_range';
-  if (s.includes('ODA_CITY_CENTROIDS') && s.includes('CITY_KEY LIKE')) return 'city_fuzzy';
-  if (s.includes('ODA_CITY_CENTROIDS')) return 'city';
-  if (s.includes('BETWEEN') && s.includes('ODA_ADDRESSES')) return 'bbox';
-  return 'unknown';
-}
-
-function countPlaceholders(fragment: string | undefined): number {
-  if (!fragment) return 0;
-  return (fragment.match(/\?/g) || []).length;
-}
-
-/**
- * Both city and street are matched with `IN (...)` lists so a query can try every ODA
- * spelling of a municipality (see src/oda-city-aliases.ts). Params arrive as
- * [...provinces, ...cityKeys, ...streetKeys, ...rest].
- */
-function parseStreetInParams(sql: string, params: unknown[]): {
-  provinces: string[];
-  cityKeys: string[];
-  streetKeys: string[];
-  rest: unknown[];
-} {
-  const s = sql.replace(/\s+/g, ' ').toUpperCase();
-  const provinceIn = s.match(/PROVINCE IN \(([^)]+)\)/)?.[1];
-  const cityIn = s.match(/CITY_KEY IN \(([^)]+)\)/)?.[1];
-  const streetIn = s.match(/STREET_KEY IN \(([^)]+)\)/)?.[1];
-  const provinceCount = countPlaceholders(provinceIn);
-  const cityKeyCount = countPlaceholders(cityIn);
-  const streetKeyCount = countPlaceholders(streetIn);
-
-  let offset = 0;
-  const provinces = params.slice(offset, (offset += provinceCount)).map(String);
-  const cityKeys = params.slice(offset, (offset += cityKeyCount)).map(String);
-  const streetKeys = params.slice(offset, (offset += streetKeyCount)).map(String);
-  const rest = params.slice(offset);
-  return { provinces, cityKeys, streetKeys, rest };
-}
-
-/**
- * Emulates `ORDER BY <cityOrder>, <streetOrder>`: the caller's own city spelling
- * (cityKeys[0]) outranks its aliases, and street-key preference breaks the tie.
- */
-function pickStreetMatch<T extends { street_key: string; city_key?: string }>(
-  rows: T[],
-  streetKeys: string[],
-  streetOrderParams: string[],
-  cityOrderParams: string[] = []
-): T | null {
-  if (rows.length === 0) return null;
-  const streetRank = new Map(streetOrderParams.map((key, index) => [key, index]));
-  const cityRank = new Map(cityOrderParams.map((key, index) => [key, index]));
-  return [...rows].sort((a, b) => {
-    const aCity = cityRank.get(a.city_key ?? '') ?? cityOrderParams.length;
-    const bCity = cityRank.get(b.city_key ?? '') ?? cityOrderParams.length;
-    if (aCity !== bCity) return aCity - bCity;
-    const aRank = streetRank.get(a.street_key) ?? streetKeys.length;
-    const bRank = streetRank.get(b.street_key) ?? streetKeys.length;
-    return aRank - bRank;
-  })[0];
-}
-
-function executeQuery(db: OdaMemoryDb, sql: string, params: unknown[]): unknown {
-  const kind = sqlKind(sql);
-
-  switch (kind) {
-    case 'exact': {
-      // WHERE search_key IN (...) AND province IN (...) [AND unit = ?] LIMIT n
-      // Ranking is the caller's job (done in JS), so no ORDER BY params here.
-      const s = sql.replace(/\s+/g, ' ').toUpperCase();
-      const searchCount = countPlaceholders(s.match(/SEARCH_KEY IN \(([^)]+)\)/)?.[1]);
-      const provinceCount = countPlaceholders(s.match(/PROVINCE IN \(([^)]+)\)/)?.[1]);
-      const hasUnitFilter = s.includes('AND UNIT = ?');
-
-      let offset = 0;
-      const searchKeys = params.slice(offset, (offset += searchCount)).map(String);
-      const provinces = params.slice(offset, (offset += provinceCount)).map(String);
-      const unitFilter = hasUnitFilter ? String(params[offset++]) : undefined;
-      const limit = Number(s.match(/LIMIT (\d+)/)?.[1] ?? '1');
-
-      return db.addresses
-        .filter(
-          (a) =>
-            searchKeys.includes(a.search_key) &&
-            provinces.includes(a.province) &&
-            (!unitFilter || a.unit === unitFilter)
-        )
-        .slice(0, limit);
-    }
-    case 'postal': {
-      const postal = String(params[0]);
-      const provinces = params.slice(1).map(String);
-      for (const prov of provinces) {
-        const hit = db.postalCentroids.get(`${prov}|${postal}`);
-        if (hit) return hit;
-      }
-      return null;
-    }
-    case 'street_in_exact': {
-      const { provinces, cityKeys, streetKeys, rest } = parseStreetInParams(sql, params);
-      const hasUnit = sql.toUpperCase().includes('AND UNIT =');
-      const civic = String(rest[0]);
-      const unitFilter = hasUnit ? String(rest[1]) : undefined;
-      // ORDER BY params are [...cityKeys, ...streetKeys].
-      const allOrder = (hasUnit ? rest.slice(2) : rest.slice(1)).map(String);
-      const cityOrder = allOrder.slice(0, cityKeys.length);
-      const streetOrder = allOrder.slice(cityKeys.length);
-      const candidates = db.addresses.filter(
-        (a) =>
-          provinces.includes(a.province) &&
-          cityKeys.includes(a.city_key) &&
-          streetKeys.includes(a.street_key) &&
-          a.civic_number === civic &&
-          (!unitFilter || a.unit === unitFilter)
-      );
-      return pickStreetMatch(candidates, streetKeys, streetOrder, cityOrder) ?? null;
-    }
-    case 'street_in_nearest': {
-      const { provinces, cityKeys, streetKeys, rest } = parseStreetInParams(sql, params);
-      const allOrder = rest.slice(0, -1).map(String);
-      const cityOrder = allOrder.slice(0, cityKeys.length);
-      const streetOrder = allOrder.slice(cityKeys.length);
-      const civicNumeric = Number(rest[rest.length - 1]);
-      const candidates = db.addresses.filter(
-        (a) =>
-          provinces.includes(a.province) &&
-          cityKeys.includes(a.city_key) &&
-          streetKeys.includes(a.street_key)
-      );
-      if (candidates.length === 0) return null;
-      const bestStreet = pickStreetMatch(candidates, streetKeys, streetOrder, cityOrder);
-      const sameStreet = candidates.filter((a) => a.street_key === bestStreet?.street_key);
-      return sameStreet.reduce((best, row) => {
-        const bestNum = parseInt(best.civic_number, 10);
-        const rowNum = parseInt(row.civic_number, 10);
-        const bestDist = Math.abs(bestNum - civicNumeric);
-        const rowDist = Math.abs(rowNum - civicNumeric);
-        return rowDist < bestDist ? row : best;
-      });
-    }
-    case 'street_in_range': {
-      const { provinces, cityKeys, streetKeys, rest } = parseStreetInParams(sql, params);
-      const allOrder = rest.map(String);
-      const cityOrder = allOrder.slice(0, cityKeys.length);
-      const streetOrder = allOrder.slice(cityKeys.length);
-      const hits: Array<{
-        province: string;
-        lat: number;
-        lon: number;
-        street_key: string;
-        city_key: string;
-      }> = [];
-      for (const cityKey of cityKeys) {
-        for (const streetKey of streetKeys) {
-          for (const prov of provinces) {
-            const hit = db.streetRanges.get(`${prov}|${cityKey}|${streetKey}`);
-            if (hit) hits.push({ ...hit, street_key: streetKey, city_key: cityKey });
-          }
-        }
-      }
-      return pickStreetMatch(hits, streetKeys, streetOrder, cityOrder);
-    }
-    case 'street_exact': {
-      const hasUnitFilter = sql.toUpperCase().includes('AND UNIT =');
-      const provinces = hasUnitFilter
-        ? params.slice(0, -4).map(String)
-        : params.slice(0, -3).map(String);
-      const cityKey = String(params[params.length - (hasUnitFilter ? 4 : 3)]);
-      const streetKey = String(params[params.length - (hasUnitFilter ? 3 : 2)]);
-      const civic = String(params[params.length - (hasUnitFilter ? 2 : 1)]);
-      const unitFilter = hasUnitFilter ? String(params[params.length - 1]) : undefined;
-      return (
-        db.addresses.find(
-          (a) =>
-            provinces.includes(a.province) &&
-            a.city_key === cityKey &&
-            a.street_key === streetKey &&
-            a.civic_number === civic &&
-            (!unitFilter || a.unit === unitFilter)
-        ) ?? null
-      );
-    }
-    case 'street_nearest': {
-      const provinces = params.slice(0, -3).map(String);
-      const cityKey = String(params[params.length - 3]);
-      const streetKey = String(params[params.length - 2]);
-      const civicNumeric = Number(params[params.length - 1]);
-      const candidates = db.addresses.filter(
-        (a) =>
-          provinces.includes(a.province) &&
-          a.city_key === cityKey &&
-          a.street_key === streetKey
-      );
-      if (candidates.length === 0) return null;
-      return candidates.reduce((best, row) => {
-        const bestNum = parseInt(best.civic_number, 10);
-        const rowNum = parseInt(row.civic_number, 10);
-        const bestDist = Math.abs(bestNum - civicNumeric);
-        const rowDist = Math.abs(rowNum - civicNumeric);
-        return rowDist < bestDist ? row : best;
-      });
-    }
-    case 'street_range': {
-      const provinces = params.slice(0, -2).map(String);
-      const cityKey = String(params[params.length - 2]);
-      const streetKey = String(params[params.length - 1]);
-      for (const prov of provinces) {
-        const hit = db.streetRanges.get(`${prov}|${cityKey}|${streetKey}`);
-        if (hit) return hit;
-      }
-      return null;
-    }
-    case 'city': {
-      // WHERE province = ? AND city_key IN (...) ORDER BY CASE city_key ... LIMIT 1
-      const s = sql.replace(/\s+/g, ' ').toUpperCase();
-      const cityCount = countPlaceholders(s.match(/CITY_KEY IN \(([^)]+)\)/)?.[1]);
-      const province = String(params[0]);
-      const cityKeys = params.slice(1, 1 + cityCount).map(String);
-      // Candidates are already in preference order, so the first hit wins.
-      for (const cityKey of cityKeys) {
-        const hit = db.cityCentroids.get(`${province}|${cityKey}`);
-        if (hit) return hit;
-      }
-      return null;
-    }
-    case 'city_fuzzy': {
-      const provinces = params.slice(0, -1).map(String);
-      const likePattern = String(params[params.length - 1]).replace(/%/g, '');
-      const matches = [...db.cityCentroids.values()].filter(
-        (c) => provinces.includes(c.province) && c.city_key.startsWith(likePattern)
-      );
-      return matches;
-    }
-    case 'bbox': {
-      let i = 0;
-      const latMin = Number(params[i++]);
-      const latMax = Number(params[i++]);
-      const lonMin = Number(params[i++]);
-      const lonMax = Number(params[i++]);
-      let provinceFilter: string | undefined;
-      let cityKeyFilter: string | undefined;
-      let postalFilter: string | undefined;
-
-      if (sql.toUpperCase().includes('A.PROVINCE = ?')) {
-        provinceFilter = String(params[i++]);
-      }
-      if (sql.toUpperCase().includes('A.CITY_KEY = ?')) {
-        cityKeyFilter = String(params[i++]);
-      }
-      if (sql.toUpperCase().includes('A.POSTAL_CODE = ?')) {
-        postalFilter = String(params[i++]);
-      }
-      const limit = Number(params[i]);
-
-      const filtered = db.addresses.filter((a) => {
-        if (a.lat < latMin || a.lat > latMax || a.lon < lonMin || a.lon > lonMax) return false;
-        if (provinceFilter && a.province !== provinceFilter) return false;
-        if (cityKeyFilter && a.city_key !== cityKeyFilter) return false;
-        if (postalFilter && a.postal_code !== postalFilter) return false;
-        return true;
-      });
-      return filtered.slice(0, limit);
-    }
-    default:
-      return null;
-  }
-}
-
-export function createOdaMemoryD1(db: OdaMemoryDb): D1Database {
-  return {
-    prepare: (sql: string) => ({
-      bind: (...params: unknown[]) => {
-        const kind = sqlKind(sql);
-        const _isAll = kind === 'bbox' || kind === 'city_fuzzy';
-        return {
-          first: async () => {
-            const result = executeQuery(db, sql, params);
-            if (Array.isArray(result)) return result[0] ?? null;
-            return result;
-          },
-          all: async () => {
-            const result = executeQuery(db, sql, params);
-            const results = Array.isArray(result) ? result : result ? [result] : [];
-            return { results };
-          },
-        };
-      },
-    }),
-    batch: async () => [],
-  } as unknown as D1Database;
-}
-
-export function createOdaFixtureEnv(fixturePath?: string) {
-  const db = loadOdaFixtureDb(fixturePath);
-  return {
-    db,
-    d1: createOdaMemoryD1(db),
-  };
 }

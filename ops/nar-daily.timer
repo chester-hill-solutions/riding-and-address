@@ -1,0 +1,13 @@
+[Unit]
+Description=Run the CanCoder NAR daily city refresh
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+# Catch up if the machine was off at 03:15.
+Persistent=true
+# Spread load a little; the job is long but starts gently.
+RandomizedDelaySec=15m
+Unit=nar-daily.service
+
+[Install]
+WantedBy=timers.target

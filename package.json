@@ -4,6 +4,8 @@
   "description": "CanCoder: Canadian address geocoding, autocomplete, and electoral district API on Cloudflare Workers.",
   "main": "index.js",
   "dependencies": {
+    "brace-expansion": "^5.0.9",
+    "nanoid": "^6.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -46,6 +48,8 @@
     "import:oda:all": "tsx scripts/import-oda.ts --download --provinces ALL --remote --skip-schema --resume",
     "import:oda:centroids": "bash scripts/rebuild-oda-centroids.sh",
     "import:oda": "tsx scripts/import-oda.ts",
+    "import:nar": "tsx scripts/import-nar.ts",
+    "import:nar:next": "tsx scripts/import-nar.ts --next --remote",
     "build:oda:suggest": "tsx scripts/build-oda-suggest.ts",
     "keys": "tsx scripts/manage-keys.ts",
     "prepare": "husky"
@@ -53,5 +57,12 @@
   "packageManager": "bun@1.2.15",
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "overrides": {
+    "undici": "^7.29.0",
+    "sharp": "^0.35.4",
+    "nanoid": "^6.0.1",
+    "brace-expansion": "^5.0.9",
+    "postcss": "^8.5.26"
+  }
 }

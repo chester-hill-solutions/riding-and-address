@@ -1,7 +1,8 @@
 import { Env } from './types';
 import { CustomerRecord, defaultFuseLimit, loadCustomer } from './customer';
 import { ApiKeyRecord } from './api-keys';
-import { consumeMonthlyQuota, peekMonthlyQuota, utcMonth } from './api-key-usage-do';
+import { utcMonth } from './time';
+import { durableUsageLedger, UsageLedger } from './usage-ledger';
 
 export interface BillableAuthContext {
   key: ApiKeyRecord;
@@ -15,6 +16,8 @@ export interface RecordBillableOptions {
    * When omitted (tests / sync callers), the meter call is awaited instead of fire-and-forget.
    */
   waitUntil?: (task: Promise<unknown>) => void;
+  /** Customer fuse counter. Defaults to the Durable Object ledger. */
+  ledger?: UsageLedger;
 }
 
 function effectiveFuseLimit(customer: CustomerRecord, env: Env): number {
@@ -39,7 +42,7 @@ export async function recordSuccessfulBillable(
   // Hard-block uses limit; soft-warn / unlimited pass limit 0 into DO so increment always succeeds.
   const enforceLimit = softWarn || limit <= 0 ? 0 : limit;
 
-  const usage = await consumeMonthlyQuota(env, ctx.customer.id, enforceLimit, nowMs);
+  const usage = await (options.ledger ?? durableUsageLedger(env)).consumeMonthly(ctx.customer.id, enforceLimit, nowMs);
   if (!usage.allowed) {
     return {
       allowed: false,
@@ -72,15 +75,20 @@ export async function recordSuccessfulBillable(
   return { allowed: true, status: 200 };
 }
 
-export async function peekCustomerUsage(env: Env, customerId: string): Promise<{
+export async function peekCustomerUsage(
+  env: Env,
+  customerId: string,
+  options: { ledger?: UsageLedger; nowMs?: number } = {}
+): Promise<{
   month: string;
   count: number;
   limit: number;
 }> {
+  const nowMs = options.nowMs ?? Date.now();
   const customer = await loadCustomer(env, customerId);
   const limit = customer ? effectiveFuseLimit(customer, env) : defaultFuseLimit('free', env);
-  const usage = await peekMonthlyQuota(env, customerId, limit);
-  return { month: usage.month || utcMonth(Date.now()), count: usage.count, limit };
+  const usage = await (options.ledger ?? durableUsageLedger(env)).peekMonthly(customerId, limit, nowMs);
+  return { month: usage.month || utcMonth(nowMs), count: usage.count, limit };
 }
 
 /** Best-effort Stripe Billing Meter event. DO ledger remains canonical. */
@@ -114,4 +122,23 @@ export async function reportStripeMeter(
   } catch (error) {
     console.warn('[StripeMeter] unavailable:', error);
   }
+}
+
+/**
+ * Wire shape for a denied Billable unit: billed.body + correlation ID under
+ * the status chosen by the billing decision. Single place so every route
+ * speaks one Fuse-denial dialect (ADR-0002: never fail-closed on Stripe).
+ */
+export function billableDenialResponse(
+  billed: { status: number; body?: Record<string, unknown> },
+  correlationId: string,
+  corsHeaders: Record<string, string>
+): Response {
+  return new Response(JSON.stringify({ ...(billed.body ?? {}), correlationId }), {
+    status: billed.status,
+    headers: {
+      'content-type': 'application/json; charset=UTF-8',
+      ...corsHeaders,
+    },
+  });
 }
