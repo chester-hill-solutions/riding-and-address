@@ -4,7 +4,7 @@
   "description": "CanCoder: Canadian address geocoding, autocomplete, and electoral district API on Cloudflare Workers.",
   "main": "index.js",
   "dependencies": {
-    "brace-expansion": "^5.0.9",
+    "brace-expansion": "^5.0.12",
     "nanoid": "^6.0.2",
     "zod": "^4.4.3"
   },
@@ -59,10 +59,12 @@
   "author": "",
   "license": "ISC",
   "overrides": {
-    "undici": "^7.29.0",
-    "sharp": "^0.35.4",
-    "nanoid": "^6.0.1",
-    "brace-expansion": "^5.0.9",
-    "postcss": "^8.5.26"
+    "undici": "^7.29.1",
+    "sharp": "^0.35.5",
+    "nanoid": "^6.0.2",
+    "brace-expansion": "^5.0.12",
+    "postcss": "^8.5.26",
+    "source-map-js": "^1.2.2",
+    "vue": "3.5.42"
   }
 }
