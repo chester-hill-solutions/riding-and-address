@@ -1,5 +1,8 @@
 ## CanCoder Cloudflare Worker
 
+Production: https://cancoder.chesterhillsolutions.ca (also available at
+https://riding-lookup.chester-hill-solutions.workers.dev).
+
 [![CI](https://github.com/chester-hill-solutions/riding-and-address/actions/workflows/ci.yml/badge.svg)](https://github.com/chester-hill-solutions/riding-and-address/actions/workflows/ci.yml)
 
 A comprehensive API service for finding Canadian electoral district (riding) information using geographic coordinates or addresses. Built on Cloudflare Workers with advanced features including spatial indexing, batch processing, caching, and webhook notifications.

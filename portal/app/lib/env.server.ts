@@ -29,6 +29,7 @@ export function env() {
   const prod = isProduction();
   return {
     authSecret: read('AUTH_SECRET') || read('SESSION_SECRET'),
+    authTrustedOrigins: read('AUTH_TRUSTED_ORIGINS').split(',').map((origin) => origin.trim()).filter(Boolean),
     // localhost fallbacks are dev-only; production must configure these.
     baseUrl: read('BETTER_AUTH_URL') || read('BASE_URL') || (prod ? '' : 'http://localhost:5173'),
     /** Browser-facing Worker origin for docs links and marketing try-it (same origin — single Worker). */

@@ -6,13 +6,13 @@ import { env } from '~/lib/env.server';
 import { authSchema } from '~/db/schema';
 
 function buildAuth() {
-  const { authSecret, baseUrl } = env();
+  const { authSecret, baseUrl, authTrustedOrigins } = env();
   if (!authSecret) throw new Error('AUTH_SECRET is required');
 
   return createBetterAuth({
     secret: authSecret,
     baseURL: baseUrl,
-    trustedOrigins: [baseUrl],
+    trustedOrigins: [...new Set([baseUrl, ...authTrustedOrigins])],
     database: drizzleAdapter(getDb(), {
       provider: 'sqlite',
       schema: authSchema,

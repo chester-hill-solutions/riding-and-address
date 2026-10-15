@@ -1,5 +1,9 @@
 {
   "name": "riding-lookup",
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "cancoder.chesterhillsolutions.ca", "custom_domain": true }
+  ],
   // Worker entry for the combined deploy: routes portal (RR) + API (src/worker.ts) from one Worker.
   // Built and deployed via the Cloudflare Vite plugin (see vite.config.ts) — run `npm run build`
   // then `wrangler deploy` from this directory (or `npm run deploy`).
@@ -132,6 +136,7 @@
     // Secrets (AUTH_SECRET, STRIPE_*, RESEND_API_KEY) must be set with `wrangler secret put`.
     "ENVIRONMENT": "production",
     "BASE_URL": "https://riding-lookup.chester-hill-solutions.workers.dev",
+    "AUTH_TRUSTED_ORIGINS": "https://riding-lookup.chester-hill-solutions.workers.dev,https://cancoder.chesterhillsolutions.ca",
     "PUBLIC_API_BASE_URL": "https://riding-lookup.chester-hill-solutions.workers.dev",
     "PAID_CHECKOUT_ENABLED": "false",
     "EMAIL_FROM": "CanCoder <noreply@example.com>",
