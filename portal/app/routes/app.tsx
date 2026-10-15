@@ -1,3 +1,4 @@
+import { Badge } from '~/components/ui/badge';
 import { Form, Link, NavLink, Outlet } from 'react-router';
 import type { Route } from './+types/app';
 import { requireCustomer } from '~/lib/customer.server';
@@ -26,7 +27,7 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
             CanCoder
           </Link>
           <div className="account-summary">
-            <span className="plan-badge">{plan} plan</span>
+            <Badge variant="secondary">{plan} plan</Badge>
             <span className="account-summary__id">{customerId}</span>
           </div>
         </div>
@@ -44,7 +45,7 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
             {showAdmin ? <NavLink to="/app/admin">Admin</NavLink> : null}
           </nav>
           <Form method="post" action="/api/auth/sign-out">
-            <SubmitButton className="secondary sidebar-signout" pendingText="Signing out…">
+            <SubmitButton variant="secondary" className="sidebar-signout" pendingText="Signing out…">
               Sign out
             </SubmitButton>
           </Form>
