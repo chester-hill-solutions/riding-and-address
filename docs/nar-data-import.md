@@ -1,9 +1,10 @@
 # NAR Data Import (one city per day)
 
-> **Current status:** city replacement refreshes are disabled. Use the local-only
-> [FSA delta planner](nar-fsa-delta.md). The refresh commands and daily-rotation setup below are
-> historical documentation, not an enabled or budget-safe import path. `import:nar` refreshes
-> and `import:nar:next` now fail before database access. Listing/discovery remain available.
+> **Cost boundary:** the existing city refresh commands and their `--dry-run`, queue and daily
+> rotation behavior remain available. This replacement importer has no enforced D1 cost ceiling;
+> remote dry runs perform billable D1 reads even though they do not write data. The separate
+> [offline FSA delta planner](nar-fsa-delta.md) uses local files only and cannot execute a production
+> import. Its safeguards do not apply to these existing commands.
 
 ## Why
 

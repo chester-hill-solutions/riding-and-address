@@ -2,10 +2,11 @@
 
 `npm run import:nar:plan` stages **local files** and produces a dry-run delta report. It has no
 network client, download command, D1 adapter or execution mode. `--execute`, `--remote`, unknown
-flags and duplicate options fail before input files are read. The previous city replacement
-command (`import:nar`, including `import:nar:next`) now refuses refreshes before credentials,
-SQL, locks or downloads. Queue listing and explicitly requested source discovery remain available.
-Do not enable the old daily refresh job: it will now exit nonzero rather than rewrite a city.
+flags and duplicate options fail before input files are read. The existing city replacement
+commands (`import:nar`, including `import:nar:next` and `--dry-run`) and rotation behavior are
+unchanged. Those commands have no enforced D1 cost ceiling and are not made budget-safe by this
+planner. In particular, their remote dry runs still perform billable database reads. See the
+[city importer guide](nar-data-import.md) for their established behavior and risks.
 
 This is groundwork for a bounded importer, **not a production-ready importer**. No production
 schema migration, import, deployment or paid pilot is part of this change.
@@ -22,8 +23,11 @@ The planner requires a complete local province baseline and source manifest to d
 outside the selected FSA and preserve aggregate context. For old rows without address GUIDs,
 provide a reviewed one-to-one legacy ID bridge with evidence. Exact unique normalized equality
 can be counted as informational `unchanged`, but does not authorize inferred additions/deletions.
-Without a complete bridge or identity review, `add`, `update`, `delete` and cost fields are `null`,
-not guessed numbers or zeros. An explicit review file is an operator assertion for this offline
+Without complete source/baseline evidence, or with rejected/unaccounted-for source rows, the
+classification is also `indeterminate`: the report emits no mutations, aggregate replacements
+or row provenance changes. Unique exact matches remain informational; unmatched old/new rows
+remain unresolved. `add`, `update`, `delete` and cost fields are `null`, not guessed deletions,
+numbers or zeros. An explicit review file is an operator assertion for this offline
 planner; it is not an automatic certification of cross-vintage identity.
 
 Unknown FTS/internal posting costs, source snapshot reads, row/FSA provenance, receipts and
@@ -104,9 +108,12 @@ address from M5V to M5G is one update owned by M5V, not an independent delete/ad
 for M5G alone blocks if the required old owner is outside the selected partitions. Include all
 involved owners (including `NO_POSTAL`) to reconcile the move in the same immutable plan.
 
-Deletion requires complete normalized source evidence and reviewed identity. A normalized
-replacement count below 50% adds a shrink blocker; `--shrink-review evidence` records an explicit
-review of genuine removals/moves. It cannot override rejected records, incomplete inputs or
+Deletion requires complete normalized source evidence and reviewed identity. Each selected
+partition is checked separately, including `NO_POSTAL` and selected partitions with only old
+rows. A normalized replacement count below 50% in any bucket adds a shrink blocker, even when a
+larger unchanged FSA keeps the combined count above 50%. Per-partition old/new counts and shrink
+review requirements appear in `coverage`. `--shrink-review evidence` records an explicit review
+of genuine removals/moves in the affected buckets. It cannot override rejected records, incomplete inputs or
 unverified identity. There is no force flag and no partial-source deletion mode.
 
 Postal groups touched by **both old and new rows** are recomputed. A postal code with no final

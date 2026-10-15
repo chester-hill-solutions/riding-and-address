@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { acquireLocalWriter, runLocalRehearsal, type LocalReceiptTransport, type RehearsalBatch } from '../scripts/lib/nar-rehearsal';
+import { acquireLocalWriter, runLocalRehearsal, type Cost, type LocalReceiptTransport, type RehearsalBatch } from '../scripts/lib/nar-rehearsal';
 import { digest } from '../src/nar-delta';
 
 const dirs: string[] = [];
@@ -139,6 +139,23 @@ describe('local reservation and crash rehearsal (not a D1 transport)', () => {
   it('blocks permanently on metadata overruns instead of silently refunding or retrying', async () => {
     const f = fixture(); f.overrun();
     await expect(f.run()).rejects.toThrow(/exceeds calibrated reservation/);
+    await expect(f.run()).rejects.toThrow(/Checkpoint blocked/);
+    expect(f.applies()).toBe(1);
+    f.db.close();
+  });
+
+  it.each([undefined, null, { reads: 1 }, { reads: 1, writes: '2' }])('persists a permanent stop after committed effects return untrustworthy metadata: %j', async (metadata) => {
+    const f = fixture();
+    const apply = f.transport.applyAtomically;
+    f.transport.applyAtomically = async (batch) => {
+      await apply(batch); // The effect and receipt really committed before the malformed response.
+      return metadata as unknown as Cost;
+    };
+    await expect(f.run()).rejects.toThrow(/metadata exceeds calibrated reservation or is missing/);
+    expect(f.db.prepare('SELECT COUNT(*) AS n FROM effects').get()?.n).toBe(1);
+    const state = JSON.parse(readFileSync(`${f.targetPath}.nar-checkpoint.json`, 'utf8'));
+    expect(state.blocked).toMatch(/metadata/);
+    expect(state.complete).toBe(false);
     await expect(f.run()).rejects.toThrow(/Checkpoint blocked/);
     expect(f.applies()).toBe(1);
     f.db.close();

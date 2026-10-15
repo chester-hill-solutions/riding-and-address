@@ -133,14 +133,45 @@ describe('offline NAR FSA delta', () => {
   });
 
   it('uses normalized eligible rows for shrink checks and rejects incomplete inputs', () => {
-    const records = Array.from({ length: 10 }, (_, i) => old(record(`a${i}`), i + 1));
-    const result = planNarDelta({ source: source([record('a0'), record('a1')], { rawRows: 10, rejectedRows: 8 }),
+    const records = Array.from({ length: 10 }, (_, i) => old(record(`a${i}`, 'M5V2T6', { CIVIC_NO: String(i + 1) }), i + 1));
+    const surviving = records.slice(0, 2).map(({ addrGuid, locGuid, row }) => ({ addrGuid: addrGuid!, locGuid: locGuid!, row }));
+    const result = planNarDelta({ source: source(surviving, { rawRows: 10, rejectedRows: 8 }),
       baseline: baseline(records), partitions: ['M5V'], identity: { mode: 'same-vintage', evidence: 'fixture' } });
-    expect(result.counts).toMatchObject({ rawSource: 10, normalizedSource: 2, rejectedSource: 8 });
+    expect(result.counts).toMatchObject({ classification: 'indeterminate', rawSource: 10, normalizedSource: 2, rejectedSource: 8,
+      unchanged: 2, add: null, update: null, delete: null, unresolvedOld: 8, unresolvedNew: 0 });
+    expect(result.changes).toEqual([]);
+    expect(result.provenance).toEqual([]);
+    expect(result.aggregates).toEqual({ postal: [], city: [], street: [] });
+    expect(result.estimate).toMatchObject({ addressIndexWritesUpperBound: null, aggregateTableWritesUpperBound: null, indexedRowsReadModel: null });
     expect(result.blockers.join(' ')).toMatch(/Normalized replacement coverage shrank/);
     expect(result.blockers.join(' ')).toMatch(/rejected or unaccounted/);
     const incomplete = planNarDelta({ source: source([], { provinceComplete: false }), baseline: baseline([]), partitions: ['M5V'], identity: { mode: 'same-vintage', evidence: 'fixture' } });
     expect(incomplete.blockers.join(' ')).toMatch(/Complete province/);
+  });
+
+  it('does not infer deletions or aggregate replacements from incomplete source or baseline evidence', () => {
+    const a = record('a'), b = record('b', 'M5V9A1');
+    for (const incompleteSource of [true, false]) {
+      const result = planNarDelta({ source: source([a], { provinceComplete: !incompleteSource }),
+        baseline: baseline([old(a, 1), old(b, 2)], { provinceComplete: incompleteSource }),
+        partitions: ['M5V'], identity: { mode: 'same-vintage', evidence: 'fixture' }, shrinkReview: 'cannot override incomplete input' });
+      expect(result.counts).toMatchObject({ classification: 'indeterminate', delete: null, update: null, add: null });
+      expect(result.changes).toEqual([]);
+      expect(result.aggregates.postal).toEqual([]);
+      expect(result.estimate.addressIndexWritesUpperBound).toBeNull();
+    }
+  });
+
+  it('checks every selected partition so another FSA cannot mask an old-only FSA or missing-postal disappearance', () => {
+    const unchanged = Array.from({ length: 10 }, (_, i) => record(`stable-${i}`, 'M5G2K6', { CIVIC_NO: String(i + 1) }));
+    const gone = record('gone', 'M5V2T6'), noPostal = record('missing', '');
+    const result = plan([...unchanged.map((r, i) => old(r, i + 1)), old(gone, 11), old(noPostal, 12)], unchanged, ['M5G', 'M5V', NO_POSTAL]);
+    // Aggregate coverage is >50%, while two individual buckets completely disappeared.
+    expect(result.counts).toMatchObject({ old: 12, new: 10, unchanged: 10, delete: 2 });
+    expect(result.blockers.join(' ')).toMatch(/below 50% in M5V \(1 old, 0 new\)/);
+    expect(result.blockers.join(' ')).toMatch(/below 50% in NO_POSTAL \(1 old, 0 new\)/);
+    expect(result.blockers.join(' ')).not.toMatch(/below 50% in M5G/);
+    expect(result.coverage.find((c) => c.partition === NO_POSTAL)).toMatchObject({ oldRows: 1, normalizedRows: 0, shrinkReviewRequired: true });
   });
 
   it('does not schedule completed city/vintage claims as new work', () => {
@@ -241,8 +272,5 @@ describe('source staging and command boundaries', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/Production execution is unavailable/);
     expect(result.stderr).not.toMatch(/ENOENT/);
-    const legacy = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/import-nar.ts', '--city', 'Toronto', '--province', 'ON', '--remote', '--force'], { encoding: 'utf8' });
-    expect(legacy.status).toBe(1);
-    expect(legacy.stderr).toMatch(/Legacy city replacement is disabled/);
   });
 });

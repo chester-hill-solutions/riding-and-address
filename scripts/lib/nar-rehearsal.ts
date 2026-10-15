@@ -24,8 +24,11 @@ interface Checkpoint {
   complete: boolean;
 }
 
-function validCost(cost: Cost): boolean {
-  return Number.isSafeInteger(cost.reads) && cost.reads >= 0 && Number.isSafeInteger(cost.writes) && cost.writes >= 0;
+function validCost(cost: unknown): cost is Cost {
+  if (!cost || typeof cost !== 'object') return false;
+  const { reads, writes } = cost as Partial<Cost>;
+  return typeof reads === 'number' && Number.isSafeInteger(reads) && reads >= 0 &&
+    typeof writes === 'number' && Number.isSafeInteger(writes) && writes >= 0;
 }
 
 /** Atomic replacement + durable file/parent flush, including reservations before a possible mutation. */
@@ -110,7 +113,7 @@ export async function runLocalRehearsal(input: {
       if (phase === 'apply') state.batches[batch.id].attempts++;
       save(path, state);
     };
-    const checkActual = (actual: Cost, upper: Cost) => {
+    const checkActual = (actual: unknown, upper: Cost) => {
       if (!validCost(actual) || actual.reads > upper.reads || actual.writes > upper.writes) {
         state.blocked = 'Actual metadata exceeds calibrated reservation or is missing';
         save(path, state);
@@ -124,7 +127,7 @@ export async function runLocalRehearsal(input: {
       for (;;) {
         reserve(batch, 'receipt', transport.receiptUpperBound);
         const receipt = await transport.reconcile(batch);
-        checkActual(receipt.cost, transport.receiptUpperBound);
+        checkActual(receipt?.cost, transport.receiptUpperBound);
         if (receipt.status === 'applied') { checkpoint.done = true; save(path, state); break; }
         if (receipt.status !== 'not-applied') throw new Error('Ambiguous receipt; stop without replay or completion');
         if (checkpoint.attempts >= maxAttempts) throw new Error('Persisted attempt limit reached');

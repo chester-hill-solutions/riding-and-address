@@ -108,6 +108,7 @@ export interface DeltaPlan {
   partitions: string[];
   blockers: string[];
   counts: {
+    classification: 'complete-input' | 'indeterminate';
     rawSource: number; normalizedSource: number; rejectedSource: number;
     old: number; new: number; unchanged: number;
     add: number | null; update: number | null; delete: number | null;
@@ -116,7 +117,7 @@ export interface DeltaPlan {
   changes: Change[];
   aggregates: { postal: Aggregate[]; city: Aggregate[]; street: Aggregate[] };
   provenance: Array<{ addrGuid: string; oldPartition: string | null; newPartition: string | null; vintage: string }>;
-  coverage: Array<{ partition: string; vintage: string; sourceManifestHash: string; normalizedRows: number }>;
+  coverage: Array<{ partition: string; vintage: string; sourceManifestHash: string; oldRows: number; normalizedRows: number; shrinkReviewRequired: boolean }>;
   /** A partial FSA never marks an entire city complete. Runtime provenance needs a future migration. */
   cityCompletionAllowed: false;
   estimate: {
@@ -206,11 +207,13 @@ export function planNarDelta(input: {
   }
   if (source.province !== baseline.province) throw new Error('Snapshot province mismatch');
   const blockers: string[] = [];
-  if (!source.provinceComplete || !source.completenessEvidence.trim() ||
-      !baseline.provinceComplete || !baseline.completenessEvidence.trim()) {
+  const completeInputs = source.provinceComplete === true && Boolean(source.completenessEvidence.trim()) &&
+    baseline.provinceComplete === true && Boolean(baseline.completenessEvidence.trim());
+  if (!completeInputs) {
     blockers.push('Complete province source and baseline evidence is required for movement/deletion and cross-FSA aggregates.');
   }
-  if (source.rejectedRows || source.rawRows !== source.records.length) {
+  const rejectedOrUnaccounted = source.rejectedRows > 0 || source.rawRows !== source.records.length;
+  if (rejectedOrUnaccounted) {
     blockers.push('Source has rejected or unaccounted-for rows; raw matches are not valid replacement rows.');
   }
   const selected = (row: OdaInsertRow) => partitions.includes(postalPartition(row.postalCode));
@@ -244,7 +247,9 @@ export function planNarDelta(input: {
   const validIdentity = identity.evidence.trim() &&
     ((identity.mode === 'same-vintage' && source.vintage === baseline.vintage) || identity.mode === 'reviewed-cross-vintage');
   const unmapped = old.filter((r) => !r.addrGuid);
-  const identityBlocked = !validIdentity || unmapped.length > 0;
+  // Incomplete source coverage can look exactly like a real deletion. Do not emit actionable
+  // mutations, aggregate replacements or cost components just because the surviving IDs match.
+  const classificationBlocked = !validIdentity || unmapped.length > 0 || !completeInputs || rejectedOrUnaccounted;
   if (!validIdentity) blockers.push('GUID stability is unverified; supply a same-vintage or reviewed cross-vintage identity assessment.');
   if (unmapped.length) blockers.push(`${unmapped.length} legacy rows lack reviewed source identity; changed/deleted/moved rows cannot be classified reliably.`);
 
@@ -252,7 +257,7 @@ export function planNarDelta(input: {
   const newScope = source.records.filter((r) => selected(r.row));
   let unchanged = 0;
   const changes: Change[] = [];
-  if (!identityBlocked) {
+  if (!classificationBlocked) {
     for (const before of old) {
       const after = newByGuid.get(before.addrGuid!);
       const owner = postalPartition(before.row.postalCode);
@@ -276,9 +281,15 @@ export function planNarDelta(input: {
     unchanged = oldScope.filter((r) => oldHashes.get(rowFingerprint(r.row)) === 1 && newHashes.get(rowFingerprint(r.row)) === 1).length;
   }
   changes.sort((a, b) => a.owner.localeCompare(b.owner) || a.key.localeCompare(b.key));
-  if (oldScope.length && newScope.length < oldScope.length * 0.5 && !input.shrinkReview?.trim()) {
-    blockers.push('Normalized replacement coverage shrank below 50%; reviewed deletion/movement evidence is required.');
-  }
+  const coverage = partitions.map((partition) => {
+    const oldRows = oldScope.filter((record) => postalPartition(record.row.postalCode) === partition).length;
+    const normalizedRows = newScope.filter((record) => postalPartition(record.row.postalCode) === partition).length;
+    const shrinkReviewRequired = oldRows > 0 && normalizedRows < oldRows * 0.5;
+    if (shrinkReviewRequired && !input.shrinkReview?.trim()) {
+      blockers.push(`Normalized replacement coverage shrank below 50% in ${partition} (${oldRows} old, ${normalizedRows} new); reviewed deletion/movement evidence is required.`);
+    }
+    return { partition, vintage: source.vintage, sourceManifestHash: source.manifestHash, oldRows, normalizedRows, shrinkReviewRequired };
+  });
   const involvedCities = new Set([...oldScope, ...newScope].map((r) => r.row.cityKey));
   for (const claim of baseline.completedCities) {
     if (claim.vintage === source.vintage && involvedCities.has(claim.cityKey)) {
@@ -312,9 +323,9 @@ export function planNarDelta(input: {
         maxCivic: civicNumbers.length ? civicNumbers.reduce((a, b) => Math.max(a, b)) : null } : {}) };
   });
   const aggregates = { postal: aggregate('postal'), city: aggregate('city'), street: aggregate('street') };
-  const writes = identityBlocked ? null : changes.reduce((sum, c) => sum + ({ add: 7, update: 11, delete: 6 })[c.kind], 0);
-  const aggregateWrites = identityBlocked ? null : 4 * Object.values(aggregates).reduce((sum, g) => sum + g.length, 0);
-  const reads = identityBlocked ? null : oldScope.length + changes.filter((c) => c.before).length + aggregateReads;
+  const writes = classificationBlocked ? null : changes.reduce((sum, c) => sum + ({ add: 7, update: 11, delete: 6 })[c.kind], 0);
+  const aggregateWrites = classificationBlocked ? null : 4 * Object.values(aggregates).reduce((sum, g) => sum + g.length, 0);
+  const reads = classificationBlocked ? null : oldScope.length + changes.filter((c) => c.before).length + aggregateReads;
   if (writes !== null && writes + (aggregateWrites ?? 0) > ceilings.writes) blockers.push('Known address/index/aggregate writes already exceed the write ceiling.');
   if (reads !== null && reads > ceilings.reads) blockers.push('Indexed row-read model already exceeds the read ceiling.');
   // No empirical D1 bound exists yet for internal FTS writes, schema/provenance, retries or export reads.
@@ -323,20 +334,20 @@ export function planNarDelta(input: {
   const plan = {
     schema: 1 as const, mode: 'offline-dry-run' as const, province: source.province, vintage: source.vintage,
     partitions, blockers: [...new Set(blockers)],
-    counts: { rawSource: source.rawRows, normalizedSource: source.records.length, rejectedSource: source.rejectedRows,
+    counts: { classification: classificationBlocked ? 'indeterminate' as const : 'complete-input' as const,
+      rawSource: source.rawRows, normalizedSource: source.records.length, rejectedSource: source.rejectedRows,
       old: oldScope.length, new: newScope.length, unchanged,
-      add: identityBlocked ? null : changes.filter((c) => c.kind === 'add').length,
-      update: identityBlocked ? null : changes.filter((c) => c.kind === 'update').length,
-      delete: identityBlocked ? null : changes.filter((c) => c.kind === 'delete').length,
-      unresolvedOld: identityBlocked ? oldScope.length - unchanged : 0,
-      unresolvedNew: identityBlocked ? newScope.length - unchanged : 0,
+      add: classificationBlocked ? null : changes.filter((c) => c.kind === 'add').length,
+      update: classificationBlocked ? null : changes.filter((c) => c.kind === 'update').length,
+      delete: classificationBlocked ? null : changes.filter((c) => c.kind === 'delete').length,
+      unresolvedOld: classificationBlocked ? oldScope.length - unchanged : 0,
+      unresolvedNew: classificationBlocked ? newScope.length - unchanged : 0,
       missingPostalOld: old.filter((r) => !r.row.postalCode).length,
       missingPostalNew: source.records.filter((r) => !r.row.postalCode).length },
     changes, aggregates,
     provenance: changes.map((c) => ({ addrGuid: c.key, oldPartition: c.before ? postalPartition(c.before.row.postalCode) : null,
       newPartition: c.after ? postalPartition(c.after.row.postalCode) : null, vintage: source.vintage })),
-    coverage: partitions.map((partition) => ({ partition, vintage: source.vintage, sourceManifestHash: source.manifestHash,
-      normalizedRows: newScope.filter((record) => postalPartition(record.row.postalCode) === partition).length })),
+    coverage,
     cityCompletionAllowed: false as const,
     estimate: { addressIndexWritesUpperBound: writes, aggregateTableWritesUpperBound: aggregateWrites,
       indexedRowsReadModel: reads, totalReadsUpperBound: null, totalWritesUpperBound: null,
