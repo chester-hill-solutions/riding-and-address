@@ -289,3 +289,17 @@ describe('haversineMeters', () => {
     expect(distance).toBeLessThan(100);
   });
 });
+
+
+describe('French street type placement', () => {
+  it.each([
+    ['350 Rue Saint-Paul E', 'SAINT-PAUL', 'RUE', 'E'],
+    ['350 Saint-Paul RUE E', 'SAINT-PAUL', 'RUE', 'E'],
+    ['10 Chemin du Lac', 'DU LAC', 'CH', undefined],
+    ['10 Boulevard René-Lévesque E', 'RENE-LEVESQUE', 'BLVD', 'E'],
+    ['100 Avenue Rd', 'AVENUE', 'RD', undefined],
+    ['123 Main E', 'MAIN', undefined, 'E'],
+  ])('parses %s without moving name tokens into the type', (address, streetName, streetType, streetDirection) => {
+    expect(parseAddressQuery({ address })).toMatchObject({ streetName, streetType, streetDirection });
+  });
+});

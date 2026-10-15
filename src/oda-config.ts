@@ -17,6 +17,7 @@ export const CONFIDENCE_BY_METHOD = {
   // below `exact` because the postal code, not the city, is what scopes the match.
   postal_street: 0.9,
   postal_centroid: 0.85,
+  postal_prefix: 0.65,
   street_interpolated: 0.75,
   city_centroid: 0.45,
   nearest_neighbor: 0.7,

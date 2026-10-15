@@ -121,8 +121,7 @@
     "ODA_MAX_REVERSE_DISTANCE_METERS": "25000",
     "ODA_MAX_AMBIGUOUS_MATCHES": "5",
     "SPATIAL_DB_ENABLED": "true",
-    // While false, /api/search is not registered and falls through to the /api catch-all,
-    // and /embed.js 404s. Enabled 2026-07-16 after `bun run build:oda:suggest` populated the
+    // While false, /api/search and /embed.js both return 404. Enabled 2026-07-16 after `bun run build:oda:suggest` populated the
     // index for all ODA_PROVINCES on the production oda-addresses database.
     "ODA_SUGGEST_ENABLED": "true",
     "ODA_SUGGEST_LIMIT": "7",

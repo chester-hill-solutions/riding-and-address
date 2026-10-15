@@ -108,6 +108,12 @@ export function getRouteForR2Key(key: RidingDatasetKey): string {
   return provincial?.path ?? FEDERAL_DATASET.path;
 }
 
+/** Only registered lookup routes may resolve a boundary dataset. */
+export function isLookupPath(pathname: string): boolean {
+  return pathname === '/api' || pathname === '/api/federal' || pathname === '/api/combined' ||
+    PROVINCIAL_DATASETS.some((dataset) => dataset.path === pathname);
+}
+
 export function pickDataset(pathname: string): { r2Key: string } {
   if (pathname === '/api' || pathname === '/api/federal' || pathname === '/api/combined') {
     return { r2Key: FEDERAL_DATASET.r2Key };

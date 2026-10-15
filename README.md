@@ -43,7 +43,7 @@ so a province can contain both vintages at once; each response reports which one
 Provide either coordinates or a geocodable address:
 
 - `lat` and `lon` (or `lng` / `long`) — Geographic coordinates
-- `address` or `postal` — Street address or postal code (e.g., `H2X 1Y4` or `M5V 2T6`)
+- `address` or `postal` — Street address or postal code (e.g., `H2X 1Y4` or `M4C 5N8`)
 - `city` — City name (optional, helps with geocoding)
 - `state` or `province` — Province/state (optional)
 - `country` — Country (optional, defaults to Canada)
@@ -99,10 +99,10 @@ Rules:
 
 #### Examples:
 - `GET /api?lat=45.5017&lon=-73.5673`
-- `GET /api?include_province=true&postal=M5V2T6`
+- `GET /api?include_province=true&postal=M4C5N8`
 - `GET /api?include_province=true&return=municipality&address=123%20Main%20St&city=Toronto&province=ON`
-- `GET /api/qc?address=350%20Rue%20St-Paul%20E,%20Montréal`
-- `GET /api/on?postal=M5V2T6&return=municipality`
+- `GET /api/qc?address=350%20Rue%20Saint-Paul%20E,%20Montréal`
+- `GET /api/on?postal=M4C5N8&return=municipality`
 - `GET /api/combined?address=757%20Victoria%20Park&city=Toronto&province=ON`
 
 #### Response Format:

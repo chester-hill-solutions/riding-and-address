@@ -60,6 +60,7 @@ interface GeocodingCacheEntry {
   matchedFields?: string[];
   mailingAddress?: OdaGeocodeMetadata['mailingAddress'];
   dataSource?: OdaGeocodeMetadata['dataSource'];
+  postalMatch?: OdaGeocodeMetadata['postalMatch'];
 }
 
 // Reverse geocoding cache entry interface
@@ -89,6 +90,7 @@ const GEOGRATIS_MIN_SCORE = QUALITY_THRESHOLDS.GEOGRATIS_MIN_SCORE;
  */
 export function generateGeocodingCacheKey(query: QueryParams, provider: string): string {
   const normalizedQuery = {
+    method: query.geocodeMethod ?? 'auto',
     address: query.address?.toLowerCase().trim(),
     postal: query.postal?.toLowerCase().trim().replace(/\s+/g, ''),
     city: query.city?.toLowerCase().trim(),
@@ -96,7 +98,7 @@ export function generateGeocodingCacheKey(query: QueryParams, provider: string):
     country: query.country?.toLowerCase().trim()
   };
 
-  return `geocoding:v2:${provider}:${JSON.stringify(normalizedQuery)}`;
+  return `geocoding:v3:${provider}:${JSON.stringify(normalizedQuery)}`;
 }
 
 /**
@@ -131,6 +133,7 @@ export async function getCachedGeocoding(env: Env, cacheKey: string): Promise<Ge
     matchedFields: cached.matchedFields,
     mailingAddress: cached.mailingAddress,
     dataSource: cached.dataSource,
+    postalMatch: cached.postalMatch,
   };
 }
 
@@ -168,6 +171,7 @@ export async function setCachedGeocoding(
     matchedFields: result.matchedFields,
     mailingAddress: result.mailingAddress,
     dataSource: result.dataSource,
+    postalMatch: result.postalMatch,
   };
 
   await writeTimestampedEntry(
@@ -248,6 +252,7 @@ export type GeocodeResult = {
 } & OdaGeocodeMetadata;
 
 export type GeocodeBatchResult = {
+  postalMatch?: OdaGeocodeMetadata['postalMatch'];
   lon: number;
   lat: number;
   success: boolean;
@@ -270,6 +275,7 @@ function geocodeResultToBatchResult(result: GeocodeResult): GeocodeBatchResult {
     mailingAddress: result.mailingAddress,
     geocodeMethod: result.geocodeMethod,
     confidence: result.confidence,
+    postalMatch: result.postalMatch,
   };
 }
 
@@ -710,6 +716,7 @@ export async function geocodeBatch(
         normalizedAddress: r.normalizedAddress,
         geocodeMethod: r.geocodeMethod,
         confidence: r.confidence,
+        postalMatch: r.postalMatch,
       }));
     }
   }
