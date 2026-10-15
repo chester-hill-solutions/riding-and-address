@@ -1,5 +1,10 @@
 # NAR Data Import (one city per day)
 
+> **Current status:** city replacement refreshes are disabled. Use the local-only
+> [FSA delta planner](nar-fsa-delta.md). The refresh commands and daily-rotation setup below are
+> historical documentation, not an enabled or budget-safe import path. `import:nar` refreshes
+> and `import:nar:next` now fail before database access. Listing/discovery remain available.
+
 ## Why
 
 The address database was built from Statistics Canada's [Open Database of Addresses (ODA)](https://www.statcan.gc.ca/en/lode/databases/oda), whose collection period is **January–April 2021**. Statistics Canada's successor source is the [National Address Register (NAR)](https://www150.statcan.gc.ca/n1/en/catalogue/46260002) — catalogue 46-26-0002, semi-annual, released under the Statistics Canada Open Licence, with the same civic/mailing address shape.

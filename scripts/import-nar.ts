@@ -113,7 +113,7 @@ function parseArgs(argv: string[]): ImportOptions {
     queuePath: 'data/nar-cities.txt',
     skipSchema: false,
     skipSuggest: false,
-    dryRun: false,
+    dryRun: true,
     force: false,
     keepCsv: false,
   };
@@ -989,6 +989,13 @@ async function discoverCities(options: ImportOptions, provinces: string[]): Prom
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
+  // The replacement writer has no trustworthy cost/identity guard and cannot safely implement
+  // an FSA delta. Fail before credentials, D1 reads, schema writes, locks or downloads.
+  // Keep read-only queue listing and explicitly requested local source discovery available.
+  const argv = process.argv.slice(2);
+  if (!argv.includes('--list') && !argv.includes('--discover-cities')) {
+    throw new Error('Legacy city replacement is disabled. Use npm run import:nar:plan with local source/baseline manifests. Production execution is unavailable until identity, cost and fencing gates are validated.');
+  }
   const options = parseArgs(process.argv.slice(2));
 
   if (options.discoverCities) {
