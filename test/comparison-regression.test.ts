@@ -21,10 +21,6 @@ const cases = JSON.parse(
 
 const postalAndCoordCases = cases.filter((c) => c.category === 'A' || c.category === 'C');
 
-function toSearchParams(query: Record<string, string>): string {
-  return new URLSearchParams(query).toString();
-}
-
 describe('comparison regression (postal + coordinates)', () => {
   it('has expected A/C case count from OpenNorth matrix', () => {
     expect(postalAndCoordCases.length).toBe(13);
