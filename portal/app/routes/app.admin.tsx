@@ -17,8 +17,8 @@ export function meta(): Route.MetaDescriptors {
   ];
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const userId = await requireSessionUserId(request);
+export async function loader({ request, url }: Route.LoaderArgs) {
+  const userId = await requireSessionUserId(request, url);
   if (!isFounder(userId)) {
     return { allowed: false as const, customers: [] };
   }
@@ -26,8 +26,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   return { allowed: true as const, customers };
 }
 
-export async function action({ request }: Route.ActionArgs) {
-  const userId = await requireSessionUserId(request);
+export async function action({ request, url }: Route.ActionArgs) {
+  const userId = await requireSessionUserId(request, url);
   if (!isFounder(userId)) return { error: 'Forbidden' };
 
   const form = await request.formData();

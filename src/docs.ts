@@ -1,3 +1,4 @@
+import { SITE_BRAND_STYLES, SITE_FONT_STYLESHEET, renderSiteHeader } from './site-chrome';
 // Documentation and UI functions
 
 import { getAllProvincialPaths, PROVINCIAL_DATASETS } from './datasets';
@@ -40,18 +41,25 @@ export function createApiReference(_baseUrl: string): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CanCoder API Reference</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="${SITE_FONT_STYLESHEET}">
   <style>
+    ${SITE_BRAND_STYLES}
     html, body {
       margin: 0;
-      height: 100%;
+      min-height: 100%; font-family: var(--site-font); color: var(--site-ink);
     }
-    #api-reference {
-      height: 100%;
+    #cancoder-api-reference {
+      min-height: calc(100vh - var(--site-header-height));
+      --scalar-font: var(--site-font); --scalar-color-accent: var(--site-primary);
     }
   </style>
 </head>
 <body>
-  <div id="api-reference"></div>
+  ${renderSiteHeader('API docs')}
+  <div id="reference-loading" role="status" style="max-width:1112px;margin:3rem auto;padding:0 24px;color:var(--site-muted)">Loading the API reference… <a href="/api/docs">Open the specification</a></div>
+  <div id="cancoder-api-reference"></div>
   <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@${SCALAR_API_REFERENCE_VERSION}"></script>
   <script>
     (function () {
@@ -95,10 +103,17 @@ export function createApiReference(_baseUrl: string): string {
         return originalFetch(input, init);
       };
 
-      Scalar.createApiReference('#api-reference', {
+      if (!window.Scalar) return;
+      document.getElementById('reference-loading').remove();
+      Scalar.createApiReference('#cancoder-api-reference', {
         url: openApiUrl,
         theme: 'default',
         layout: 'modern',
+        showDeveloperTools: 'never',
+        agent: { disabled: true },
+        forceDarkModeState: 'light',
+        hideDarkModeToggle: true,
+        customCss: '.light-mode { --scalar-font: var(--site-font); --scalar-color-accent: var(--site-primary); } #cancoder-api-reference h1, #cancoder-api-reference h2 { font-family: var(--site-display); }',
       });
     })();
   </script>
@@ -350,12 +365,11 @@ export function createOpenAPISpec(baseUrl: string) {
     info: {
       title: "CanCoder API",
       description:
-        "Canadian address geocoding, autocomplete, and electoral district API. Find federal, provincial, and territorial ridings by location. When ODA_GEOCODING_ENABLED is true, address geocoding uses Statistics Canada's Open Database of Addresses in D1; otherwise GeoGratis is tried first with fallback to Google Maps (BYOK), Mapbox, or Nominatim. Supports batch geocoding, lookup caching, and optional provincial riding enrichment. Built on Cloudflare Workers for global edge performance.",
+        "Canadian address autocomplete, geocoding, and electoral district lookup. Search by address, postal code, or coordinates to find federal, provincial, and territorial ridings. Responses include match quality so you can distinguish exact address matches from approximate locations.",
       version: "1.0.0",
       contact: {
         name: "API Support",
-        url: "https://github.com",
-        email: "support@example.com",
+        url: "https://github.com/chester-hill-solutions/riding-and-address/issues",
       },
       license: {
         name: "MIT",

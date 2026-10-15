@@ -2,13 +2,13 @@
 
 /* CanCoder owns brand values; upstream component and foundation CSS stay intact. */
 :root:not([data-style]) {
-  --style-font-sans: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
-  --style-font-heading: "Source Serif 4", Georgia, serif;
+  --style-font-sans: var(--site-font);
+  --style-font-heading: var(--site-display);
   --style-font-display: var(--style-font-heading);
   --style-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-sans: var(--style-font-sans);
   --font-display: var(--style-font-display);
-  --radius: 0.625rem;
+  --radius: 0.75rem;
   --space-unit: 0.25rem;
   --font-size-base: 1rem;
   --font-size-sm: 0.875rem;
@@ -20,52 +20,54 @@
   --surface: var(--card);
   --surface-subtle: var(--muted);
   --text: var(--foreground);
-  --primary-strong: #0c4488;
-  --primary-soft: #e7f0fb;
-  --border-strong: #8b9bb0;
+  --primary-strong: var(--site-primary-strong);
+  --primary-soft: var(--site-primary-soft);
+  --border-strong: #aebdd0;
   --error: var(--destructive);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: var(--radius);
-  --shadow: 0 18px 40px rgb(19 32 51 / 10%);
+  --shadow: 0 8px 24px rgb(19 32 51 / 5%);
   --hero-ink: #f4f8fc;
 }
 
 :root:not(.dark) {
-  --background: #eef3f8;
-  --foreground: #132033;
+  --background: var(--site-canvas);
+  --foreground: var(--site-ink);
   --card: #ffffff;
-  --card-foreground: #132033;
+  --card-foreground: var(--site-ink);
   --popover: #ffffff;
-  --popover-foreground: #132033;
-  --primary: #1457a6;
+  --popover-foreground: var(--site-ink);
+  --primary: var(--site-primary);
   --primary-foreground: #ffffff;
-  --secondary: #e7f0fb;
-  --secondary-foreground: #0c4488;
-  --muted: #e4ebf4;
-  --muted-foreground: #5a687c;
+  --secondary: var(--site-primary-soft);
+  --secondary-foreground: var(--site-primary-strong);
+  --muted: #f0f3f8;
+  --muted-foreground: var(--site-muted);
   --accent: #dcebf9;
-  --accent-foreground: #0c4488;
-  --border: #d0dbe8;
-  --input: #8b9bb0;
-  --ring: #1457a6;
+  --accent-foreground: var(--site-primary-strong);
+  --border: var(--site-border);
+  --input: #aebdd0;
+  --ring: var(--site-primary);
   --destructive: #b42318;
   --destructive-foreground: #ffffff;
   --success: #14733e;
   --success-foreground: #ffffff;
   --warning: #f3b61f;
   --warning-foreground: #3a2900;
-  --info: #1457a6;
+  --info: var(--site-primary);
   --info-foreground: #ffffff;
-  --ui-primary-text: #1457a6;
+  --ui-primary-text: var(--site-primary);
   --ui-success-text: #14733e;
   --ui-destructive-text: #b42318;
   --ui-warning-text: #754508;
-  --ui-info-text: #1457a6;
+  --ui-info-text: var(--site-primary);
 }
 
 /* Slot chrome is themed here, without editing copied component source. */
 [data-slot="input"],
 [data-slot="native-select"] {
+  min-height: 44px;
+  font-size: 1rem;
   background: var(--card);
   border-color: var(--input);
 }
@@ -88,7 +90,20 @@
   border-color: var(--primary);
 }
 
-/* Context-specific outline contrast follows the brand theme. */
-.hero-marketing .marketing-outline { border-color: rgb(255 255 255 / 50%); background: transparent; color: white; }
-.hero-marketing .marketing-outline:hover { background: rgb(255 255 255 / 12%); }
-.section .marketing-outline { color: var(--primary); background: var(--card); border-color: var(--primary); }
+/* Secondary actions retain the same contrast on every page. */
+.marketing-outline { border-color: var(--border); background: var(--card); color: var(--text); }
+.marketing-outline:hover { background: var(--primary-soft); color: var(--primary-strong); }
+
+/* The hero uses reversed brand colours over the blue surface. */
+.hero-marketing .button-row > [data-slot="button"]:first-child {
+  background: white;
+  color: var(--primary-strong);
+}
+.hero-marketing .button-row > .marketing-outline {
+  background: transparent;
+  color: white;
+  border-color: #759bc9;
+}
+.hero-marketing .button-row > .marketing-outline:hover {
+  background: rgb(255 255 255 / 12%);
+}

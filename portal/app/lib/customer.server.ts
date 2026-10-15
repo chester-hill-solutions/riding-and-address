@@ -74,8 +74,8 @@ export async function getCustomerContext(userId: string): Promise<CustomerContex
  * Loader/action guard: authenticated user with a Customer (membership + billing),
  * auto-provisioning a Customer if the user has none yet.
  */
-export async function requireCustomer(request: Request): Promise<CustomerContext> {
-  const userId = await requireSessionUserId(request);
+export async function requireCustomer(request: Request, url: URL): Promise<CustomerContext> {
+  const userId = await requireSessionUserId(request, url);
   let context = await getCustomerContext(userId);
   if (!context) {
     await ensureCustomerForUser(userId, 'My organization');

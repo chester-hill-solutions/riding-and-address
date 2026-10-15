@@ -1,3 +1,4 @@
+import { CANADIAN_PROVINCE_ALIASES, normalizeCanadianProvinceCode } from '@chester-hill-solutions/validation';
 import { validatePostalCode } from './utils';
 
 /** StatCan province/territory numeric ID → two-letter code */
@@ -17,38 +18,7 @@ export const PROVINCE_ID_TO_CODE: Record<string, string> = {
   '62': 'NU',
 };
 
-export const PROVINCE_NAME_TO_CODE: Record<string, string> = {
-  NL: 'NL',
-  NEWFOUNDLAND: 'NL',
-  PE: 'PE',
-  PEI: 'PE',
-  'PRINCE EDWARD ISLAND': 'PE',
-  NS: 'NS',
-  'NOVA SCOTIA': 'NS',
-  NB: 'NB',
-  'NEW BRUNSWICK': 'NB',
-  QC: 'QC',
-  QUE: 'QC',
-  QUEBEC: 'QC',
-  QUÉBEC: 'QC',
-  ON: 'ON',
-  ONT: 'ON',
-  ONTARIO: 'ON',
-  MB: 'MB',
-  MANITOBA: 'MB',
-  SK: 'SK',
-  SASKATCHEWAN: 'SK',
-  AB: 'AB',
-  ALBERTA: 'AB',
-  BC: 'BC',
-  'BRITISH COLUMBIA': 'BC',
-  YT: 'YT',
-  YUKON: 'YT',
-  NT: 'NT',
-  'NORTHWEST TERRITORIES': 'NT',
-  NU: 'NU',
-  NUNAVUT: 'NU',
-};
+export const PROVINCE_NAME_TO_CODE: Readonly<Record<string, string>> = CANADIAN_PROVINCE_ALIASES;
 
 /** Search normalization: expand abbreviations to canonical search tokens */
 /**
@@ -225,8 +195,7 @@ export function normalizeProvince(input: string | undefined): string | undefined
   if (/^\d+$/.test(trimmed)) {
     return PROVINCE_ID_TO_CODE[trimmed];
   }
-  const key = foldAccents(trimmed);
-  return PROVINCE_NAME_TO_CODE[key];
+  return normalizeCanadianProvinceCode(trimmed);
 }
 
 export function normalizeStreetType(type: string | undefined): string {

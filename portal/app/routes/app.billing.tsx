@@ -22,8 +22,8 @@ export function meta(): Route.MetaDescriptors {
   ];
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const { billing, membership } = await requireCustomer(request);
+export async function loader({ request, url }: Route.LoaderArgs) {
+  const { billing, membership } = await requireCustomer(request, url);
   return {
     billing,
     paidCheckoutEnabled: env().paidCheckoutEnabled,
@@ -31,8 +31,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   };
 }
 
-export async function action({ request }: Route.ActionArgs) {
-  const { billing, membership } = await requireCustomer(request);
+export async function action({ request, url }: Route.ActionArgs) {
+  const { billing, membership } = await requireCustomer(request, url);
   requireOwnerOrAdmin(membership);
 
   const form = await request.formData();

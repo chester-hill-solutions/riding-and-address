@@ -13,8 +13,8 @@ export function meta(): Route.MetaDescriptors {
   ];
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const { billing } = await requireCustomer(request);
+export async function loader({ request, url }: Route.LoaderArgs) {
+  const { billing } = await requireCustomer(request, url);
   const keys = await listKeys(billing.workspaceId);
   try {
     const usage = await fetchUsage(billing.customerId);

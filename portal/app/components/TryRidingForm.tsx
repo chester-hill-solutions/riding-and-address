@@ -244,7 +244,7 @@ export function TryRidingForm({ apiBaseUrl, demoBrowserKey }: TryRidingFormProps
         if (cancelled) return;
         setWidgetReady(false);
         setStatus('error');
-        setMessage('Autocomplete unavailable — is the API running with suggest enabled?');
+        setMessage('Address search is unavailable. Please try again shortly.');
       }
     })();
 

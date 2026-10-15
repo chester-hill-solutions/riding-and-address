@@ -1,0 +1,34 @@
+{
+  "name": "@chester-hill-solutions/validation",
+  "version": "0.3.0",
+  "description": "Canadian input normalization and Zod schemas",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chester-hill-solutions/chester-hill-solutions.git",
+    "directory": "packages/validation"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./fixtures/canadian-address": {
+      "types": "./dist/fixtures/canadian-address.d.ts",
+      "import": "./dist/fixtures/canadian-address.js"
+    }
+  },
+  "dependencies": {
+    "zod": "^4.3.5"
+  }
+}

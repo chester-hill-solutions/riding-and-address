@@ -1,17 +1,8 @@
-import { createRequestHandler } from 'react-router';
+import { createRequestHandler, RouterContextProvider } from 'react-router';
 import apiWorker, { ApiKeyUsageDO, CircuitBreakerDO, QueueManagerDO } from '../../src/worker';
 import { ownerOf } from '../../src/routes';
 import type { CloudflareEnv } from '~/lib/cloudflare-env';
 import { runWithCloudflareContext } from '~/lib/cloudflare-context.server';
-
-declare module 'react-router' {
-  interface AppLoadContext {
-    cloudflare: {
-      env: CloudflareEnv;
-      ctx: ExecutionContext;
-    };
-  }
-}
 
 const requestHandler = createRequestHandler(
   () => import('virtual:react-router/server-build'),
@@ -30,7 +21,9 @@ async function handlePortalRequest(
     // (Resend, Stripe, etc.) just to boot the portal locally. Each feature that actually needs a
     // secret (auth.server.ts's AUTH_SECRET check, email sending, Stripe routes) already guards
     // itself via env() at the point of use.
-    return requestHandler(request, { cloudflare: { env, ctx } });
+    // RR8 requires a fresh provider for every request. Bindings remain request-scoped
+    // in AsyncLocalStorage above, as used by the portal's database and auth helpers.
+    return requestHandler(request, new RouterContextProvider());
   });
 }
 

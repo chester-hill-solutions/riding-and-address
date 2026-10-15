@@ -6,7 +6,7 @@ import { normalizeEmail } from '@chester-hill-solutions/auth';
 import { getAuth } from '~/lib/auth.server';
 import { ensureCustomerForUser } from '~/lib/customer.server';
 import { lookupInviteToken, redeemInviteForUser } from '~/lib/invite.server';
-import { Panel } from '~/components/Panel';
+import { AuthLayout } from '~/components/AuthLayout';
 import { FormFeedback } from '~/components/FormFeedback';
 import { SubmitButton } from '~/components/SubmitButton';
 
@@ -96,23 +96,8 @@ export default function Signup({ loaderData, actionData }: Route.ComponentProps)
   const { invite, inviteError } = loaderData;
   const joining = Boolean(invite);
   return (
-    <main className="shell">
-      <nav className="nav">
-        <Link className="brand" to="/">
-          CanCoder
-        </Link>
-      </nav>
-      <Panel title={joining ? `Join ${invite!.orgName}` : 'Create your organization'}>
-        {joining ? (
-          <p className="muted">
-            You’re joining <strong>{invite!.orgName}</strong> as a member. Sign up with{' '}
-            <code>{invite!.email}</code> to accept the invitation.
-          </p>
-        ) : (
-          <p className="muted">
-            Free tier includes 1 000 successful lookups/searches per UTC month.
-          </p>
-        )}
+    <AuthLayout title={joining ? `Join ${invite!.orgName}` : 'Create your workspace'}
+      description={joining ? `You were invited as ${invite!.email}. Create your account to join the team.` : 'Start with 1,000 free calls every month. No credit card required.'}>
         {inviteError ? <p className="error">{inviteError}</p> : null}
         <FormFeedback error={actionData?.error} />
         <Form method="post">
@@ -147,7 +132,6 @@ export default function Signup({ loaderData, actionData }: Route.ComponentProps)
             Not {invite!.email}? <Link to="/signup">Sign up without the invitation</Link> instead.
           </p>
         ) : null}
-      </Panel>
-    </main>
+    </AuthLayout>
   );
 }

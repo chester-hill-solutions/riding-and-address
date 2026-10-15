@@ -59,6 +59,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -88,3 +93,8 @@ jobs:
           NODE_ENV: production
           CLOUDFLARE_ACCOUNT_ID: ad5ec479b9a421faa2ed06c3d1c2b23a
         run: bun run build && bunx wrangler deploy --dry-run --env=""
+
+      - name: Portal runtime smoke (local Worker)
+        timeout-minutes: 2
+        working-directory: portal
+        run: bun run test:runtime

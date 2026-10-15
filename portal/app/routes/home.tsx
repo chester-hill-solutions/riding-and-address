@@ -1,8 +1,9 @@
 import { Card } from '~/components/ui/card';
 import { LinkButton } from '~/components/ui/button';
 import { ActionLink } from '~/components/ActionLink';
-import { Link, useLoaderData } from 'react-router';
+import { useLoaderData } from 'react-router';
 import type { Route } from './+types/home';
+import { SiteHeader, SiteFooter } from '~/components/SiteHeader';
 import { TryRidingForm } from '~/components/TryRidingForm';
 import { env } from '~/lib/env.server';
 import {
@@ -36,33 +37,17 @@ export default function Home() {
 
   return (
     <div className="marketing">
-      <header className="site-header site-header--marketing">
-        <nav className="nav shell" aria-label="Main navigation">
-          <Link className="brand" to="/">
-            CanCoder
-          </Link>
-          <div className="nav__links">
-            <a href="#try-it">Try it</a>
-            <a href="#how-it-works">Product</a>
-            <a href="#pricing">Pricing</a>
-            <a href={docsUrl}>Docs</a>
-            <a href={widgetDocsUrl}>Widget</a>
-            <Link to="/login">Log in</Link>
-            <ActionLink to="/signup">
-              Start free
-            </ActionLink>
-          </div>
-        </nav>
-      </header>
+      <SiteHeader />
 
       <main>
         <section className="hero-marketing">
-          <div className="hero-marketing__atmosphere" aria-hidden="true" />
           <div className="shell hero-marketing__inner">
-            <h1>CanCoder</h1>
+            <div className="hero-marketing__copy">
+            <p className="eyebrow">Canadian address intelligence</p>
+            <h1>From address to riding.<br /><span>In one call.</span></h1>
             <p className="hero-marketing__lead">
-              Turn any Canadian address into its electoral riding. Geocode, autocomplete, and map
-              to federal and provincial districts — for campaign tools and form vendors.
+              Help people find their address, pinpoint a location, and connect with the right
+              electoral district. One API for your forms and campaign tools.
             </p>
             <div className="button-row">
               <ActionLink to="/signup">
@@ -75,6 +60,15 @@ export default function Home() {
             <p className="fine-print">
               No credit card · {DEFAULT_FREE_MONTHLY_ALLOWANCE.toLocaleString('en-CA')} calls / month
             </p>
+            </div>
+            <div className="address-preview" aria-label="Example address lookup result">
+              <div className="address-preview__bar"><span className="eyebrow">Example lookup</span><span className="address-preview__tag">Canada</span></div>
+              <p className="address-preview__address">111 Wellington St</p>
+              <p className="address-preview__locality">Ottawa, Ontario · K1A 0A6</p>
+              <dl><div><dt>Federal district</dt><dd>Ottawa Centre</dd></div>
+                <div><dt>Provincial district</dt><dd>Ottawa Centre</dd></div></dl>
+              <a href="#try-it">Try your own address <span aria-hidden="true">→</span></a>
+            </div>
           </div>
         </section>
 
@@ -93,7 +87,7 @@ export default function Home() {
           <div className="shell">
             <div className="section-heading">
               <h2>What CanCoder does</h2>
-              <p>Three products in one API — autocomplete, geocode, and riding lookup.</p>
+              <p>A complete address workflow, from the first keystroke to the right district.</p>
             </div>
             <ol className="flow">
               <li>
@@ -115,8 +109,8 @@ export default function Home() {
                 <div className="flow__body">
                   <h3>Canadian geocoding</h3>
                   <p>
-                    Self-hosted StatCan address data turns a postal code or street address into a
-                    precise point — normalize and reverse geocode when you need them.
+                    Canadian address data turns a street address or postal code into a location.
+                    Match quality is included, so you know how close the result is.
                   </p>
                 </div>
               </li>
@@ -189,16 +183,7 @@ export default function Home() {
         </section>
       </main>
 
-      <footer className="site-footer">
-        <div className="shell">
-          <span>CanCoder by Chester Hill Solutions</span>
-          <div className="site-footer__links">
-            <a href={docsUrl}>Docs</a>
-            <a href={widgetDocsUrl}>Widget</a>
-            <Link to="/login">Customer login</Link>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }
