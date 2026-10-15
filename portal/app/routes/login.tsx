@@ -3,7 +3,7 @@ import { Label } from '~/components/ui/label';
 import { Form, Link, redirect } from 'react-router';
 import type { Route } from './+types/login';
 import { getAuth } from '~/lib/auth.server';
-import { Panel } from '~/components/Panel';
+import { AuthLayout } from '~/components/AuthLayout';
 import { FormFeedback } from '~/components/FormFeedback';
 import { SubmitButton } from '~/components/SubmitButton';
 
@@ -36,13 +36,7 @@ export async function action({ request }: Route.ActionArgs) {
 
 export default function Login({ actionData }: Route.ComponentProps) {
   return (
-    <main className="shell">
-      <nav className="nav">
-        <Link className="brand" to="/">
-          CanCoder
-        </Link>
-      </nav>
-      <Panel title="Log in">
+    <AuthLayout title="Welcome back" description="Log in to manage your API keys, team and usage.">
         <FormFeedback error={actionData?.error} />
         <Form method="post">
           <Label htmlFor="email">Email</Label>
@@ -55,12 +49,11 @@ export default function Login({ actionData }: Route.ComponentProps) {
             required
             autoComplete="current-password"
           />
-          <SubmitButton pendingText="Signing in…">Continue</SubmitButton>
+          <SubmitButton pendingText="Signing in…">Log in</SubmitButton>
         </Form>
         <p className="muted">
           No account? <Link to="/signup">Sign up</Link>
         </p>
-      </Panel>
-    </main>
+    </AuthLayout>
   );
 }

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { NativeSelect } from '~/components/ui/native-select';
@@ -97,6 +98,7 @@ export async function action({ request, url }: Route.ActionArgs) {
 
 export default function KeysPage({ loaderData, actionData }: Route.ComponentProps) {
   const { keys, canManageKeys } = loaderData;
+  const [kind, setKind] = useState<'server' | 'browser'>('server');
 
   return (
     <Panel title="API keys">
@@ -125,25 +127,32 @@ export default function KeysPage({ loaderData, actionData }: Route.ComponentProp
         <Form method="post">
           <input type="hidden" name="intent" value="create" />
           <Label htmlFor="kind">Kind</Label>
-          <NativeSelect size="touch" id="kind" name="kind" defaultValue="server">
+          <NativeSelect size="touch" id="kind" name="kind" value={kind} onChange={(event) => setKind(event.target.value === 'browser' ? 'browser' : 'server')}>
             <option value="server">Server (sk_*)</option>
             <option value="browser">Browser (pk_*)</option>
           </NativeSelect>
           <Label htmlFor="label">Label</Label>
           <Input size="touch" id="label" name="label" placeholder="Production backend" />
-          <Label htmlFor="origins">Origins (browser keys, comma-separated)</Label>
+          {kind === 'browser' ? <>
+          <Label htmlFor="origins">Allowed websites (comma-separated)</Label>
           <Input size="touch"
             id="origins"
             name="origins"
-            placeholder="https://app.example.com,https://*.example.com"
+            placeholder="https://app.example.com"
+            required
           />
-          <SubmitButton pendingText="Minting…">Mint key</SubmitButton>
+          <p className="field-hint">Browser keys only work on the websites you list here.</p>
+          </> : null}
+          <SubmitButton pendingText="Creating…">Create key</SubmitButton>
         </Form>
       ) : (
-        <p className="muted">You can view keys; ask an owner or admin to mint or revoke.</p>
+        <p className="muted">You can view keys; ask an owner or admin to create or revoke them.</p>
       )}
 
-      <Table>
+      {keys.length === 0 ? <div className="empty-state">
+        <h2>No API keys yet</h2>
+        <p>Your keys will appear here once an owner or admin creates one.</p>
+      </div> : <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Id</TableHead>
@@ -180,7 +189,7 @@ export default function KeysPage({ loaderData, actionData }: Route.ComponentProp
             </TableRow>
           ))}
         </TableBody>
-      </Table>
+      </Table>}
     </Panel>
   );
 }

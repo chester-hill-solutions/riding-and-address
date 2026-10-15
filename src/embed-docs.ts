@@ -1,3 +1,4 @@
+import { SITE_BRAND_STYLES, SITE_FONT_STYLESHEET, renderSiteHeader } from './site-chrome';
 /**
  * Standalone documentation page for the drop-in autocomplete widget (`GET /embed.js`).
  * Served at `/docs/embed`; mirrors docs/oda-geolocation-contract.md. The attribute and event tables
@@ -81,21 +82,22 @@ export function createEmbedDocsPage(baseUrl: string): string {
   <title>Autocomplete widget · CanCoder docs</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,600;8..60;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="${SITE_FONT_STYLESHEET}">
   <style>
+    ${SITE_BRAND_STYLES}
     :root {
-      --bg: #eef3f8;
+      --bg: var(--site-canvas);
       --surface: #ffffff;
       --surface-subtle: #e4ebf4;
-      --text: #132033;
-      --muted: #5a687c;
-      --primary: #1457a6;
-      --primary-strong: #0c4488;
-      --border: #d0dbe8;
+      --text: var(--site-ink);
+      --muted: var(--site-muted);
+      --primary: var(--site-primary);
+      --primary-strong: var(--site-primary-strong);
+      --border: var(--site-border);
       --radius-sm: 6px;
       --radius-md: 10px;
-      --font-sans: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
-      --font-display: "Source Serif 4", Georgia, serif;
+      --font-sans: var(--site-font);
+      --font-display: var(--site-display);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -145,6 +147,8 @@ export function createEmbedDocsPage(baseUrl: string): string {
     tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
     thead th { background: var(--surface-subtle); }
     .shell { width: min(820px, calc(100% - 2.5rem)); margin-inline: auto; padding-block: 3rem 4.5rem; }
+    .table-scroll { overflow-x: auto; margin-top: .9rem; border: 1px solid var(--border); border-radius: 10px; }
+    .table-scroll table { margin-top: 0; border: 0; }
     .back { display: inline-block; margin-bottom: 1.5rem; font-weight: 600; text-decoration: none; }
     .lede { color: var(--muted); font-size: 1.08rem; margin-top: 0.9rem; }
     .badge {
@@ -168,6 +172,7 @@ export function createEmbedDocsPage(baseUrl: string): string {
   </style>
 </head>
 <body>
+  ${renderSiteHeader('Widget')}
   <main class="shell">
     <a class="back" href="/docs">← API reference</a>
     <h1>Address autocomplete widget</h1>
@@ -182,12 +187,12 @@ export function createEmbedDocsPage(baseUrl: string): string {
       <code>&lt;form&gt;</code>, attaches, and handles the rest.</p>
 
     <h2>Script tag attributes</h2>
-    <table>
+    <div class="table-scroll"><table>
       <thead><tr><th scope="col">Attribute</th><th scope="col">Effect</th></tr></thead>
       <tbody>
               ${attributeRows}
       </tbody>
-    </table>
+    </table></div>
 
     <h2>Field detection</h2>
     <p>The standard <code>autocomplete</code> attribute wins, since it is an explicit statement of
@@ -220,12 +225,12 @@ widget.destroy();                  // restores the field exactly as found</code>
 
     <h2>Events</h2>
     <p>Events bubble from the input, so one delegated listener covers every form on the page.</p>
-    <table>
+    <div class="table-scroll"><table>
       <thead><tr><th scope="col">Event</th><th scope="col"><code>detail</code></th></tr></thead>
       <tbody>
               ${eventRows}
       </tbody>
-    </table>
+    </table></div>
     <pre><code>document.addEventListener('ridinglookup:riding', (e) =&gt; {
   console.log(e.detail.riding); // "Toronto Centre"
 });</code></pre>

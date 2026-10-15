@@ -1,5 +1,5 @@
-import { Badge } from '~/components/ui/badge';
-import { Form, Link, NavLink, Outlet } from 'react-router';
+import { SiteHeader } from '~/components/SiteHeader';
+import { Form, NavLink, Outlet } from 'react-router';
 import type { Route } from './+types/app';
 import { requireCustomer } from '~/lib/customer.server';
 import { isFounder } from '~/lib/auth.server';
@@ -18,20 +18,10 @@ export async function loader({ request, url }: Route.LoaderArgs) {
 }
 
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
-  const { customerId, plan, showAdmin } = loaderData;
+  const { plan, showAdmin } = loaderData;
   return (
     <div className="app-shell">
-      <header className="app-header">
-        <div className="shell">
-          <Link className="brand" to="/app">
-            CanCoder
-          </Link>
-          <div className="account-summary">
-            <Badge variant="secondary">{plan} plan</Badge>
-            <span className="account-summary__id">{customerId}</span>
-          </div>
-        </div>
-      </header>
+      <SiteHeader plan={plan} />
       <div className="app-body shell">
         <aside className="app-sidebar">
           <nav aria-label="Portal navigation">

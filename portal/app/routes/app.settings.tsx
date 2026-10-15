@@ -46,10 +46,10 @@ export async function action({ request, url }: Route.ActionArgs) {
 export default function SettingsPage({ loaderData, actionData }: Route.ComponentProps) {
   const { billing, canManageFuse } = loaderData;
   return (
-    <Panel title="Fuse settings">
+    <Panel title="Usage fuse">
       <p className="muted">
-        Default is hard-block at the monthly ceiling. Soft-warn continues serving after the fuse and
-        logs warnings (and optional email alerts). Owners and admins can change these settings.
+        Set a monthly limit for successful calls. Requests stop at the limit unless you choose to
+        keep serving them. Owners and admins can change this setting.
       </p>
       <FormFeedback
         error={actionData && 'error' in actionData ? actionData.error : null}
@@ -57,7 +57,7 @@ export default function SettingsPage({ loaderData, actionData }: Route.Component
       />
       {canManageFuse ? (
         <Form method="post">
-          <Label htmlFor="fuseLimit">Monthly fuse (Billable units)</Label>
+          <Label htmlFor="fuseLimit">Monthly limit (successful calls)</Label>
           <Input size="touch"
             id="fuseLimit"
             name="fuseLimit"
@@ -65,8 +65,8 @@ export default function SettingsPage({ loaderData, actionData }: Route.Component
             min={0}
             defaultValue={billing?.fuseLimit ?? DEFAULT_FREE_MONTHLY_ALLOWANCE}
           />
-          <Checkbox name="fuseSoftWarn" defaultSelected={Boolean(billing?.fuseSoftWarn)} className="mt-4">Soft-warn instead of hard-block</Checkbox>
-          <SubmitButton pendingText="Saving…">Save</SubmitButton>
+          <Checkbox name="fuseSoftWarn" defaultSelected={Boolean(billing?.fuseSoftWarn)} className="mt-4">Keep serving requests after the limit</Checkbox>
+          <SubmitButton pendingText="Saving…">Save limit</SubmitButton>
         </Form>
       ) : (
         <p className="muted">
