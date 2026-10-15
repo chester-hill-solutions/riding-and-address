@@ -1,6 +1,6 @@
 # CHS utility packages
 
-Built from [CHS commit 7323313](https://github.com/chester-hill-solutions/chester-hill-solutions/commit/7323313d918bed8f06de2ebf880b1fa77f2af8dc).
+Built from [CHS commit 4b031bb](https://github.com/chester-hill-solutions/chester-hill-solutions/commit/4b031bb733ee222d0e79600c0b29ce40d2244d92).
 Validation 0.3.0 includes the shared Canadian address normalization contract and fixtures; HTTP
 0.1.0 and errors 0.1.0 are unchanged upstream packages. Source changes belong in the CHS repo.
 

@@ -2,6 +2,7 @@ import { isValidCanadianPostalCode, normalizePostalCode } from "./normalization.
 export const CANADIAN_PROVINCE_ALIASES = {
     NL: 'NL',
     NEWFOUNDLAND: 'NL',
+    'NEWFOUNDLAND AND LABRADOR': 'NL',
     PE: 'PE',
     PEI: 'PE',
     'PRINCE EDWARD ISLAND': 'PE',

@@ -1,5 +1,10 @@
 /** Shared compatibility vectors for address producers and consumers. */
 export declare const canadianAddressFixtures: readonly [{
+    readonly postal: "a1b2c3";
+    readonly province: "Newfoundland and Labrador";
+    readonly expectedPostal: "A1B 2C3";
+    readonly expectedProvince: "NL";
+}, {
     readonly postal: "m5v2t6";
     readonly province: "ontario";
     readonly expectedPostal: "M5V 2T6";

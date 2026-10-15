@@ -1,6 +1,7 @@
 export declare const CANADIAN_PROVINCE_ALIASES: {
     readonly NL: "NL";
     readonly NEWFOUNDLAND: "NL";
+    readonly 'NEWFOUNDLAND AND LABRADOR': "NL";
     readonly PE: "PE";
     readonly PEI: "PE";
     readonly 'PRINCE EDWARD ISLAND': "PE";
