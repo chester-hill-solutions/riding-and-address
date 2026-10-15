@@ -33,7 +33,7 @@ export function handleApiReference(ctx: RouteContext): Response {
  */
 const SCALAR_API_REFERENCE_VERSION = "1.62.8";
 
-export function createApiReference(baseUrl: string): string {
+export function createApiReference(_baseUrl: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -55,7 +55,7 @@ export function createApiReference(baseUrl: string): string {
   <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@${SCALAR_API_REFERENCE_VERSION}"></script>
   <script>
     (function () {
-      var openApiUrl = ${JSON.stringify(`${baseUrl}/api/docs`)};
+      var openApiUrl = "/api/docs";
       var lookupPaths = ['/api', '/api/federal', '/api/combined'].concat(${JSON.stringify(getAllProvincialPaths())});
 
       function hasLocationQuery(params) {

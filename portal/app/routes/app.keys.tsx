@@ -1,3 +1,7 @@
+import { Input } from '~/components/ui/input';
+import { Label } from '~/components/ui/label';
+import { NativeSelect } from '~/components/ui/native-select';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '~/components/ui/table';
 import { Form } from 'react-router';
 import type { Route } from './+types/app.keys';
 import { isOwnerOrAdmin, listKeys, requireCustomer, requireOwnerOrAdmin } from '~/lib/customer.server';
@@ -120,15 +124,15 @@ export default function KeysPage({ loaderData, actionData }: Route.ComponentProp
       {canManageKeys ? (
         <Form method="post">
           <input type="hidden" name="intent" value="create" />
-          <label htmlFor="kind">Kind</label>
-          <select id="kind" name="kind" defaultValue="server">
+          <Label htmlFor="kind">Kind</Label>
+          <NativeSelect size="touch" id="kind" name="kind" defaultValue="server">
             <option value="server">Server (sk_*)</option>
             <option value="browser">Browser (pk_*)</option>
-          </select>
-          <label htmlFor="label">Label</label>
-          <input id="label" name="label" placeholder="Production backend" />
-          <label htmlFor="origins">Origins (browser keys, comma-separated)</label>
-          <input
+          </NativeSelect>
+          <Label htmlFor="label">Label</Label>
+          <Input size="touch" id="label" name="label" placeholder="Production backend" />
+          <Label htmlFor="origins">Origins (browser keys, comma-separated)</Label>
+          <Input size="touch"
             id="origins"
             name="origins"
             placeholder="https://app.example.com,https://*.example.com"
@@ -139,31 +143,31 @@ export default function KeysPage({ loaderData, actionData }: Route.ComponentProp
         <p className="muted">You can view keys; ask an owner or admin to mint or revoke.</p>
       )}
 
-      <table>
-        <thead>
-          <tr>
-            <th>Id</th>
-            <th>Kind</th>
-            <th>Label</th>
-            <th>Origins</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Id</TableHead>
+            <TableHead>Kind</TableHead>
+            <TableHead>Label</TableHead>
+            <TableHead>Origins</TableHead>
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {keys.map((key) => (
-            <tr key={key.id}>
-              <td>
+            <TableRow key={key.id}>
+              <TableCell>
                 <code>{key.id}</code>
-              </td>
-              <td>{key.kind}</td>
-              <td>{key.label || '—'}</td>
-              <td>{key.origins || '—'}</td>
-              <td>
+              </TableCell>
+              <TableCell>{key.kind}</TableCell>
+              <TableCell>{key.label || '—'}</TableCell>
+              <TableCell>{key.origins || '—'}</TableCell>
+              <TableCell>
                 {!key.disabled && canManageKeys ? (
                   <Form method="post">
                     <input type="hidden" name="intent" value="revoke" />
                     <input type="hidden" name="id" value={key.id} />
-                    <SubmitButton className="secondary" pendingText="Revoking…">
+                    <SubmitButton variant="secondary" pendingText="Revoking…">
                       Revoke
                     </SubmitButton>
                   </Form>
@@ -172,11 +176,11 @@ export default function KeysPage({ loaderData, actionData }: Route.ComponentProp
                 ) : (
                   <span className="muted">revoked</span>
                 )}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </Panel>
   );
 }

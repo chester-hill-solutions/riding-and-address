@@ -1,0 +1,18 @@
+{
+  "version": "0.5.0",
+  "componentsDir": "app/components/ui",
+  "libDir": "app/lib",
+  "hooksDir": "app/hooks",
+  "stylesDir": "app/styles",
+  "themeFile": "ui-theme.css",
+  "components": [
+    "badge",
+    "button",
+    "card",
+    "checkbox",
+    "input",
+    "label",
+    "native-select",
+    "table"
+  ]
+}

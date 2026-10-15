@@ -1,3 +1,6 @@
+import { Card } from '~/components/ui/card';
+import { LinkButton } from '~/components/ui/button';
+import { ActionLink } from '~/components/ActionLink';
 import { Link, useLoaderData } from 'react-router';
 import type { Route } from './+types/home';
 import { TryRidingForm } from '~/components/TryRidingForm';
@@ -19,17 +22,17 @@ export function meta(): Route.MetaDescriptors {
 }
 
 export function loader() {
-  const { publicApiBaseUrl, demoBrowserKey } = env();
+  const { demoBrowserKey } = env();
   return {
-    apiBaseUrl: publicApiBaseUrl.replace(/\/$/, ''),
+    apiBaseUrl: '',
     demoBrowserKey,
   };
 }
 
 export default function Home() {
   const { apiBaseUrl, demoBrowserKey } = useLoaderData<typeof loader>();
-  const docsUrl = `${apiBaseUrl}/docs`;
-  const widgetDocsUrl = `${apiBaseUrl}/docs/embed`;
+  const docsUrl = '/docs';
+  const widgetDocsUrl = '/docs/embed';
 
   return (
     <div className="marketing">
@@ -45,9 +48,9 @@ export default function Home() {
             <a href={docsUrl}>Docs</a>
             <a href={widgetDocsUrl}>Widget</a>
             <Link to="/login">Log in</Link>
-            <Link className="btn btn--compact" to="/signup">
+            <ActionLink to="/signup">
               Start free
-            </Link>
+            </ActionLink>
           </div>
         </nav>
       </header>
@@ -62,12 +65,12 @@ export default function Home() {
               to federal and provincial districts — for campaign tools and form vendors.
             </p>
             <div className="button-row">
-              <Link className="btn" to="/signup">
+              <ActionLink to="/signup">
                 Start free
-              </Link>
-              <a className="btn btn--ghost" href="#try-it">
+              </ActionLink>
+              <LinkButton variant="outline" size="touch" className="marketing-outline" href="#try-it">
                 Try a lookup
-              </a>
+              </LinkButton>
             </div>
             <p className="fine-print">
               No credit card · {DEFAULT_FREE_MONTHLY_ALLOWANCE.toLocaleString('en-CA')} calls / month
@@ -131,12 +134,12 @@ export default function Home() {
               </li>
             </ol>
             <div className="button-row button-row--section">
-              <Link className="btn" to="/signup">
+              <ActionLink to="/signup">
                 Get an API key
-              </Link>
-              <a className="btn btn--ghost" href={docsUrl}>
+              </ActionLink>
+              <LinkButton variant="outline" size="touch" className="marketing-outline" href={docsUrl}>
                 View docs
-              </a>
+              </LinkButton>
             </div>
           </div>
         </section>
@@ -148,7 +151,7 @@ export default function Home() {
               <p>Successful lookups and searches count. Errors never do.</p>
             </div>
             <div className="pricing-grid">
-              <article className="price-card">
+              <Card role="article" className="price-card gap-0 p-6 sm:p-8">
                 <h3>Free</h3>
                 <p className="price">$0</p>
                 <p className="price-detail">No expiry and no credit card</p>
@@ -157,11 +160,11 @@ export default function Home() {
                   <li>Server and Browser keys</li>
                   <li>Usage dashboard and hard fuse</li>
                 </ul>
-                <Link className="btn" to="/signup">
+                <ActionLink to="/signup">
                   Start free
-                </Link>
-              </article>
-              <article className="price-card price-card--featured">
+                </ActionLink>
+              </Card>
+              <Card role="article" className="price-card price-card--featured gap-0 p-6 sm:p-8">
                 <h3>Metered</h3>
                 <p className="price">
                   {formatMeteredUnitPrice()}
@@ -173,10 +176,10 @@ export default function Home() {
                   <li>No charge for 4xx or 5xx responses</li>
                   <li>Set a monthly hard limit at any time</li>
                 </ul>
-                <Link className="btn" to="/signup">
+                <ActionLink to="/signup">
                   Create an account
-                </Link>
-              </article>
+                </ActionLink>
+              </Card>
             </div>
             <p className="pricing-note">
               Usage resets each UTC calendar month. Paid access is enabled after the product

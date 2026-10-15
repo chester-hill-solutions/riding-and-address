@@ -1,3 +1,5 @@
+import { Input } from '~/components/ui/input';
+import { Label } from '~/components/ui/label';
 import { Form, Link, data, redirect } from 'react-router';
 import type { Route } from './+types/signup';
 import { normalizeEmail } from '@chester-hill-solutions/auth';
@@ -115,10 +117,10 @@ export default function Signup({ loaderData, actionData }: Route.ComponentProps)
         <FormFeedback error={actionData?.error} />
         <Form method="post">
           {joining ? <input type="hidden" name="inviteToken" value={invite!.token} /> : null}
-          <label htmlFor="name">{joining ? 'Your name' : 'Organization name'}</label>
-          <input id="name" name="name" required />
-          <label htmlFor="email">Email</label>
-          <input
+          <Label htmlFor="name">{joining ? 'Your name' : 'Organization name'}</Label>
+          <Input size="touch" id="name" name="name" required />
+          <Label htmlFor="email">Email</Label>
+          <Input size="touch"
             id="email"
             name="email"
             type="email"
@@ -127,8 +129,8 @@ export default function Signup({ loaderData, actionData }: Route.ComponentProps)
             defaultValue={invite?.email}
             readOnly={joining}
           />
-          <label htmlFor="password">Password</label>
-          <input
+          <Label htmlFor="password">Password</Label>
+          <Input size="touch"
             id="password"
             name="password"
             type="password"
