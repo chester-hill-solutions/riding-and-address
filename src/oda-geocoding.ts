@@ -101,6 +101,11 @@ function rowToComponents(row: OdaAddressRow): OdaAddressComponents {
   };
 }
 
+/** A building match may come from a unit row; only return a unit the caller supplied. */
+function forwardAddressRow(row: OdaAddressRow, requestedUnit: string | undefined): OdaAddressRow {
+  return requestedUnit ? row : { ...row, unit: '' };
+}
+
 function buildResult(
   row: Partial<OdaAddressRow> & { lat: number; lon: number; province: string },
   method: OdaGeocodeMethod,
@@ -282,12 +287,44 @@ async function findExactMatch(
   return rows[0];
 }
 
+type PostalResolution = {
+  lat: number;
+  lon: number;
+  province: string;
+  postal_code: string;
+  geocodeMethod: 'postal_centroid' | 'postal_prefix';
+  postalMatch?: OdaGeocodeMetadata['postalMatch'];
+};
+
 async function findPostalCentroid(
   store: AddressStore,
   postal: string,
-  provinces: string[]
-): Promise<{ lat: number; lon: number; province: string; postal_code: string } | null> {
-  return store.findPostalCentroid({ postal, provinces });
+  provinces: string[],
+  allowPrefix: boolean,
+  maxSpreadMeters: number
+): Promise<PostalResolution | null> {
+  const exact = await store.findPostalCentroid({ postal, provinces });
+  if (exact) return { ...exact, geocodeMethod: 'postal_centroid' };
+  if (!allowPrefix) return null;
+
+  const prefix = postal.slice(0, -1);
+  const siblings = await store.findPostalPrefixCentroids({ prefix, provinces });
+  if (siblings.length === 0 || new Set(siblings.map((row) => row.province)).size !== 1) return null;
+  const count = siblings.reduce((sum, row) => sum + row.address_count, 0);
+  if (count <= 0) return null;
+  const lat = siblings.reduce((sum, row) => sum + row.lat * row.address_count, 0) / count;
+  const lon = siblings.reduce((sum, row) => sum + row.lon * row.address_count, 0) / count;
+  // Prefix similarity alone is insufficient when the loaded siblings are far apart.
+  if (siblings.some((row) => haversineMeters(lon, lat, row.lon, row.lat) > maxSpreadMeters)) return null;
+
+  return {
+    lat, lon, province: siblings[0].province, postal_code: '', geocodeMethod: 'postal_prefix',
+    postalMatch: {
+      requestedPostalCode: postal,
+      matchedPrefix: prefix,
+      matchedPostalCodes: siblings.map((row) => row.postal_code),
+    },
+  };
 }
 
 async function findStreetInterpolated(
@@ -628,7 +665,7 @@ async function geocodeWithOdaInner(
     return withCitySource(
       env,
       assertConfidence(
-        buildResult(exact, 'exact', config, ['civic', 'street', 'city', 'province'], sink),
+        buildResult(forwardAddressRow(exact, parsed.unit), 'exact', config, ['civic', 'street', 'city', 'province'], sink),
         config.minConfidence
       ),
       exact.city,
@@ -643,7 +680,7 @@ async function geocodeWithOdaInner(
       return withCitySource(
         env,
         assertConfidence(
-          buildResult(street, 'street_interpolated', config, ['street', 'city'], sink),
+          buildResult(forwardAddressRow(street, parsed.unit), 'street_interpolated', config, ['street', 'city'], sink),
           config.minConfidence
         ),
         street.city,
@@ -661,7 +698,7 @@ async function geocodeWithOdaInner(
       return withCitySource(
         env,
         assertConfidence(
-          buildResult(byPostal, 'postal_street', config, ['civic', 'street', 'postal'], sink),
+          buildResult(forwardAddressRow(byPostal, parsed.unit), 'postal_street', config, ['civic', 'street', 'postal'], sink),
           config.minConfidence
         ),
         byPostal.city,
@@ -673,13 +710,13 @@ async function geocodeWithOdaInner(
   if (parsed.postal) {
     const postal = normalizePostalCode(parsed.postal);
     if (postal) {
-      const centroid = await findPostalCentroid(store, postal, provinces);
+      const centroid = await findPostalCentroid(store, postal, provinces, qp.geocodeMethod !== 'postal_centroid', config.maxPostalCentroidDistanceMeters);
       if (
         centroid &&
         postalCentroidWithinHintDistance(centroid, qp, config.maxPostalCentroidDistanceMeters)
       ) {
         return assertConfidence(
-          buildResult(
+          { ...buildResult(
             {
               lat: centroid.lat,
               lon: centroid.lon,
@@ -692,11 +729,11 @@ async function geocodeWithOdaInner(
               street_direction: '',
               unit: '',
             },
-            'postal_centroid',
+            centroid.geocodeMethod,
             config,
-            ['postal'],
+            [centroid.geocodeMethod === 'postal_prefix' ? 'postal_prefix' : 'postal'],
             sink
-          ),
+          ), postalMatch: centroid.postalMatch },
           config.minConfidence
         );
       }
@@ -752,7 +789,7 @@ async function geocodeWithOdaInner(
       return withCitySource(
         env,
         assertConfidence(
-          buildResult(nearest.row, 'nearest_neighbor', config, ['nearest_neighbor'], sink, nearest.distance),
+          buildResult(forwardAddressRow(nearest.row, parsed.unit), 'nearest_neighbor', config, ['nearest_neighbor'], sink, nearest.distance),
           config.minConfidence
         ),
         nearest.row.city,
@@ -793,13 +830,13 @@ export async function geocodePostalCentroidWithOda(
     throw new OdaGeocodeError('Invalid postal code', 'INVALID_QUERY', 400);
   }
 
-  const centroid = await findPostalCentroid(storeFor(env, tracker, sink), postal, provinces);
+  const centroid = await findPostalCentroid(storeFor(env, tracker, sink), postal, provinces, qp.geocodeMethod !== 'postal_centroid', config.maxPostalCentroidDistanceMeters);
   if (!centroid) {
     throw new OdaGeocodeError('Postal code not found in ODA database', 'ADDRESS_NOT_FOUND', 404);
   }
 
   return assertConfidence(
-    buildResult(
+    { ...buildResult(
       {
         lat: centroid.lat,
         lon: centroid.lon,
@@ -812,16 +849,17 @@ export async function geocodePostalCentroidWithOda(
         street_direction: '',
         unit: '',
       },
-      'postal_centroid',
+      centroid.geocodeMethod,
       config,
-      ['postal'],
+      [centroid.geocodeMethod === 'postal_prefix' ? 'postal_prefix' : 'postal'],
       sink
-    ),
+    ), postalMatch: centroid.postalMatch },
     config.minConfidence
   );
 }
 
 export type OdaBatchGeocodeItem = {
+  postalMatch?: OdaGeocodeMetadata['postalMatch'];
   lon: number;
   lat: number;
   success: boolean;
@@ -851,7 +889,7 @@ export async function geocodeBatchPostalCentroidsWithOda(
     return results.map(() => ({ lon: 0, lat: 0, success: false, error: err }));
   }
 
-  const postalToIndices = new Map<string, number[]>();
+  const postalToIndices = new Map<string, { postal: string; indices: number[] }>();
 
   for (let i = 0; i < queries.length; i++) {
     const qp = queries[i];
@@ -864,12 +902,13 @@ export async function geocodeBatchPostalCentroidsWithOda(
       results[i] = { lon: 0, lat: 0, success: false, error: 'Invalid postal code' };
       continue;
     }
-    const list = postalToIndices.get(postal) ?? [];
-    list.push(i);
-    postalToIndices.set(postal, list);
+    const groupKey = `${postal}|${qp.state ?? ''}|${qp.geocodeMethod ?? 'auto'}`;
+    const group = postalToIndices.get(groupKey) ?? { postal, indices: [] };
+    group.indices.push(i);
+    postalToIndices.set(groupKey, group);
   }
 
-  for (const [postal, indices] of postalToIndices) {
+  for (const { postal, indices } of postalToIndices.values()) {
     const sample = queries[indices[0]];
     try {
       const geocoded = await geocodePostalCentroidWithOda(env, { ...sample, postal }, undefined, sink);
@@ -880,6 +919,7 @@ export async function geocodeBatchPostalCentroidsWithOda(
         normalizedAddress: geocoded.normalizedAddress,
         geocodeMethod: geocoded.geocodeMethod,
         confidence: geocoded.confidence,
+        postalMatch: geocoded.postalMatch,
       };
       for (const idx of indices) {
         results[idx] = item;
@@ -922,6 +962,7 @@ export async function geocodeBatchWithOda(
           normalizedAddress: geocoded.normalizedAddress,
           geocodeMethod: geocoded.geocodeMethod,
           confidence: geocoded.confidence,
+          postalMatch: geocoded.postalMatch,
         });
       } catch (error) {
         results.push({
@@ -942,6 +983,7 @@ export async function geocodeBatchWithOda(
         normalizedAddress: geocoded.normalizedAddress,
         geocodeMethod: geocoded.geocodeMethod,
         confidence: geocoded.confidence,
+        postalMatch: geocoded.postalMatch,
       });
     } catch (error) {
       results.push({

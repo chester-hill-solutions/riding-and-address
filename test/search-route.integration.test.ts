@@ -20,15 +20,7 @@ async function readJson(response: Response): Promise<SearchBody> {
   return (await response.json()) as SearchBody;
 }
 
-/**
- * Route-level behaviour of GET /api/search, and the regressions that matter:
- *
- *  - /api/search is NOT an unused path today. The catch-all is `pathname.startsWith('/api')` and
- *    pickDataset falls back to federal, so it currently serves a federal riding lookup. With the
- *    flag off, that must keep happening exactly as before.
- *  - With the flag on, the route must sit above the catch-all, or it gets silently served as a
- *    federal lookup: a wrong-but-200 response, the worst failure mode.
- */
+/** Disabled search returns 404; it must never fall through to a federal lookup. */
 
 function createSuggestRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -67,34 +59,13 @@ function enabled(env: Env): Env {
 }
 
 describe('GET /api/search — flag off', () => {
-  it('behaves exactly as it did before the route existed (federal lookup via the catch-all)', async () => {
-    const env = withSuggestDb(createLookupTestEnv());
-
-    const off = await fetchLookup(env, `/api/search?lat=${TORONTO_LAT}&lon=${TORONTO_LON}`);
-    const control = await fetchLookup(env, `/api/federal?lat=${TORONTO_LAT}&lon=${TORONTO_LON}`);
-
-    expect(off.status).toBe(control.status);
-
-    const offBody = await readJson(off);
-    const controlBody = await readJson(control);
-
-    // Same shape, same dataset: a federal lookup, not suggestions.
-    expect(offBody).toHaveProperty('properties');
-    expect(offBody).not.toHaveProperty('suggestions');
-    expect(offBody.properties).toEqual(controlBody.properties);
-    expect(offBody.point).toEqual(controlBody.point);
-  });
-
-  it('is also off when the flag is absent entirely', async () => {
-    const env = withSuggestDb(createLookupTestEnv());
+  it.each(['disabled', 'absent', 'missing-db'])('returns 404 when %s', async (mode) => {
+    const base = createLookupTestEnv();
+    const env = mode === 'disabled' ? withSuggestDb({ ...base, ODA_SUGGEST_ENABLED: 'false' }) :
+      mode === 'absent' ? withSuggestDb(base) : { ...base, ODA_SUGGEST_ENABLED: 'true' };
     const response = await fetchLookup(env, `/api/search?lat=${TORONTO_LAT}&lon=${TORONTO_LON}`);
-    expect(await readJson(response)).not.toHaveProperty('suggestions');
-  });
-
-  it('stays off when the flag is on but ODA_DB is unbound', async () => {
-    const env = { ...createLookupTestEnv(), ODA_SUGGEST_ENABLED: 'true' } as Env;
-    const response = await fetchLookup(env, `/api/search?lat=${TORONTO_LAT}&lon=${TORONTO_LON}`);
-    expect(await readJson(response)).not.toHaveProperty('suggestions');
+    expect(response.status).toBe(404);
+    expect(await readJson(response)).toMatchObject({ code: 'NOT_FOUND' });
   });
 });
 

@@ -68,9 +68,32 @@ provider reflects the city a result resolved in, not a global setting.
 | `exact` | 1.0 | Full civic + street + city/province or postal match |
 | `postal_street` | 0.9 | Exact civic + street scoped by postal code, when no municipality is supplied |
 | `postal_centroid` | 0.85 | Centroid of all addresses sharing a postal code |
+| `postal_prefix` | 0.65 | Address-weighted centroid of loaded postal codes sharing the first five characters |
 | `street_interpolated` | 0.75 | Same street, civic interpolated or nearest civic |
 | `city_centroid` | 0.45 | Centroid of all addresses in a city |
 | `nearest_neighbor` | ≤ 0.7 | Bounded R-tree nearest-neighbor match |
+
+When the full postal code is missing, auto mode tries loaded postal codes sharing its first
+five characters. For example, `M5V2T6` can use `M5V 2T3` and `M5V 2T8`. It does not broaden to
+an entire FSA. Sibling centroids must be within 5 km of the estimate (the existing
+`ODA_MAX_POSTAL_CENTROID_DISTANCE_METERS` setting), and the normal confidence floor applies.
+Confidence values are ranking scores, not calibrated probabilities.
+
+A fuzzy result carries `geocodeMethod: "postal_prefix"`, `confidence: 0.65`, and:
+
+```json
+{
+  "postalMatch": {
+    "requestedPostalCode": "M5V 2T6",
+    "matchedPrefix": "M5V 2T",
+    "matchedPostalCodes": ["M5V 2T3", "M5V 2T8"]
+  }
+}
+```
+
+The requested full code is not presented as a verified mailing postal code. Riding responses
+carry the same details inside `geocode`, including on cache hits; their riding is resolved at
+the estimated point. Use `geocode_method=postal_centroid` for exact postal centroids only.
 
 ### `GET /api/reverse`
 
@@ -106,7 +129,7 @@ Address normalization only; returns Canada Post-style fields when an ODA match i
 ### `GET /api/search`
 
 As-you-type address autocomplete. Gated by `ODA_SUGGEST_ENABLED`; while it is off, this path is
-not registered and falls through to the standard riding lookup.
+not registered and returns `404 NOT_FOUND`.
 
 Requires the autocomplete index (`oda_street_suggest`, `oda_suggest_fts`). Build it with
 `npm run build:oda:suggest` — see [Data import](./oda-data-import.md#autocomplete-index).

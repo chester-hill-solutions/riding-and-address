@@ -1,136 +1,74 @@
 import { describe, it, expect } from 'vitest';
-import type { QueryParams } from '../src/types';
 
 const runLive = process.env.ODA_LIVE === '1';
-const baseUrl = (process.env.ODA_LIVE_BASE_URL ?? 'https://riding-lookup.chester-hill-solutions.workers.dev').replace(
-  /\/$/,
-  ''
-);
+const baseUrl = (process.env.ODA_LIVE_BASE_URL ?? 'https://riding-lookup.chester-hill-solutions.workers.dev').replace(/\/$/, '');
 const basicAuth = process.env.ODA_LIVE_BASIC_AUTH ?? process.env.BENCHMARK_BASIC_AUTH;
+const serverKey = process.env.ODA_LIVE_SERVER_KEY;
+// Keyless demos use the same handlers and data; optional credentials exercise customer routes.
+const api = basicAuth || serverKey ? '/api' : '/api/demo';
 
 type LiveCase = {
   name: string;
   path: string;
-  expectStatus: number;
-  expectCode?: string;
-  expectMethod?: string;
-  latClose?: number;
-  lonClose?: number;
+  status: number;
+  code?: string;
+  method?: string;
+  lat?: number;
+  lon?: number;
+  unit?: string | null;
+  provinceData?: boolean;
 };
 
-function authHeaders(): Record<string, string> {
-  if (!basicAuth) return {};
-  return { Authorization: `Basic ${Buffer.from(basicAuth).toString('base64')}` };
+function geocode(params: Record<string, string>): string {
+  return `${api}/geocode?${new URLSearchParams(params)}`;
 }
 
-function queryString(params: QueryParams): string {
-  const q = new URLSearchParams();
-  if (params.address) q.set('address', params.address);
-  if (params.postal) q.set('postal', params.postal);
-  if (params.city) q.set('city', params.city);
-  if (params.state) q.set('province', params.state);
-  return q.toString();
-}
-
-const LIVE_CASES: LiveCase[] = [
-  {
-    name: '123 Main St Toronto exact',
-    path: `/api/geocode?${queryString({ address: '123 Main St', city: 'Toronto', state: 'ON' })}`,
-    expectStatus: 200,
-    expectMethod: 'exact',
-    latClose: 43.6532,
-    lonClose: -79.3832,
-  },
-  {
-    name: '757 Victoria Park Toronto',
-    path: `/api/geocode?${queryString({ address: '757 Victoria Park', city: 'Toronto', state: 'ON' })}`,
-    expectStatus: 200,
-    latClose: 43.692101,
-    lonClose: -79.288688,
-  },
-  {
-    name: 'postal M5V2T6',
-    path: '/api/geocode?postal=M5V2T6&province=ON',
-    expectStatus: 200,
-    expectMethod: 'postal_centroid',
-  },
-  {
-    name: 'Montreal Saint-Paul',
-    path: `/api/geocode?${queryString({ address: '350 Saint-Paul RUE E', city: 'Montréal', state: 'QC' })}`,
-    expectStatus: 200,
-    expectMethod: 'exact',
-  },
-  {
-    name: 'BC postal V6B1A1',
-    path: '/api/geocode?postal=V6B1A1&province=BC',
-    expectStatus: 200,
-    expectMethod: 'postal_centroid',
-  },
-  {
-    name: 'NL not on StatCan ODA',
-    path: '/api/geocode?postal=A1C1A1&province=NL',
-    expectStatus: 404,
-    expectCode: 'PROVINCE_NOT_LOADED',
-  },
-  {
-    name: 'ambiguous street only',
-    path: '/api/geocode?address=Main%20Street',
-    expectStatus: 422,
-    expectCode: 'AMBIGUOUS_LOCATION',
-  },
-  {
-    name: '901-560 Birchmount Rd Toronto',
-    path: `/api/geocode?${queryString({ address: '901-560 Birchmount Rd', city: 'Toronto', state: 'ON' })}`,
-    expectStatus: 200,
-  },
-  {
-    name: 'Unit 1205, 123 Main St Toronto',
-    path: `/api/geocode?${queryString({ address: 'Unit 1205, 123 Main St', city: 'Toronto', state: 'ON' })}`,
-    expectStatus: 200,
-    expectMethod: 'exact',
-    latClose: 43.6533,
-    lonClose: -79.3833,
-  },
-  {
-    name: '757 Victoria Park Ave street beats postal',
-    path: `/api/geocode?${queryString({
-      address: '757 Victoria Park Ave',
-      postal: 'M5V2T6',
-      city: 'Toronto',
-      state: 'ON',
-    })}`,
-    expectStatus: 200,
-    latClose: 43.692101,
-    lonClose: -79.288688,
-  },
+const toronto = { address: '757 Victoria Park Ave', city: 'Toronto', province: 'ON' };
+const point = 'lat=43.6426&lon=-79.3871';
+const cases: LiveCase[] = [
+  { name: 'Toronto building, without selecting an apartment', path: geocode(toronto), status: 200, method: 'exact', lat: 43.69279, lon: -79.288914, unit: null },
+  { name: 'loaded postal centroid', path: geocode({ postal: 'M4C5N8', province: 'ON' }), status: 200, method: 'postal_centroid', lat: 43.69279, lon: -79.288914 },
+  { name: 'missing postal code uses nearby siblings', path: geocode({ postal: 'M5V2T6', province: 'ON' }), status: 200, method: 'postal_prefix', lat: 43.64543705042017, lon: -79.3997076302521 },
+  { name: 'French prefix street type', path: geocode({ address: '350 Rue Saint-Paul E', city: 'Montréal', province: 'QC' }), status: 200, method: 'exact', lat: 45.509162, lon: -73.551579, unit: null },
+  { name: 'French suffix street type', path: geocode({ address: '350 Saint-Paul RUE E', city: 'Montréal', province: 'QC' }), status: 200, method: 'exact', lat: 45.509162, lon: -73.551579, unit: null },
+  { name: 'explicit unit', path: geocode({ ...toronto, address: '757 Victoria Park Ave Unit PH11' }), status: 200, method: 'exact', unit: 'PH11' },
+  { name: 'street takes precedence over conflicting postal', path: geocode({ ...toronto, postal: 'M5V3L9' }), status: 200, method: 'exact', lat: 43.69279, lon: -79.288914, unit: null },
+  { name: 'postal riding approximation', path: '/api/demo/federal?postal=M5V2T6&province=ON', status: 200, method: 'postal_prefix' },
+  { name: 'unsupported ODA province', path: geocode({ postal: 'A1C1A1', province: 'NL' }), status: 404, code: 'PROVINCE_NOT_LOADED' },
+  { name: 'ambiguous street', path: geocode({ address: 'Main Street' }), status: 422, code: 'AMBIGUOUS_LOCATION' },
+  { name: 'combined defaults', path: `/api/demo/combined?${point}`, status: 200, provinceData: true },
+  { name: 'combined explicit opt-out', path: `/api/demo/combined?${point}&include_province=false`, status: 200, provinceData: false },
+  { name: 'unknown demo route', path: `/api/demo/not-a-route?${point}`, status: 404, code: 'NOT_FOUND' },
+  { name: 'invalid coordinates', path: '/api/demo/federal?lat=999&lon=-79', status: 400, code: 'INVALID_QUERY' },
 ];
 
-describe.skipIf(!runLive)('ODA live geocoding (ODA_LIVE=1)', () => {
-  for (const testCase of LIVE_CASES) {
-    it(testCase.name, async () => {
-      if (!basicAuth) {
-        throw new Error('Set ODA_LIVE_BASIC_AUTH or BENCHMARK_BASIC_AUTH for live ODA tests');
-      }
-
-      const response = await fetch(`${baseUrl}${testCase.path}`, { headers: authHeaders() });
-      expect(response.status).toBe(testCase.expectStatus);
-
-      const body = (await response.json()) as {
+describe.skipIf(!runLive)('production API smoke checks (ODA_LIVE=1)', () => {
+  for (const c of cases) {
+    it(c.name, async () => {
+      const headers: Record<string, string> = {};
+      if (serverKey) headers.Authorization = `Bearer ${serverKey}`;
+      else if (basicAuth) headers.Authorization = `Basic ${Buffer.from(basicAuth).toString('base64')}`;
+      const response = await fetch(`${baseUrl}${c.path}`, { headers, signal: AbortSignal.timeout(30_000) });
+      expect(response.status).toBe(c.status);
+      const body = await response.json() as {
         code?: string;
         geocodeMethod?: string;
+        geocode?: { method?: string };
         point?: { lat: number; lon: number };
+        addressComponents?: { unit?: string };
+        normalizedAddress?: string;
+        province_data?: { riding?: string } | null;
       };
-
-      if (testCase.expectCode) expect(body.code).toBe(testCase.expectCode);
-      if (testCase.expectMethod) expect(body.geocodeMethod).toBe(testCase.expectMethod);
-      if (testCase.latClose !== undefined) expect(body.point?.lat).toBeCloseTo(testCase.latClose, 3);
-      if (testCase.lonClose !== undefined) expect(body.point?.lon).toBeCloseTo(testCase.lonClose, 3);
+      if (c.code) expect(body.code).toBe(c.code);
+      if (c.method) expect(body.geocodeMethod ?? body.geocode?.method).toBe(c.method);
+      if (c.lat !== undefined) expect(body.point?.lat).toBeCloseTo(c.lat, 4);
+      if (c.lon !== undefined) expect(body.point?.lon).toBeCloseTo(c.lon, 4);
+      if (c.unit === null) {
+        expect(body.addressComponents?.unit).toBeUndefined();
+        expect(body.normalizedAddress).not.toMatch(/\bUNIT\b/);
+      } else if (c.unit !== undefined) expect(body.addressComponents?.unit).toBe(c.unit);
+      if (c.provinceData === true) expect(body.province_data?.riding).toBeTruthy();
+      if (c.provinceData === false) expect(body.province_data).toBeUndefined();
     });
   }
-});
-
-describe('ODA live placeholder', () => {
-  it('skips live tests unless ODA_LIVE=1', () => {
-    expect(true).toBe(true);
-  });
 });

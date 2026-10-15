@@ -74,6 +74,10 @@ jobs:
         working-directory: portal
         run: bun install --frozen-lockfile
 
+      - name: Audit portal dependencies
+        working-directory: portal
+        run: bun audit --audit-level=high
+
       - name: Portal typecheck
         working-directory: portal
         run: bun run typecheck

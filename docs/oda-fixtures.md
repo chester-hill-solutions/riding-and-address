@@ -1,16 +1,25 @@
 # ODA Fixture Acceptance Examples
 
-These fixture cases define expected behavior. Tests in `test/oda-geocoding.test.ts`, `test/oda-fixture-cases.test.ts`, and `test/canada-post-format.test.ts` assert against these examples.
+These fixture cases define expected behavior against synthetic test rows, not production address coverage. Tests in `test/oda-geocoding.test.ts`, `test/oda-fixture-cases.test.ts`, and `test/canada-post-format.test.ts` assert against these examples.
 
 ```bash
 # Offline ODA tests (in-memory fixture DB)
 npm run test:oda
 
-# Live production ODA API (requires auth)
-ODA_LIVE=1 BENCHMARK_BASIC_AUTH='user:pass' npm run test:oda:live
+# Live production demo API (read-only; no credentials required)
+ODA_LIVE=1 npm run test:oda:live
 ```
 
 Fixture CSV: `test/fixtures/oda/fixture.csv`
+
+Live checks use addresses verified in the imported data, including `757 Victoria Park Ave,
+Toronto, ON` and postal code `M4C 5N8`. As of 2026-10-15, `M5V 2T6` has neither address rows
+nor an exact centroid in production. Auto mode now estimates from loaded `M5V 2T*` siblings
+and labels it `postal_prefix` at confidence `0.65`; explicit `geocode_method=postal_centroid`
+remains exact-only. Fixture coordinates are never inserted as real production data.
+
+Forward geocoding and normalization omit apartment units for building-only queries. An
+explicitly supplied, matched unit is retained; reverse geocoding can return the nearest unit.
 
 ## Case 1: Exact civic match (ON)
 

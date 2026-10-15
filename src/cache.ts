@@ -236,14 +236,14 @@ export function generateLookupCacheKey(query: QueryParams, pathname: string): st
   }
   
   // Ensure key doesn't exceed KV 512 byte limit
-  const key = `lookup:v2:${dataset}:${type}:${value}:${pathname}`;
+  const key = `lookup:v3:${dataset}:${type}:${value}:${pathname}:${query.geocodeMethod ?? 'auto'}:${normalizeString(query.state) ?? ''}`;
   if (key.length > 512) {
     // Hash long keys (simple hash for now)
     const hash = key.split('').reduce((acc, char) => {
       const hash = ((acc << 5) - acc) + char.charCodeAt(0);
       return hash & hash;
     }, 0);
-    return `lookup:${dataset}:${type}:hash:${Math.abs(hash)}:${pathname}`;
+    return `lookup:v3:${dataset}:${type}:hash:${Math.abs(hash)}:${pathname}`;
   }
   
   return key;
@@ -280,6 +280,7 @@ export async function setCachedLookupResult(env: Env, cacheKey: string, result: 
   const entry: LookupCacheEntry = {
     properties: result.properties,
     riding: result.riding,
+    geocode: result.geocode,
     point,
     normalizedAddress: result.normalizedAddress,
     addressComponents: result.addressComponents,

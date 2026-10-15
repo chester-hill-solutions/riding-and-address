@@ -1,10 +1,12 @@
 import { reactRouter } from '@react-router/dev/vite';
 import { cloudflare } from '@cloudflare/vite-plugin';
 import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
 import tsconfigPaths from 'vite-tsconfig-paths';
 
 export default defineConfig({
   plugins: [
+    tailwindcss(),
     // Runs the Worker (this app + the src/worker.ts API worker it wraps — see workers/app.ts)
     // in the real Workers runtime for `npm run dev`, and produces the deployable build for
     // `npm run build` + `wrangler deploy`. wrangler.jsonc lives alongside this file.

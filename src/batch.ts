@@ -150,6 +150,7 @@ export async function processBatchLookupWithBatchGeocoding(
               mailingAddress: geocodingResult.mailingAddress,
               geocodeMethod: geocodingResult.geocodeMethod,
               geocodeConfidence: geocodingResult.confidence,
+              postalMatch: geocodingResult.postalMatch,
             };
             const payload = await runExpandedLookup(
               batchRequest,
