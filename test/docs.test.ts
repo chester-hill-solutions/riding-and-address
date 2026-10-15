@@ -287,14 +287,18 @@ describe('embed widget docs page', () => {
     }
   });
 
-  it('links back to the API reference', () => {
-    expect(createEmbedDocsPage(BASE)).toContain(`href="${BASE}/docs"`);
+  it('keeps every navigation link relative to the current deployment', () => {
+    const html = createEmbedDocsPage(BASE);
+    const links = [...html.matchAll(/<a\b[^>]*href="([^"]+)"/g)].map((match) => match[1]);
+    expect(links).toEqual(['/docs', '/docs', '/api/docs']);
   });
 });
 
 describe('API reference page', () => {
   it('points the API reference at the spec endpoint', () => {
-    expect(createApiReference(BASE)).toContain(`${BASE}/api/docs`);
+    const html = createApiReference(BASE);
+    expect(html).toContain('var openApiUrl = "/api/docs";');
+    expect(html).not.toContain(`${BASE}/api/docs`);
   });
 
   it('loads the same Scalar version the devDependency pins', () => {

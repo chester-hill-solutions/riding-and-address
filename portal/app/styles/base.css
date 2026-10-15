@@ -1,0 +1,225 @@
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-brand: var(--style-font-brand, var(--style-font-heading));
+  --font-display: var(--style-font-display, var(--style-font-heading));
+  --font-heading: var(--style-font-heading);
+  --font-sans: var(--style-font-sans);
+  --font-mono: var(--style-font-mono);
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.25);
+  --radius-2xl: calc(var(--radius) * 1.5);
+  --radius-3xl: calc(var(--radius) * 1.75);
+  --radius-4xl: calc(var(--radius) * 2);
+
+  --spacing-unit: var(--space-unit);
+  --text-xs: var(--font-size-xs);
+  --text-sm: var(--font-size-sm);
+  --text-base: var(--font-size-base);
+  --text-lg: var(--font-size-lg);
+  --text-xl: var(--font-size-xl);
+}
+
+@layer base {
+  a,
+  button:not(:disabled),
+  [role="button"]:not(:disabled):not([aria-disabled="true"]),
+  [role="link"],
+  [role="menuitem"],
+  [role="option"],
+  [role="tab"],
+  [role="checkbox"]:not([aria-disabled="true"]),
+  [role="radio"]:not([aria-disabled="true"]),
+  [role="switch"]:not([aria-disabled="true"]),
+  [role="combobox"]:not([aria-disabled="true"]),
+  summary {
+    cursor: pointer;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-sm text-foreground antialiased;
+  }
+
+  html,
+  [data-style] {
+    @apply font-sans;
+  }
+
+  [data-style]:not(html) {
+    @apply bg-background text-sm text-foreground antialiased;
+  }
+
+  code,
+  kbd,
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+}
+
+/* Bare status/link text uses the soft foreground. Solid controls keep their
+ * original fill + foreground pairs (e.g. text-success-foreground).
+ * This covers badges, field errors, checklist readiness and trace icons. */
+:is(
+    :root:not([data-style]),
+    [data-style="stark"],
+    [data-style="chs"],
+    [data-style="callcaster"],
+    [data-style="gocanvass"]
+  )
+  :where(.text-success) {
+  color: var(--ui-success-text);
+}
+
+:is(
+    :root:not([data-style]),
+    [data-style="stark"],
+    [data-style="chs"],
+    [data-style="callcaster"],
+    [data-style="gocanvass"]
+  )
+  :where(.text-warning) {
+  color: var(--ui-warning-text);
+}
+
+:is(
+    :root:not([data-style]),
+    [data-style="stark"],
+    [data-style="chs"],
+    [data-style="callcaster"],
+    [data-style="gocanvass"]
+  )
+  :where(.text-destructive) {
+  color: var(--ui-destructive-text);
+}
+
+:is(
+    :root:not([data-style]),
+    [data-style="stark"],
+    [data-style="chs"],
+    [data-style="callcaster"],
+    [data-style="gocanvass"]
+  )
+  :where(.text-info) {
+  color: var(--ui-info-text);
+}
+
+:is(
+    :root:not([data-style]),
+    [data-style="stark"],
+    [data-style="chs"],
+    [data-style="callcaster"],
+    [data-style="gocanvass"]
+  )
+  :where(.text-primary) {
+  color: var(--ui-primary-text);
+}
+
+:is(
+    :root:not([data-style]),
+    [data-style="stark"],
+    [data-style="chs"],
+    [data-style="callcaster"],
+    [data-style="gocanvass"]
+  )
+  :where([data-slot="alert"]):is(
+    .text-success,
+    .text-warning,
+    .text-destructive,
+    .text-info
+  )
+  > [data-slot="alert-description"] {
+  color: inherit;
+}
+
+/* Metric accents convey tone against cards, rather than a solid button fill. */
+:is(
+    :root:not([data-style]),
+    [data-style="stark"],
+    [data-style="chs"],
+    [data-style="callcaster"],
+    [data-style="gocanvass"]
+  )
+  :where([data-slot="metric-card"][data-tone="ok"]) {
+  border-top-color: var(--ui-success-text);
+}
+
+:is(
+    :root:not([data-style]),
+    [data-style="stark"],
+    [data-style="chs"],
+    [data-style="callcaster"],
+    [data-style="gocanvass"]
+  )
+  :where([data-slot="metric-card"][data-tone="warn"]) {
+  border-top-color: var(--ui-warning-text);
+}
+
+:is(
+    :root:not([data-style]),
+    [data-style="stark"],
+    [data-style="chs"],
+    [data-style="callcaster"],
+    [data-style="gocanvass"]
+  )
+  :where([data-slot="metric-card"][data-tone="danger"]) {
+  border-top-color: var(--ui-destructive-text);
+}
+
+:is(
+    :root:not([data-style]),
+    [data-style="stark"],
+    [data-style="chs"],
+    [data-style="callcaster"],
+    [data-style="gocanvass"]
+  )
+  :where([data-slot="metric-card"][data-tone="action"]) {
+  border-top-color: var(--ui-info-text);
+}

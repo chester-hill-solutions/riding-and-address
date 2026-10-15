@@ -59,7 +59,6 @@ const EVENT_DETAILS: Record<(typeof EMBED_EVENTS)[number], string> = {
 
 export function createEmbedDocsPage(baseUrl: string): string {
   const originRaw = baseUrl.replace(/\/$/, '');
-  const origin = escapeHtml(originRaw);
   const originCode = escapeCode(originRaw);
   const scriptTag = `<script src="${originRaw}/embed.js" data-province="ON" defer></script>`;
 
@@ -170,7 +169,7 @@ export function createEmbedDocsPage(baseUrl: string): string {
 </head>
 <body>
   <main class="shell">
-    <a class="back" href="${origin}/docs">← API reference</a>
+    <a class="back" href="/docs">← API reference</a>
     <h1>Address autocomplete widget</h1>
     <p class="lede">One script tag wires Canadian address search into an existing form. It finds the
       address field, fills the address on selection, and emits the riding. The widget calls
@@ -253,8 +252,8 @@ widget.destroy();                  // restores the field exactly as found</code>
 
     <h2>See also</h2>
     <ul>
-      <li><a href="${origin}/docs">API reference</a> — every endpoint, parameter, and error code.</li>
-      <li><a href="${origin}/api/docs">OpenAPI document</a> — machine-readable spec.</li>
+      <li><a href="/docs">API reference</a> — every endpoint, parameter, and error code.</li>
+      <li><a href="/api/docs">OpenAPI document</a> — machine-readable spec.</li>
     </ul>
   </main>
 </body>

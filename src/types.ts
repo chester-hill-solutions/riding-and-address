@@ -100,11 +100,25 @@ export type OdaGeocodeMethod =
   | 'exact'
   | 'postal_street'
   | 'postal_centroid'
+  | 'postal_prefix'
   | 'street_interpolated'
   | 'city_centroid'
   | 'nearest_neighbor';
 
+export interface PostalMatchMetadata {
+  requestedPostalCode: string;
+  matchedPrefix: string;
+  matchedPostalCodes: string[];
+}
+
+export interface LookupGeocodeMetadata {
+  method: string;
+  confidence?: number;
+  postalMatch?: PostalMatchMetadata;
+}
+
 export interface OdaGeocodeMetadata {
+  postalMatch?: PostalMatchMetadata;
   geocodeMethod?: OdaGeocodeMethod;
   confidence?: number;
   distanceMeters?: number;
@@ -391,6 +405,7 @@ export interface QueryParams {
 }
 
 export interface LookupResult {
+  geocode?: LookupGeocodeMetadata;
   properties: Record<string, unknown> | null;
   riding?: string;
   normalizedAddress?: string;
@@ -400,6 +415,7 @@ export interface LookupResult {
 
 // Lookup cache entry structure
 export interface LookupCacheEntry {
+  geocode?: LookupGeocodeMetadata;
   properties: Record<string, unknown> | null;
   riding?: string;
   point?: { lon: number; lat: number };
@@ -574,6 +590,7 @@ export interface Metrics {
   geocodingOdaMethodExact: number;
   geocodingOdaMethodPostalStreet: number;
   geocodingOdaMethodPostalCentroid: number;
+  geocodingOdaMethodPostalPrefix: number;
   geocodingOdaMethodStreetInterpolated: number;
   geocodingOdaMethodCityCentroid: number;
   geocodingOdaMethodNearest: number;

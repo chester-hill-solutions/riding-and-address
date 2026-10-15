@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Button } from './ui/button';
 
 /** Copies `value` to the clipboard and confirms briefly. */
 export function CopyButton({ value, label = 'Copy' }: { value: string; label?: string }) {
@@ -29,8 +30,8 @@ export function CopyButton({ value, label = 'Copy' }: { value: string; label?: s
   }
 
   return (
-    <button type="button" className="secondary copy-btn" onClick={copy}>
+    <Button type="button" variant="secondary" size="sm" className="copy-btn" onPress={copy}>
       {copied ? 'Copied' : failed ? 'Copy failed — select manually' : label}
-    </button>
+    </Button>
   );
 }

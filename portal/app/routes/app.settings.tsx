@@ -1,3 +1,6 @@
+import { Checkbox } from '~/components/ui/checkbox';
+import { Input } from '~/components/ui/input';
+import { Label } from '~/components/ui/label';
 import { Form } from 'react-router';
 import type { Route } from './+types/app.settings';
 import { isOwnerOrAdmin, requireCustomer, requireOwnerOrAdmin } from '~/lib/customer.server';
@@ -54,22 +57,15 @@ export default function SettingsPage({ loaderData, actionData }: Route.Component
       />
       {canManageFuse ? (
         <Form method="post">
-          <label htmlFor="fuseLimit">Monthly fuse (Billable units)</label>
-          <input
+          <Label htmlFor="fuseLimit">Monthly fuse (Billable units)</Label>
+          <Input size="touch"
             id="fuseLimit"
             name="fuseLimit"
             type="number"
             min={0}
             defaultValue={billing?.fuseLimit ?? DEFAULT_FREE_MONTHLY_ALLOWANCE}
           />
-          <label>
-            <input
-              type="checkbox"
-              name="fuseSoftWarn"
-              defaultChecked={Boolean(billing?.fuseSoftWarn)}
-            />{' '}
-            Soft-warn instead of hard-block
-          </label>
+          <Checkbox name="fuseSoftWarn" defaultSelected={Boolean(billing?.fuseSoftWarn)} className="mt-4">Soft-warn instead of hard-block</Checkbox>
           <SubmitButton pendingText="Saving…">Save</SubmitButton>
         </Form>
       ) : (

@@ -33,7 +33,7 @@ export function handleApiReference(ctx: RouteContext): Response {
  */
 const SCALAR_API_REFERENCE_VERSION = "1.62.8";
 
-export function createApiReference(baseUrl: string): string {
+export function createApiReference(_baseUrl: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -55,7 +55,7 @@ export function createApiReference(baseUrl: string): string {
   <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@${SCALAR_API_REFERENCE_VERSION}"></script>
   <script>
     (function () {
-      var openApiUrl = ${JSON.stringify(`${baseUrl}/api/docs`)};
+      var openApiUrl = "/api/docs";
       var lookupPaths = ['/api', '/api/federal', '/api/combined'].concat(${JSON.stringify(getAllProvincialPaths())});
 
       function hasLocationQuery(params) {
@@ -145,7 +145,7 @@ const LOOKUP_QUERY_PARAMETERS = [
     in: "query" as const,
     description: "Street address",
     required: false,
-    schema: { type: "string", default: "123 Main St, Toronto, ON", example: "123 Main St, Toronto, ON" },
+    schema: { type: "string", default: "757 Victoria Park Ave, Toronto, ON", example: "757 Victoria Park Ave, Toronto, ON" },
   },
   {
     name: "lat",
@@ -196,7 +196,7 @@ const LOOKUP_QUERY_PARAMETERS = [
     name: "geocode_method",
     in: "query" as const,
     description:
-      "Accuracy mode. Default point-in-polygon after geocoding. Use postal_centroid for coarser postal-code centroid geocoding (documented dual-mode; not an electoral-authority warranty).",
+      "Accuracy mode. Auto geocodes before point-in-polygon; a missing full postal code can use nearby codes sharing five characters (postal_prefix, confidence 0.65). Use postal_centroid to require an exact full-code centroid.",
     required: false,
     schema: { type: "string", enum: ["postal_centroid"], example: "postal_centroid" },
   },
@@ -233,7 +233,7 @@ const RETURN_RESPONSE_PROPERTIES = {
 };
 
 const ODA_GEOCODE_PARAMETERS = [
-  { name: "address", in: "query", schema: { type: "string", default: "123 Main St, Toronto, ON" } },
+  { name: "address", in: "query", schema: { type: "string", default: "757 Victoria Park Ave, Toronto, ON" } },
   { name: "postal", in: "query", required: true, schema: { type: "string", default: "K1A 0A6", example: "K1A 0A6" } },
   { name: "city", in: "query", schema: { type: "string", default: "Ottawa" } },
   { name: "state", in: "query", schema: { type: "string", default: "ON" } },
@@ -245,7 +245,7 @@ const ODA_REVERSE_PARAMETERS = [
 ];
 
 const ODA_NORMALIZE_PARAMETERS = [
-  { name: "address", in: "query", schema: { type: "string", default: "123 Main St, Toronto, ON" } },
+  { name: "address", in: "query", schema: { type: "string", default: "757 Victoria Park Ave, Toronto, ON" } },
   { name: "postal", in: "query", required: true, schema: { type: "string", default: "K1A 0A6", example: "K1A 0A6" } },
 ];
 

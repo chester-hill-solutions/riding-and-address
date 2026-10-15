@@ -49,3 +49,31 @@ Checkout keeps `plan: free` until `checkout.session.completed` activates `metere
 ## Founder admin
 
 Users listed in `FOUNDER_USER_IDS` can toggle Enterprise `batchEnabled` on a Customer via the admin UI (projects to Worker KV).
+
+
+## CHS UI kit
+
+Shared buttons, inputs, labels, checkboxes, cards, badges and tables are vendored from
+`@chester-hill-solutions/ui-kit` 0.5.0, upstream commit
+`d1ee02287b8d58dd72dcf2ec9dd757ffb86f4960`. Component source lives in
+`app/components/ui`; `.chs-ui.json` records the generator configuration. The app uses
+React Aria for controls and Tailwind v4 through the Vite plugin. No private registry
+credential or UI-kit runtime package is needed to build the checked-in components.
+
+CanCoder theme values live in `app/styles/cancoder.css`: civic blue, cool surfaces,
+Source Sans 3 body type and Source Serif 4 headings. `ui-theme.css` and `base.css`
+remain upstream copies. Use semantic tokens and slot treatments in `cancoder.css`
+for brand changes, rather than editing the generated components. `ActionLink` bridges
+CHS button styles to React Router navigation; `SubmitButton` adds route submission
+state to the CHS pending-state control. Internal navigation, documentation links,
+and the homepage widget use root-relative URLs so both public hostnames stay on
+the current origin.
+
+With the UI-kit CLI available, run from `portal/`:
+
+```sh
+ui-kit add button input label card table native-select checkbox badge --overwrite
+```
+
+Review generated diffs before committing an upstream refresh. Keep the app-owned
+CanCoder theme and router/form adapters.

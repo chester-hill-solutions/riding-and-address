@@ -1,0 +1,94 @@
+@import "./ui-theme.css";
+
+/* CanCoder owns brand values; upstream component and foundation CSS stay intact. */
+:root:not([data-style]) {
+  --style-font-sans: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+  --style-font-heading: "Source Serif 4", Georgia, serif;
+  --style-font-display: var(--style-font-heading);
+  --style-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: var(--style-font-sans);
+  --font-display: var(--style-font-display);
+  --radius: 0.625rem;
+  --space-unit: 0.25rem;
+  --font-size-base: 1rem;
+  --font-size-sm: 0.875rem;
+  --font-size-xs: 0.75rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+
+  --bg: var(--background);
+  --surface: var(--card);
+  --surface-subtle: var(--muted);
+  --text: var(--foreground);
+  --primary-strong: #0c4488;
+  --primary-soft: #e7f0fb;
+  --border-strong: #8b9bb0;
+  --error: var(--destructive);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: var(--radius);
+  --shadow: 0 18px 40px rgb(19 32 51 / 10%);
+  --hero-ink: #f4f8fc;
+}
+
+:root:not(.dark) {
+  --background: #eef3f8;
+  --foreground: #132033;
+  --card: #ffffff;
+  --card-foreground: #132033;
+  --popover: #ffffff;
+  --popover-foreground: #132033;
+  --primary: #1457a6;
+  --primary-foreground: #ffffff;
+  --secondary: #e7f0fb;
+  --secondary-foreground: #0c4488;
+  --muted: #e4ebf4;
+  --muted-foreground: #5a687c;
+  --accent: #dcebf9;
+  --accent-foreground: #0c4488;
+  --border: #d0dbe8;
+  --input: #8b9bb0;
+  --ring: #1457a6;
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+  --success: #14733e;
+  --success-foreground: #ffffff;
+  --warning: #f3b61f;
+  --warning-foreground: #3a2900;
+  --info: #1457a6;
+  --info-foreground: #ffffff;
+  --ui-primary-text: #1457a6;
+  --ui-success-text: #14733e;
+  --ui-destructive-text: #b42318;
+  --ui-warning-text: #754508;
+  --ui-info-text: #1457a6;
+}
+
+/* Slot chrome is themed here, without editing copied component source. */
+[data-slot="input"],
+[data-slot="native-select"] {
+  background: var(--card);
+  border-color: var(--input);
+}
+
+[data-slot="input"]:focus-visible,
+[data-slot="native-select"]:focus-visible {
+  border-color: var(--ring);
+}
+
+[data-slot="input"][aria-invalid="true"],
+[data-slot="native-select"][aria-invalid="true"] {
+  border-color: var(--destructive);
+}
+
+[data-slot="checkbox-indicator"] {
+  border-color: var(--input);
+}
+
+[data-slot="checkbox"][data-selected] [data-slot="checkbox-indicator"] {
+  border-color: var(--primary);
+}
+
+/* Context-specific outline contrast follows the brand theme. */
+.hero-marketing .marketing-outline { border-color: rgb(255 255 255 / 50%); background: transparent; color: white; }
+.hero-marketing .marketing-outline:hover { background: rgb(255 255 255 / 12%); }
+.section .marketing-outline { color: var(--primary); background: var(--card); border-color: var(--primary); }

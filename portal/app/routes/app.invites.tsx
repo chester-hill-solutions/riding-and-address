@@ -1,3 +1,5 @@
+import { Input } from '~/components/ui/input';
+import { Label } from '~/components/ui/label';
 import { Form } from 'react-router';
 import type { Route } from './+types/app.invites';
 import { isOwnerOrAdmin, requireCustomer } from '~/lib/customer.server';
@@ -64,8 +66,8 @@ export default function InvitesPage({ actionData }: Route.ComponentProps) {
         }
       />
       <Form method="post">
-        <label htmlFor="email">Email</label>
-        <input id="email" name="email" type="email" required />
+        <Label htmlFor="email">Email</Label>
+        <Input size="touch" id="email" name="email" type="email" required />
         <SubmitButton pendingText="Sending…">Send invite</SubmitButton>
       </Form>
     </Panel>

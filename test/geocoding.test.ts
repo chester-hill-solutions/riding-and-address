@@ -45,7 +45,7 @@ const missOdaDb = () =>
 describe('generateGeocodingCacheKey', () => {
   it('generates a key with provider prefix', () => {
     const key = generateGeocodingCacheKey({ address: '123 Main St' }, 'google');
-    expect(key.startsWith('geocoding:v2:google:')).toBe(true);
+    expect(key.startsWith('geocoding:v3:google:')).toBe(true);
   });
 
   it('normalizes address to lowercase', () => {

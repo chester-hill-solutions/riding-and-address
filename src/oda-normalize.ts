@@ -393,37 +393,41 @@ export function buildSearchKey(parts: {
   ].join('|');
 }
 
+const FRENCH_STREET_TYPE_PREFIXES = new Set([
+  'RUE', 'CH', 'CHEMIN', 'BOULEVARD', 'BLVD', 'AVENUE', 'AVE', 'AV',
+  'PLACE', 'PL', 'ROUTE', 'RTE', 'RANG', 'MONTEE', 'COTE', 'CROIS', 'PROM', 'VOIE',
+]);
+
 /** Parse street tokens after civic number is extracted */
 function parseStreetTail(rest: string): {
   streetName?: string;
   streetType?: string;
   streetDirection?: string;
 } {
-  const tokens = rest.trim().split(/\s+/);
-  if (tokens.length === 0) {
-    return {};
+  const tokens = rest.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return {};
+
+  let streetDirection: string | undefined;
+  const last = normalizeSearchToken(tokens[tokens.length - 1]);
+  if (tokens.length > 1 && STREET_DIR_SEARCH[last]) {
+    streetDirection = normalizeStreetDirection(tokens.pop());
   }
 
-  const last = tokens[tokens.length - 1].toUpperCase();
-  const secondLast = tokens.length > 1 ? tokens[tokens.length - 2].toUpperCase() : '';
-
-  if (STREET_DIR_SEARCH[last]) {
-    const streetType = tokens.length > 2 ? normalizeStreetType(tokens[tokens.length - 2]) : '';
-    const streetName = tokens.slice(0, -2).join(' ') || tokens[0];
-    return {
-      streetName,
-      streetType: streetType || undefined,
-      streetDirection: normalizeStreetDirection(last),
-    };
+  // Suffix types take precedence: "Avenue Rd" is a street named Avenue.
+  const suffix = normalizeSearchToken(tokens[tokens.length - 1]);
+  if (tokens.length > 1 && STREET_TYPE_SEARCH[suffix]) {
+    tokens.pop();
+    return { streetName: tokens.join(' '), streetType: normalizeStreetType(suffix), streetDirection };
   }
 
-  if (STREET_TYPE_SEARCH[last] || STREET_TYPE_SEARCH[secondLast]) {
-    const streetType = normalizeStreetType(last);
-    const streetName = tokens.slice(0, -1).join(' ');
-    return { streetName, streetType };
+  // French street types precede the name, while the stored key keeps type separate.
+  const prefix = normalizeSearchToken(tokens[0]);
+  if (tokens.length > 1 && FRENCH_STREET_TYPE_PREFIXES.has(prefix)) {
+    tokens.shift();
+    return { streetName: tokens.join(' '), streetType: normalizeStreetType(prefix), streetDirection };
   }
 
-  return { streetName: rest.trim() };
+  return { streetName: tokens.join(' '), streetDirection };
 }
 
 /** Normalize unit identifiers for DB comparison */

@@ -12,16 +12,19 @@ CanCoder and [OpenNorth Represent](https://represent.opennorth.ca/) answer sligh
 
 CanCoder is optimized for **“where does this location fall on the map?”** OpenNorth postal lookup is optimized for **“which district is this postal code generally associated with?”**
 
-## Canonical example: `M5V2T6`
+## Historical comparison: `M5V2T6`
 
-Downtown Toronto postal code `M5V2T6`:
+The following results were recorded before the postal-prefix fallback. Current auto mode
+uses nearby loaded `M5V 2T*` centroids when the full code is absent; see the final section.
+
+Previously recorded results for `M5V2T6`:
 
 | API | Federal riding |
 |-----|----------------|
 | CanCoder (default) | **University—Rosedale** |
 | OpenNorth postal centroid | **Spadina—Harbourfront** |
 
-Both are defensible. The geocoded centroid for `M5V2T6` falls in University—Rosedale on 2024 boundaries; Canada Post / concordance tables often associate the FSA with Spadina—Harbourfront.
+These historical outputs are retained for comparison; they are not current production expectations.
 
 See the full comparison: [comparison-opennorth.md](comparison-opennorth.md).
 
@@ -39,7 +42,7 @@ Use a **civic address** when the building matters; use **postal only** when mail
 Pass `geocode_method=postal_centroid` to restrict geocoding to the ODA postal-centroid table (no civic forward geocode, no GeoGratis/Nominatim fallback):
 
 ```http
-GET /api/federal?postal=M5V2T6&geocode_method=postal_centroid
+GET /api/federal?postal=M4C5N8&geocode_method=postal_centroid
 ```
 
 Responses include a `geocode` object when metadata is available:
@@ -64,3 +67,12 @@ This mode is closest to OpenNorth postal semantics but still uses CanCoder bound
 **CanCoder** — address → riding in one call, 2024 boundaries, optional provincial `/api/combined`, edge caching.
 
 **OpenNorth** — representative names and emails, postal concordance workflows, unauthenticated public access.
+
+
+## Missing full postal codes
+
+Auto mode can estimate from loaded codes that share the first five characters. `M5V2T6`,
+currently absent from the imported full-code table, resolves from `M5V 2T3` and `M5V 2T8`.
+The response labels the estimate `postal_prefix` with confidence `0.65` and identifies the
+matched postal codes in `postalMatch`. Historical comparisons above predate this fallback.
+Explicit `geocode_method=postal_centroid` continues to require a full-code match.

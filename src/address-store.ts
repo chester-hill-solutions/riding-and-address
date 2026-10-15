@@ -205,6 +205,9 @@ export interface AddressStore {
   /** Postal-code centroid within the given provinces. */
   findPostalCentroid(input: FindPostalCentroidInput): Promise<PostalCentroidRecord | null>;
 
+  /** Loaded siblings sharing the first five postal-code characters; indexed and bounded. */
+  findPostalPrefixCentroids(input: { prefix: string; provinces: string[] }): Promise<(PostalCentroidRecord & { address_count: number })[]>;
+
   /** City centroid for the first preferred city key that exists. */
   findCityCentroid(input: FindCityCentroidInput): Promise<CityCentroidRecord | null>;
 
@@ -367,6 +370,19 @@ function newAddressStore(db: D1Database): AddressStore {
         )
         .bind(input.postal, ...input.provinces)
         .first<PostalCentroidRecord>();
+    },
+
+    async findPostalPrefixCentroids(input) {
+      const result = await db.prepare(`
+        SELECT province, postal_code, lat, lon, address_count
+        FROM oda_postal_centroids
+        WHERE province IN (${placeholders(input.provinces.length)})
+          AND postal_code >= ? AND postal_code < ? AND address_count > 0
+        ORDER BY postal_code, province
+        LIMIT 20
+      `).bind(...input.provinces, input.prefix, `${input.prefix}\uffff`)
+        .all<PostalCentroidRecord & { address_count: number }>();
+      return result.results || [];
     },
 
     async findCityCentroid(input) {
@@ -605,6 +621,7 @@ export function getAddressStore(db: D1Database, record: () => void): AddressStor
     findStreetRange: (input) => call(() => store.findStreetRange(input)),
     findPostalStreetAddresses: (input) => call(() => store.findPostalStreetAddresses(input)),
     findPostalCentroid: (input) => call(() => store.findPostalCentroid(input)),
+    findPostalPrefixCentroids: (input) => call(() => store.findPostalPrefixCentroids(input)),
     findCityCentroid: (input) => call(() => store.findCityCentroid(input)),
     findCityCentroidsByPrefix: (input) => call(() => store.findCityCentroidsByPrefix(input)),
     findAddressesInBounds: (input) => call(() => store.findAddressesInBounds(input)),

@@ -1,3 +1,5 @@
+import { Input } from '~/components/ui/input';
+import { Label } from '~/components/ui/label';
 import { Form, Link, redirect } from 'react-router';
 import type { Route } from './+types/login';
 import { getAuth } from '~/lib/auth.server';
@@ -43,10 +45,10 @@ export default function Login({ actionData }: Route.ComponentProps) {
       <Panel title="Log in">
         <FormFeedback error={actionData?.error} />
         <Form method="post">
-          <label htmlFor="email">Email</label>
-          <input id="email" name="email" type="email" required autoComplete="email" />
-          <label htmlFor="password">Password</label>
-          <input
+          <Label htmlFor="email">Email</Label>
+          <Input size="touch" id="email" name="email" type="email" required autoComplete="email" />
+          <Label htmlFor="password">Password</Label>
+          <Input size="touch"
             id="password"
             name="password"
             type="password"
