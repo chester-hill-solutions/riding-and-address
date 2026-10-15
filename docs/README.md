@@ -24,7 +24,8 @@ Guides for operating, extending, and integrating with the CanCoder API.
 | [OpenNorth comparison](comparison-opennorth.md) | Speed and robustness vs Represent API (complement for reps) |
 | [Postal vs point lookup](postal-vs-point-lookup.md) | Why postal results differ from OpenNorth |
 | [ODA data import](oda-data-import.md) | Download, import, resume, and verify StatCan ODA in D1; build the autocomplete index |
-| [NAR data import](nar-data-import.md) | City-scoped refresh from the current StatCan National Address Register; one-city-per-day rotation |
+| [NAR FSA delta planning](nar-fsa-delta.md) | Offline source staging, identity-aware FSA diffs, partial cost estimates and execution blockers |
+| [NAR city import](nar-data-import.md) | Existing replacement importer, dry runs and rotation; no enforced D1 cost ceiling |
 
 ## ODA geocoding
 

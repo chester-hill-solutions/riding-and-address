@@ -1,5 +1,11 @@
 # NAR Data Import (one city per day)
 
+> **Cost boundary:** the existing city refresh commands and their `--dry-run`, queue and daily
+> rotation behavior remain available. This replacement importer has no enforced D1 cost ceiling;
+> remote dry runs perform billable D1 reads even though they do not write data. The separate
+> [offline FSA delta planner](nar-fsa-delta.md) uses local files only and cannot execute a production
+> import. Its safeguards do not apply to these existing commands.
+
 ## Why
 
 The address database was built from Statistics Canada's [Open Database of Addresses (ODA)](https://www.statcan.gc.ca/en/lode/databases/oda), whose collection period is **January–April 2021**. Statistics Canada's successor source is the [National Address Register (NAR)](https://www150.statcan.gc.ca/n1/en/catalogue/46260002) — catalogue 46-26-0002, semi-annual, released under the Statistics Canada Open Licence, with the same civic/mailing address shape.

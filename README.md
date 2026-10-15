@@ -40,6 +40,9 @@ so a province can contain both vintages at once; each response reports which one
 `dataSource`. NL, NU, and YT are in neither source yet and use GeoGratis/Google fallbacks. See
 [nar-data-import.md](docs/nar-data-import.md) and
 [reduce-external-geocoder-fallback.md](docs/plans/reduce-external-geocoder-fallback.md).
+The separate [offline FSA delta planner](docs/nar-fsa-delta.md) previews identity and budget
+safeguards without executing production imports. Existing city refresh commands remain available;
+their replacement writes and read-only dry runs have no enforced D1 cost ceiling.
 
 ### Query Parameters
 

@@ -1,0 +1,4 @@
+{
+  "mode": "same-vintage",
+  "evidence": "Synthetic fixture IDs assigned by this test; no claim about real cross-vintage StatCan GUID stability"
+}

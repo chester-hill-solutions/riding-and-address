@@ -49,6 +49,7 @@
     "import:oda:centroids": "bash scripts/rebuild-oda-centroids.sh",
     "import:oda": "tsx scripts/import-oda.ts",
     "import:nar": "tsx scripts/import-nar.ts",
+    "import:nar:plan": "tsx scripts/plan-nar-fsa.ts",
     "import:nar:next": "tsx scripts/import-nar.ts --next --remote",
     "build:oda:suggest": "tsx scripts/build-oda-suggest.ts",
     "keys": "tsx scripts/manage-keys.ts",
