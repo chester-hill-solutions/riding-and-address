@@ -35,7 +35,8 @@ Node 22.22+; CI uses Node 24.
 3. Uncomment `API_KEYS` in `wrangler.jsonc` (and set `PROJECTION_ADMIN_SECRET` in `.dev.vars`) for key minting. Soft free API works with `API_KEYS` unbound.
 
 `bun run test:runtime` checks the built Worker locally: public pages, RR8 data requests,
-normalized login redirects and API ownership. It does not access remote bindings.
+signup/session cookies, normalized login redirects, invite validation and API ownership. It uses
+a temporary local database and does not access remote bindings or send email.
 
 ## Migrations (D1)
 

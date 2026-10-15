@@ -95,5 +95,6 @@ jobs:
         run: bun run build && bunx wrangler deploy --dry-run --env=""
 
       - name: Portal runtime smoke (local Worker)
+        timeout-minutes: 2
         working-directory: portal
         run: bun run test:runtime
