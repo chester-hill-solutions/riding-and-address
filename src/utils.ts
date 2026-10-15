@@ -1,3 +1,4 @@
+import { normalizeCanadianPostalCode } from '@chester-hill-solutions/validation';
 import { Env, QueryParams, GeoJSONGeometry } from './types';
 import { TIMEOUT_CONFIG, RETRY_CONFIG, getRetryConfig } from './config';
 import { parseGeocodeMethodParam } from './geocode-query';
@@ -248,14 +249,8 @@ export function validateCoordinates(lat: number | undefined, lon: number | undef
 export function validatePostalCode(postal: string): { valid: boolean; sanitized?: string; error?: string } {
   if (!postal) return { valid: true };
   
-  // Canadian postal code pattern: A1A 1A1 or A1A1A1
-  const canadianPattern = /^[A-Za-z]\d[A-Za-z][\s]?\d[A-Za-z]\d$/;
-  const sanitized = postal.replace(/\s+/g, '').toUpperCase();
-  
-  if (canadianPattern.test(sanitized)) {
-    // Valid Canadian postal code - format it properly
-    return { valid: true, sanitized: sanitized.substring(0, 3) + ' ' + sanitized.substring(3) };
-  }
+  const canadianPostal = normalizeCanadianPostalCode(postal);
+  if (canadianPostal) return { valid: true, sanitized: canadianPostal };
   
   // Not a Canadian postal code, but allow it to pass through for geocoding
   // Just sanitize by removing extra spaces and converting to uppercase

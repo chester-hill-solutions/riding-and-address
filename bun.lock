@@ -5,6 +5,8 @@
     "": {
       "name": "ridinglookup",
       "dependencies": {
+        "@chester-hill-solutions/http": "file:./vendor/@chester-hill-solutions/http",
+        "@chester-hill-solutions/validation": "file:./vendor/@chester-hill-solutions/validation",
         "brace-expansion": "^5.0.12",
         "nanoid": "^6.0.1",
         "zod": "^4.4.3",
@@ -64,6 +66,10 @@
     "@babel/types": ["@babel/types@7.29.8", "", { "dependencies": { "@babel/helper-string-parser": "^7.29.7", "@babel/helper-validator-identifier": "^7.29.7" } }, "sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg=="],
 
     "@bramus/specificity": ["@bramus/specificity@2.4.2", "", { "dependencies": { "css-tree": "^3.0.0" }, "bin": { "specificity": "bin/cli.js" } }, "sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw=="],
+
+    "@chester-hill-solutions/http": ["@chester-hill-solutions/http@file:vendor/@chester-hill-solutions/http", { "dependencies": { "@chester-hill-solutions/errors": "file:../errors", "@chester-hill-solutions/validation": "file:../validation", "zod": "^4.3.5" } }],
+
+    "@chester-hill-solutions/validation": ["@chester-hill-solutions/validation@file:vendor/@chester-hill-solutions/validation", { "dependencies": { "zod": "^4.3.5" } }],
 
     "@cloudflare/kv-asset-handler": ["@cloudflare/kv-asset-handler@0.5.0", "", {}, "sha512-jxQYkj8dSIzc0cD6cMMNdOc1UVjqSqu8BZdor5s8cGjW2I8BjODt/kWPVdY+u9zj3ms75Q5qaZgnxUad83+eAg=="],
 
@@ -1148,6 +1154,10 @@
     "zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
 
     "zwitch": ["zwitch@2.0.4", "", {}, "sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A=="],
+
+    "@chester-hill-solutions/http/@chester-hill-solutions/errors": ["@chester-hill-solutions/errors@file:vendor/@chester-hill-solutions/errors", {}],
+
+    "@chester-hill-solutions/http/@chester-hill-solutions/validation": ["@chester-hill-solutions/validation@file:vendor/@chester-hill-solutions/validation", {}],
 
     "@eslint-community/eslint-utils/eslint-visitor-keys": ["eslint-visitor-keys@3.4.3", "", {}, "sha512-wpc+LXeiyiisxPlEkUzU6svyS1frIO3Mgxj1fdy7Pm8Ygzguax2N3Fa/D/ag1WqbOprdI+uY6wMUl8/a2G+iag=="],
 

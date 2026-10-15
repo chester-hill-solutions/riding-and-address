@@ -5,8 +5,8 @@ import { requireCustomer } from '~/lib/customer.server';
 import { isFounder } from '~/lib/auth.server';
 import { SubmitButton } from '~/components/SubmitButton';
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const { userId, billing } = await requireCustomer(request);
+export async function loader({ request, url }: Route.LoaderArgs) {
+  const { userId, billing } = await requireCustomer(request, url);
   return {
     userId,
     workspaceId: billing.workspaceId,

@@ -4,12 +4,17 @@ Self-serve Customer portal (signup, org/workspace, invites, Server/Browser keys,
 
 ## Stack
 
-- React Router 7 on Cloudflare Workers (`@cloudflare/vite-plugin`)
+- React Router 8 on Cloudflare Workers (`@cloudflare/vite-plugin`)
 - `@chester-hill-solutions/auth` + `auth-d1` + `auth-react-router`
 - D1 (`PORTAL_DB` / `cancoder-portal`) for auth + billing
 - In-process projection into Worker KV for API keys / Customer fuse (`src/projection-handlers.ts`)
 
 Config lives in [`wrangler.jsonc`](./wrangler.jsonc). Root `bun run deploy` builds and deploys from this directory.
+
+RR8 uses a fresh `RouterContextProvider` per request. Cloudflare bindings still flow through
+request-scoped AsyncLocalStorage. Guards receive React Router's normalized `url` so data-request
+suffixes do not enter post-login continuations. React/React DOM require 19.2.7+, Vite 7+, and
+Node 22.22+; CI uses Node 24.
 
 ## Local setup
 
@@ -28,6 +33,9 @@ Config lives in [`wrangler.jsonc`](./wrangler.jsonc). Root `bun run deploy` buil
    To refresh vendored CHS packages from a sibling checkout, see [`vendor/README.md`](./vendor/README.md).
 
 3. Uncomment `API_KEYS` in `wrangler.jsonc` (and set `PROJECTION_ADMIN_SECRET` in `.dev.vars`) for key minting. Soft free API works with `API_KEYS` unbound.
+
+`bun run test:runtime` checks the built Worker locally: public pages, RR8 data requests,
+normalized login redirects and API ownership. It does not access remote bindings.
 
 ## Migrations (D1)
 
@@ -77,3 +85,8 @@ ui-kit add button input label card table native-select checkbox badge --overwrit
 
 Review generated diffs before committing an upstream refresh. Keep the app-owned
 CanCoder theme and router/form adapters.
+
+## Shared validation
+
+Invite forms use the shared CHS `EmailSchema` and form validator. The portal and API use the
+same vendored validation build; see [`../vendor/README.md`](../vendor/README.md) for provenance.
