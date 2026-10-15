@@ -347,7 +347,9 @@ export function planNarDelta(input: {
     changes, aggregates,
     provenance: changes.map((c) => ({ addrGuid: c.key, oldPartition: c.before ? postalPartition(c.before.row.postalCode) : null,
       newPartition: c.after ? postalPartition(c.after.row.postalCode) : null, vintage: source.vintage })),
-    coverage,
+    // A partial/untrusted input cannot substantiate a per-FSA coverage claim, even in a
+    // non-executable report. Keep only the observed counts and diagnostic blockers above.
+    coverage: classificationBlocked ? [] : coverage,
     cityCompletionAllowed: false as const,
     estimate: { addressIndexWritesUpperBound: writes, aggregateTableWritesUpperBound: aggregateWrites,
       indexedRowsReadModel: reads, totalReadsUpperBound: null, totalWritesUpperBound: null,

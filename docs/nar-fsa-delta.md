@@ -24,8 +24,8 @@ outside the selected FSA and preserve aggregate context. For old rows without ad
 provide a reviewed one-to-one legacy ID bridge with evidence. Exact unique normalized equality
 can be counted as informational `unchanged`, but does not authorize inferred additions/deletions.
 Without complete source/baseline evidence, or with rejected/unaccounted-for source rows, the
-classification is also `indeterminate`: the report emits no mutations, aggregate replacements
-or row provenance changes. Unique exact matches remain informational; unmatched old/new rows
+classification is also `indeterminate`: the report emits no mutations, aggregate replacements,
+row provenance changes or per-FSA coverage claims. Unique exact matches remain informational; unmatched old/new rows
 remain unresolved. `add`, `update`, `delete` and cost fields are `null`, not guessed deletions,
 numbers or zeros. An explicit review file is an operator assertion for this offline
 planner; it is not an automatic certification of cross-vintage identity.

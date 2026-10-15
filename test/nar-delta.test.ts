@@ -141,6 +141,7 @@ describe('offline NAR FSA delta', () => {
       unchanged: 2, add: null, update: null, delete: null, unresolvedOld: 8, unresolvedNew: 0 });
     expect(result.changes).toEqual([]);
     expect(result.provenance).toEqual([]);
+    expect(result.coverage).toEqual([]);
     expect(result.aggregates).toEqual({ postal: [], city: [], street: [] });
     expect(result.estimate).toMatchObject({ addressIndexWritesUpperBound: null, aggregateTableWritesUpperBound: null, indexedRowsReadModel: null });
     expect(result.blockers.join(' ')).toMatch(/Normalized replacement coverage shrank/);
@@ -158,6 +159,7 @@ describe('offline NAR FSA delta', () => {
       expect(result.counts).toMatchObject({ classification: 'indeterminate', delete: null, update: null, add: null });
       expect(result.changes).toEqual([]);
       expect(result.aggregates.postal).toEqual([]);
+      expect(result.coverage).toEqual([]);
       expect(result.estimate.addressIndexWritesUpperBound).toBeNull();
     }
   });
