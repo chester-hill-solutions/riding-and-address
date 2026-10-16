@@ -106,9 +106,17 @@ try {
   assert.match(await quote.text(), /Your upload quote/);
   const csrf = await fetch(origin + jobPath, { method: 'POST', headers: { Origin: 'https://other.example', Cookie: cookie }, body: new URLSearchParams({ intent: 'start' }) });
   assert.ok([400, 403].includes(csrf.status), 'cross-origin upload mutation is rejected by the router or action');
-  const started = await fetch(origin + jobPath, {
-    method: 'POST', redirect: 'manual', headers: { Origin: origin, Cookie: cookie }, body: new URLSearchParams({ intent: 'start' }),
-  });
+  let started;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    started = await fetch(origin + jobPath, {
+      method: 'POST', redirect: 'manual', headers: { Origin: origin, Cookie: cookie }, body: new URLSearchParams({ intent: 'start' }),
+    });
+    if (started.status !== 503 || !(await started.clone().text()).includes('Your worker restarted mid-request')) break;
+    // Wrangler may reload after the local D1 fixture update. This free-upload action is
+    // idempotent; retry only the dev proxy's explicit abort, never an application failure.
+    const ready = await fetch(origin);
+    assert.equal(ready.status, 200, 'local Worker ready after its development reload');
+  }
   assert.equal(started.status, 302, await started.clone().text());
   const completedDeadline = Date.now() + 20000;
   while (true) {
