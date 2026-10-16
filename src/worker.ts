@@ -62,6 +62,14 @@ import { getAgentQuickstart, createCanCoderMcpHandler } from './mcp';
 import { createUcpProfile } from './ucp-profile';
 import { createServiceTerms } from './service-terms';
 import { createLlmsTxt, createLlmsFullTxt } from './llms-txt';
+import {
+  createAgentSkillsIndex,
+  createAiCatalog,
+  createAuthMd,
+  createMcpServerCard,
+  createRidingLookupSkill,
+  ridingLookupSkillPath,
+} from './agent-discovery';
 
 // Global state
 
@@ -513,7 +521,7 @@ function discoveryOrigin(request: Request, env: Env): string {
     : configuredPublicOrigins(env)[0] || 'https://riding-lookup.chester-hill-solutions.workers.dev';
 }
 
-function discoveryResponse(routeCtx: RouteContext): Response | null {
+async function discoveryResponse(routeCtx: RouteContext): Promise<Response | null> {
   const { request, env, url } = routeCtx;
   const origin = discoveryOrigin(request, env);
   const pathname = url.pathname;
@@ -531,6 +539,7 @@ function discoveryResponse(routeCtx: RouteContext): Response | null {
       'User-agent: ClaudeBot', 'Disallow: /', '',
       'User-agent: Google-Extended', 'Disallow: /', '',
       'Content-Signal: ai-train=no, search=yes, ai-input=yes',
+      `Agentmap: ${origin}/.well-known/ai-catalog.json`,
       `Sitemap: ${origin}/sitemap.xml`, '',
     ].join('\n');
     return new Response(body, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
@@ -558,13 +567,20 @@ function discoveryResponse(routeCtx: RouteContext): Response | null {
       { anchor: `${origin}/mcp`, 'service-doc': [`${origin}/docs/agents.md`], status: [`${origin}/health`] },
     ] }, { headers: { 'content-type': 'application/linkset+json; charset=utf-8', 'access-control-allow-origin': '*' } });
   }
+  if (pathname === '/auth.md' && request.method === 'GET') {
+    return new Response(createAuthMd(origin), { headers: { 'content-type': 'text/markdown; charset=utf-8', ...routeCtx.corsHeaders(request.headers.get('Origin')) } });
+  }
+  if (pathname === '/.well-known/mcp/server-card.json' && request.method === 'GET') {
+    return Response.json(createMcpServerCard(origin), { headers: { 'access-control-allow-origin': '*' } });
+  }
+  if (pathname === '/.well-known/agent-skills/index.json' && request.method === 'GET') {
+    return Response.json(await createAgentSkillsIndex(origin), { headers: { 'access-control-allow-origin': '*' } });
+  }
+  if (pathname === ridingLookupSkillPath() && request.method === 'GET') {
+    return new Response(createRidingLookupSkill(origin), { headers: { 'content-type': 'text/markdown; charset=utf-8', ...routeCtx.corsHeaders(request.headers.get('Origin')) } });
+  }
   if (pathname === '/.well-known/ai-catalog.json' && request.method === 'GET') {
-    return Response.json({
-      specVersion: '0.1.0', host: { name: 'CanCoder', url: origin }, entries: [
-        { id: `urn:air:${url.hostname}:api:canadian-riding-lookup`, displayName: 'CanCoder Canadian riding lookup API', type: 'application/vnd.oai.openapi+json', url: `${origin}/api/docs`, representativeQueries: ['Find the federal electoral district for a Canadian postal code', 'Look up the provincial electoral district for a Canadian address'] },
-        { id: `urn:air:${url.hostname}:mcp:cancoder-tools`, displayName: 'CanCoder MCP tools', type: 'application/json', url: `${origin}/mcp`, representativeQueries: ['Which federal riding contains this Canadian postal code?', 'Find the provincial riding for a Canadian street address'] },
-      ],
-    }, { headers: { 'access-control-allow-origin': '*' } });
+    return Response.json(createAiCatalog(origin), { headers: { 'access-control-allow-origin': '*' } });
   }
   return null;
 }
@@ -594,7 +610,7 @@ export default {
         });
       }
 
-      const discovery = discoveryResponse(routeCtx);
+      const discovery = await discoveryResponse(routeCtx);
       if (discovery) return discovery;
 
       if (routeCtx.url.pathname === '/mcp') {
