@@ -61,6 +61,7 @@ import { checkRateLimit, getClientId, rateLimitExceededResponse, DEFAULT_RATE_LI
 import { getAgentQuickstart, createCanCoderMcpHandler } from './mcp';
 import { createUcpProfile } from './ucp-profile';
 import { createServiceTerms } from './service-terms';
+import { createLlmsTxt, createLlmsFullTxt } from './llms-txt';
 
 // Global state
 
@@ -538,6 +539,12 @@ function discoveryResponse(routeCtx: RouteContext): Response | null {
     const paths = ['/', '/docs', '/docs/embed', '/docs/agents.md', '/api/docs'];
     const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${paths.map((path) => `<url><loc>${origin}${path}</loc></url>`).join('')}</urlset>`;
     return new Response(xml, { headers: { 'content-type': 'application/xml; charset=utf-8' } });
+  }
+  if (pathname === '/llms.txt' && request.method === 'GET') {
+    return new Response(createLlmsTxt(origin), { headers: { 'content-type': 'text/plain; charset=utf-8', ...routeCtx.corsHeaders(request.headers.get('Origin')) } });
+  }
+  if (pathname === '/llms-full.txt' && request.method === 'GET') {
+    return new Response(createLlmsFullTxt(origin), { headers: { 'content-type': 'text/plain; charset=utf-8', ...routeCtx.corsHeaders(request.headers.get('Origin')) } });
   }
   if (pathname === '/.well-known/cancoder.json' && request.method === 'GET') {
     return Response.json(createServiceTerms(origin), { headers: { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*' } });

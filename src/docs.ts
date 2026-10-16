@@ -59,6 +59,7 @@ export function createApiReference(_baseUrl: string): string {
 </head>
 <body>
   ${renderSiteHeader('API docs')}
+  <h1 style="max-width:1112px;margin:2.5rem auto 0;padding:0 24px;font-size:1.5rem;line-height:1.3">CanCoder API Reference</h1>
   <div id="reference-loading" role="status" style="max-width:1112px;margin:3rem auto;padding:0 24px;color:var(--site-muted)">Loading the API reference… <a href="/api/docs">Open the specification</a></div>
   <div id="cancoder-api-reference"></div>
   <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@${SCALAR_API_REFERENCE_VERSION}"></script>

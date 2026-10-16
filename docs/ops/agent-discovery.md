@@ -6,6 +6,8 @@ The combined Cloudflare Worker serves discovery resources on each configured pub
 responses use the hostname from the request, while rejecting unconfigured hosts for MCP:
 
 - `/robots.txt` and `/sitemap.xml`
+- `/llms.txt` and `/llms-full.txt` (the llmstxt.org convention: a concise index, and the index plus
+  the full agent guide)
 - `/.well-known/api-catalog` (RFC 9727 linkset)
 - `/.well-known/ai-catalog.json` (ARD catalog)
 - `/.well-known/ucp` (UCP 2026-08-25 business profile: one MCP transport binding, no
