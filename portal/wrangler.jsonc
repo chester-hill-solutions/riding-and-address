@@ -139,8 +139,8 @@
     "AUTH_TRUSTED_ORIGINS": "https://riding-lookup.chester-hill-solutions.workers.dev,https://cancoder.chesterhillsolutions.ca",
     "PUBLIC_API_BASE_URL": "https://cancoder.chesterhillsolutions.ca",
     "PAID_CHECKOUT_ENABLED": "false",
-    "UPLOAD_CHECKOUT_ENABLED": "false",
-    "EMAIL_FROM": "CanCoder <noreply@example.com>",
+    "UPLOAD_CHECKOUT_ENABLED": "true",
+    "EMAIL_FROM": "CanCoder <noreply@chsolutions.ca>",
     "FOUNDER_USER_IDS": "",
     // Public pk_* for the marketing try-it embed (origin-allowlisted to this Worker's own
     // origin, 5k/day). Safe as a plain var: browser keys are public identifiers by design.
