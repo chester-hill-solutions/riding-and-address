@@ -5,7 +5,7 @@
   "main": "index.js",
   "dependencies": {
     "brace-expansion": "^5.0.12",
-    "nanoid": "^6.0.1",
+    "nanoid": "^6.0.2",
     "zod": "^4.4.3",
     "@chester-hill-solutions/validation": "file:./vendor/@chester-hill-solutions/validation",
     "@chester-hill-solutions/http": "file:./vendor/@chester-hill-solutions/http"
@@ -64,7 +64,7 @@
   "overrides": {
     "undici": "^7.29.1",
     "sharp": "^0.35.5",
-    "nanoid": "^6.0.1",
+    "nanoid": "^6.0.2",
     "brace-expansion": "^5.0.12",
     "postcss": "^8.5.26",
     "source-map-js": "^1.2.2",
