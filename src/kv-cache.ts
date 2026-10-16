@@ -4,7 +4,13 @@
  * Owns the protocol every cache here had hand-rolled: skip silently when the
  * binding is absent, read typed JSON, expire by entry timestamp, never let a
  * cache error fail a request.
+ *
+ * A caller may pass a Zod schema. A value that does not match is discarded as a miss rather than
+ * cast — a record written by an older shape (or a corrupted one) must never be trusted just
+ * because it parses as JSON. See docs/adr/0005-billing-invariants-gate.md.
  */
+
+import type { ZodType } from 'zod';
 
 export interface KVNamespaceLike {
   get(key: string, type: 'json'): Promise<unknown>;
@@ -18,13 +24,24 @@ export async function readTimestampedEntry<T extends TimestampedEntry>(
   namespace: KVNamespaceLike | undefined,
   key: string,
   maxAgeMs: number,
-  label: string
+  label: string,
+  schema?: ZodType<T>
 ): Promise<T | null> {
   if (!namespace) return null;
 
   try {
-    const cached = (await namespace.get(key, 'json')) as T | null;
-    if (!cached) return null;
+    const raw = await namespace.get(key, 'json');
+    if (raw == null) return null;
+    if (schema) {
+      const parsed = schema.safeParse(raw);
+      if (!parsed.success) {
+        console.warn(`Discarding malformed cached ${label} at ${key}: ${parsed.error.message}`);
+        return null;
+      }
+      if (Date.now() - parsed.data.timestamp > maxAgeMs) return null;
+      return parsed.data;
+    }
+    const cached = raw as T;
     if (Date.now() - cached.timestamp > maxAgeMs) return null;
     return cached;
   } catch (error) {
@@ -57,13 +74,23 @@ export async function writeTimestampedEntry<T extends TimestampedEntry>(
  */
 export async function readJsonEntry<T>(
   namespace: KVNamespaceLike | undefined,
-  key: string
+  key: string,
+  schema?: ZodType<T>
 ): Promise<T | null> {
   if (!namespace) return null;
 
   try {
-    const value = (await namespace.get(key, 'json')) as T | null;
-    return value ?? null;
+    const value = await namespace.get(key, 'json');
+    if (value == null) return null;
+    if (schema) {
+      const parsed = schema.safeParse(value);
+      if (!parsed.success) {
+        console.warn(`Discarding malformed cached entry ${key}: ${parsed.error.message}`);
+        return null;
+      }
+      return parsed.data;
+    }
+    return value as T;
   } catch (error) {
     console.warn(`Failed to get cached entry ${key}:`, error);
     return null;
