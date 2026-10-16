@@ -117,29 +117,26 @@ scraping the API docs.
 - Attribution notices are supplied with every result and must be preserved on redistribution.
 - Prohibited uses (§3) are contract terms, not merely guidance.
 
-## 7. Initial billable unit — recommended
+## 7. Initial billable unit — approved
 
 The plan requires a **distinct** area unit and cap, and explicitly says **not** to infer a
 large-query price from the point-lookup Billable unit.
 
-**Recommendation:**
+**Approved:**
 
 - **Unit:** one **area unit** = one fulfilled area query returning **up to 250 records**.
-- **Cap:** `maximumResults = 250`, enforced. A request whose exact or estimated count exceeds the
-  cap is **rejected**, not metered, in v1.
-- **Price:** **$2.00 USD per area unit** (recommended). This is a deliberate premium over the
-  point-lookup rate — 250 records at the point unit ($0.005) would be $1.25, which the plan's offer
-  sketch uses as the *floor*, not the price. The owner sets the final number.
+- **Price:** **$2.00 USD per area unit** — a deliberate premium over the point-lookup rate, where
+  250 records would be $1.25.
 - **Billing basis:** the accepted offer's `maximumResults` and price ceiling, per the plan's
   quote-and-accept contract. Charged once per fulfilled offer; a retry with the same idempotency
   key never charges twice.
 
-Rationale: bounded and predictable (a buyer always knows the maximum), priced as a bulk data
-product rather than 250 point lookups, and enforceable without metering machinery.
-
-**Open alternative for the owner:** per-returned-record pricing (e.g. $0.008/record, min 1 unit).
-Rejected as the default only because it makes the maximum charge depend on the data rather than the
-accepted offer.
+**Amended 2026-10-16 (W7).** The original cap — `maximumResults = 250`, with a larger request
+**rejected** — is superseded. The owner chose **paging** instead: a query larger than one page is
+delivered over successive pages, the offer states the total `maximumResults`, and the price ceiling
+is `ceil(maximumResults / 250) × unit price`. Pages are delivery, not separate charges, and a
+response that hits the paid ceiling is marked `truncated` rather than silently returning more than
+was paid for. See [`area-query-contract.md`](area-query-contract.md) §6–7 for the full contract.
 
 ## 8. Limits (feeds W7/W8, not fixed here)
 
