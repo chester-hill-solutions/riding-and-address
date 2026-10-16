@@ -57,7 +57,7 @@ Structured results should say which dataset and boundary vintage were used, wher
 |---|---|
 | Tool interface | Extend the existing stateless MCP server and shared HTTP lookup path. Do not build a second lookup implementation. |
 | Discovery | Publish a conformant UCP profile, API/AI catalogs, and agent guide on every configured public host. Keep host-derived links behind `PUBLIC_API_HOSTS`. |
-| Payment | Keep existing workspace/Stripe billing. Evaluate x402 for one account-free per-query route. Select one direct payment route before implementation; UCP Checkout remains for purchases that genuinely fit commerce checkout. |
+| Payment | Keep existing workspace/Stripe billing. Evaluate x402 for one account-free per-query route. Select one direct payment route before implementation; UCP Checkout remains for purchases that genuinely fit commerce checkout. **Decided: x402** ([ADR 0007](../adr/0007-account-free-x402-payments.md)). |
 | Offers | Quote is free, expiring, idempotently accepted, and bound to exact request parameters, data vintage, and a maximum price. |
 | Pricing | Extend the existing canonical price and billing invariant definitions. Establish and publish a distinct unit and cap for area results; do not infer a large-query price from the current point-lookup unit. |
 | Area search | Start with riding-bounded queries against an explicitly approved record set. Add GeoJSON Polygon/MultiPolygon in WGS84 after riding queries and limits are stable. |
@@ -104,7 +104,7 @@ The quote is not itself acceptance. Payment proof or workspace authorization mus
 | W10 | Publish end-to-end agent setup examples and register supported discovery entries. | Documentation/discovery / fast | W3, W4, W6 | A clean compatible agent can discover, try, price, pay, and retrieve using published metadata and examples. |
 | W11 | Add monitoring, reconciliation, abuse controls, and launch/backout procedures. | Release verifier / mid | W3–W10 | Operators can see offers, acceptance, paid delivery, failed settlement, spend denials, retries, and reconciliation status; rollout and rollback are documented. |
 
-W0 and W1 can proceed in parallel. W3 and W4 can proceed in parallel after W2. W8 must wait for W7, and W9 must wait for W8. Contract and payment work should be reviewed by a separate security-focused reviewer before production release. A draft W0 product note is at [area-product.md](../plans/area-product.md); it awaits owner approval.
+W0 and W1 can proceed in parallel. W3 and W4 can proceed in parallel after W2. W8 must wait for W7, and W9 must wait for W8. Contract and payment work should be reviewed by a separate security-focused reviewer before production release. A draft W0 product note is at [area-product.md](../plans/area-product.md); it awaits owner approval. W2 is decided — x402 for the account-free rail ([ADR 0007](../adr/0007-account-free-x402-payments.md)) — which unblocks W5 and W6.
 
 ## Technical requirements
 
@@ -201,6 +201,7 @@ Implementation verification should include `bun run build`, `bun run validate`, 
 - [Go-live checklist](go-live-checklist.md)
 - [CanCoder domain context](../../CONTEXT.md)
 - [Billing ledger decision](../adr/0002-do-ledger-stripe-eventual.md)
+- [Account-free payment rail (W2)](../adr/0007-account-free-x402-payments.md)
 - [Dataset vintage decision](../adr/0004-dataset-versioning-no-dual-serve.md)
 - [Billing invariant gate](../adr/0005-billing-invariants-gate.md)
 - [ODA address and autocomplete contract](../oda-geolocation-contract.md)
