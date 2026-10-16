@@ -11,3 +11,7 @@ Parallel diligence; does **not** block Wave 1 engineering. Clear before enabling
 | Product addendum | Accuracy modes, metering, dataset pin, attribution | ☐ | Gates first dollar |
 
 Founder ops (also human): flip `batchEnabled`, R2 boundary uploads for Enterprise deals.
+
+The rights, attribution, and allowed-use obligations these items gate are written up in the
+[area product W0 definition](../plans/area-product.md). Clearing this checklist requires the product
+addendum to carry the attribution notices and the prohibited-use terms.

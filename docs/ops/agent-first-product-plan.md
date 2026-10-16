@@ -104,7 +104,7 @@ The quote is not itself acceptance. Payment proof or workspace authorization mus
 | W10 | Publish end-to-end agent setup examples and register supported discovery entries. | Documentation/discovery / fast | W3, W4, W6 | A clean compatible agent can discover, try, price, pay, and retrieve using published metadata and examples. |
 | W11 | Add monitoring, reconciliation, abuse controls, and launch/backout procedures. | Release verifier / mid | W3–W10 | Operators can see offers, acceptance, paid delivery, failed settlement, spend denials, retries, and reconciliation status; rollout and rollback are documented. |
 
-W0 and W1 can proceed in parallel. W3 and W4 can proceed in parallel after W2. W8 must wait for W7, and W9 must wait for W8. Contract and payment work should be reviewed by a separate security-focused reviewer before production release.
+W0 and W1 can proceed in parallel. W3 and W4 can proceed in parallel after W2. W8 must wait for W7, and W9 must wait for W8. Contract and payment work should be reviewed by a separate security-focused reviewer before production release. A draft W0 product note is at [area-product.md](../plans/area-product.md); it awaits owner approval.
 
 ## Technical requirements
 
@@ -197,6 +197,7 @@ Implementation verification should include `bun run build`, `bun run validate`, 
 ## Engineering references
 
 - [Agent discovery operations](agent-discovery.md)
+- [Area product W0 definition](../plans/area-product.md)
 - [Go-live checklist](go-live-checklist.md)
 - [CanCoder domain context](../../CONTEXT.md)
 - [Billing ledger decision](../adr/0002-do-ledger-stripe-eventual.md)
