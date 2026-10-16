@@ -4,6 +4,7 @@ import { SITE_BRAND_STYLES, SITE_FONT_STYLESHEET, renderSiteHeader } from './sit
 import { getAllProvincialPaths, PROVINCIAL_DATASETS } from './datasets';
 import { EMBED_EVENTS, EMBED_SCRIPT_ATTRIBUTES } from './embed';
 import { jsonHeaders, type RouteContext } from './route-context';
+import { DEFAULT_DEMO_RATE_LIMIT } from './utils';
 
 const PROVINCIAL_DATASET_STEMS = PROVINCIAL_DATASETS.map((d) => d.r2Key.replace(/\.geojson$/, ''));
 
@@ -266,7 +267,7 @@ const ODA_NORMALIZE_PARAMETERS = [
 
 const DEMO_TIER_NOTE =
   "Part of the public keyless demo tier: no Basic Auth and no API key. Requests are rate-limited " +
-  "per client IP (DEMO_RATE_LIMIT, default 30) and are not billable. Any GET lookup route can be " +
+  `per client IP (DEMO_RATE_LIMIT, default ${DEFAULT_DEMO_RATE_LIMIT}) and are not billable. Any GET lookup route can be ` +
   "tried by prefixing its path with /api/demo — including the provincial routes " +
   "(e.g. /api/demo/ontario); /api/demo alone aliases /api/demo/federal.";
 

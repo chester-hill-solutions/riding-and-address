@@ -57,7 +57,7 @@ import {
   httpStatusForKeyDenial,
   type KeyAuthResult,
 } from './api-keys';
-import { checkRateLimit, getClientId, rateLimitExceededResponse } from './utils';
+import { checkRateLimit, getClientId, rateLimitExceededResponse, DEFAULT_RATE_LIMIT, DEFAULT_DEMO_RATE_LIMIT } from './utils';
 import { getAgentQuickstart, createCanCoderMcpHandler } from './mcp';
 import { createUcpProfile } from './ucp-profile';
 
@@ -614,7 +614,7 @@ export default {
             return badRequest(auth.message || 'Unauthorized', status, auth.reason || 'UNAUTHORIZED', correlationId);
           }
         }
-        const limit = parseInt(bearerToken ? String(env.RATE_LIMIT || 100) : (env.DEMO_RATE_LIMIT || '30'), 10);
+        const limit = parseInt(bearerToken ? String(env.RATE_LIMIT || DEFAULT_RATE_LIMIT) : (env.DEMO_RATE_LIMIT || String(DEFAULT_DEMO_RATE_LIMIT)), 10);
         if (!checkRateLimit({ ...env, RATE_LIMIT: limit }, `mcp:${getClientId(request)}`)) {
           return rateLimitExceededResponse(correlationId);
         }

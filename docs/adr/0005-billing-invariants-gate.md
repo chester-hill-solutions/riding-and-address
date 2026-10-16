@@ -23,6 +23,9 @@ Add a hard-fail CI gate (`scripts/check-billing-invariants.mjs`) wired into `npm
 - Requires `DEFAULT_FREE_MONTHLY_ALLOWANCE` in Worker (`src/customer.ts`) and portal
   (`portal/app/lib/pricing.ts`) to stay numerically identical.
 - Forbids bare `fuseLimit: 1000` outside allowlisted definition/test/docs sites.
+- Requires `DEFAULT_DEMO_RATE_LIMIT` in `src/utils.ts` and forbids restating the demo throttle as a
+  literal in the Worker, the MCP tool text, or the OpenAPI demo copy — the number an agent is told
+  must be the number enforced.
 
 ## Ratchet
 

@@ -25,6 +25,13 @@ export const DEFAULT_RETRY_CONFIG = RETRY_CONFIG;
 
 export const DEFAULT_RATE_LIMIT = 100; // requests per minute
 
+/**
+ * The keyless demo tier's per-IP throttle. One definition: the Worker, the route table, the MCP
+ * tool text and the OpenAPI demo note all read it from here, so the number an agent is told cannot
+ * drift from the number enforced. Guarded by scripts/check-billing-invariants.mjs.
+ */
+export const DEFAULT_DEMO_RATE_LIMIT = 30;
+
 // Rate limiting store
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 

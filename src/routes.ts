@@ -35,6 +35,7 @@ import {
   badRequest,
   checkAdminAuth,
   checkRateLimit,
+  DEFAULT_DEMO_RATE_LIMIT,
   getClientId,
   hasValidBasicAuth,
   rateLimitExceededResponse,
@@ -340,7 +341,7 @@ function billingFromAuth(auth: KeyAuthResult): BillableAuthContext | null {
  */
 function enforceRateLimit(entry: RouteEntry, ctx: RouteContext): Response | null {
   const { request, env, correlationId } = ctx;
-  const demoRateEnv = { ...env, RATE_LIMIT: parseInt(env.DEMO_RATE_LIMIT || '30', 10) };
+  const demoRateEnv = { ...env, RATE_LIMIT: parseInt(env.DEMO_RATE_LIMIT || String(DEFAULT_DEMO_RATE_LIMIT), 10) };
 
   switch (entry.rateLimit) {
     case 'none':
