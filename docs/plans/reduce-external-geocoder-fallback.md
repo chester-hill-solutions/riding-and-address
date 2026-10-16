@@ -93,7 +93,9 @@ baseline over a fixed window and freeze the labelled miss corpus.
 1. Add counters: `geocodingOdaMethod{exact,street,postal,city,nearest}`,
    `geocodingOdaMiss{reason}`, `geocodingProviderCalls{geogratis,google,mapbox,nominatim}`,
    `geocodingFallbackRate` (derived). Write the currently-dead `geocodingErrors` and
-   `odaStageTimeouts`.
+   `odaStageTimeouts`. **Done:** `odaStageTimeouts` counts ODA stage timeouts and
+   `geocodingErrors` counts thrown geocoding failures (misses excluded), via a typed `TimeoutError`
+   so callers branch on the type rather than message text.
 2. Emit one structured log per leave-local event: `{event:"geocode_fallback", reason, methodTried,
    postal?, city?, province?, hadHint}`. No PII beyond what is already logged.
 3. Surface on `/metrics` and the admin `/health` branch: fallback rate, per-method split,

@@ -14,7 +14,7 @@ import {
   TIME_CONSTANTS_SECONDS,
   QUALITY_THRESHOLDS,
 } from './config';
-import { runOrDefer, withRetry, withTimeout } from './utils';
+import { runOrDefer, withRetry, withTimeout, TimeoutError } from './utils';
 import { readTimestampedEntry, writeTimestampedEntry } from './kv-cache';
 import { CircuitBreakerOpenError } from './circuit-breaker';
 import { isPostalOnlyQuery, wantsPostalCentroidOnly } from './geocode-query';
@@ -415,6 +415,12 @@ const odaEntry: GeocoderProvider = {
       return [odaResult];
     } catch (error) {
       sink.recordTiming('geocodingOdaTime', Date.now() - odaStarted);
+      // A stage timeout is a rethrow, not a fallback — count it so a cold-start or slow D1 is
+      // visible on /metrics instead of only showing up as a 500. See
+      // docs/plans/reduce-external-geocoder-fallback.md (Wave 0).
+      if (error instanceof TimeoutError) {
+        sink.incrementMetric('odaStageTimeouts');
+      }
       // A postal-centroid-only query gets one local attempt; its failure is terminal.
       if (wantsPostalCentroidOnly(qp)) {
         throw error;
@@ -437,7 +443,7 @@ const odaEntry: GeocoderProvider = {
     // A postal-only query gets one local attempt; if the ODA entry spent the whole budget, fail
     // rather than make an external call.
     if (isPostalOnlyQuery(qp) && remainingMs(budgetMs, startTime) <= 0) {
-      throw new Error('Geocoding timeout after ' + budgetMs + 'ms');
+      throw new TimeoutError('Geocoding', budgetMs);
     }
     throw new NoResultsError('oda', 'ODA did not resolve');
   },
@@ -661,14 +667,22 @@ export async function geocodeIfNeeded(
 
   sink.incrementMetric('geocodingRequests');
 
-  const candidates = await withTimeout(
-    runProviderChain(buildGeocodingChain(env), input),
-    timeoutMs,
-    "Geocoding"
-  );
-  const candidate = candidates[0];
-  if (!candidate) throw new NoResultsError('geocoding', 'No geocoder returned results');
-  return candidate;
+  try {
+    const candidates = await withTimeout(
+      runProviderChain(buildGeocodingChain(env), input),
+      timeoutMs,
+      "Geocoding"
+    );
+    const candidate = candidates[0];
+    if (!candidate) throw new NoResultsError('geocoding', 'No geocoder returned results');
+    return candidate;
+  } catch (error) {
+    // Geocoding threw rather than resolving: a timeout, a provider service error, or a terminal
+    // ODA failure. Counted so /metrics can distinguish "geocoding errored" from "geocoding missed".
+    // A miss (NoResultsError) is a data outcome, not an error, and is attributed elsewhere.
+    if (!(error instanceof NoResultsError)) sink.incrementMetric('geocodingErrors');
+    throw error;
+  }
 }
 
 export type GeocodeBatchOptions = {
