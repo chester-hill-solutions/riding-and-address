@@ -27,8 +27,9 @@ export async function action({ request }: Route.ActionArgs) {
   let event;
   try {
     event = await stripe.webhooks.constructEventAsync(payload, signature, webhookSecret);
-  } catch (error) {
-    console.error('Stripe webhook signature verification failed', error);
+  } catch {
+    // Stripe errors can include the raw event body; keep payment/customer data out of logs.
+    console.warn('Stripe webhook signature verification failed');
     return new Response('Invalid signature', { status: 400 });
   }
 
