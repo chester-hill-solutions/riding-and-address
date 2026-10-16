@@ -39,6 +39,8 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `
         (+ `X402_FACILITATOR_TOKEN`) — the x402 account-free rail. `/api/quote/accept` fails closed
         (`503 PAYMENTS_UNAVAILABLE`) until the rail is enabled and fully configured. Do not enable
         before the security review and the stablecoin treasury policy in ADR 0007
+  - [ ] `X402_RPC_URL` — EVM JSON-RPC endpoint used by `POST /api/x402/reconcile` to confirm
+        settlements on chain; that route fails closed (`503 RECONCILE_UNAVAILABLE`) without it
   - [ ] **`X402_RECEIPTS` KV namespace** — the receipt store. Required before enabling the rail:
         without it `/api/quote/accept` fails closed, because a settled payment would leave no
         reconciliation trace. Create with `wrangler kv namespace create X402_RECEIPTS`, bind it in

@@ -30,6 +30,7 @@ import { getAllProvincialPaths } from './datasets';
 import { handleDemoRoute, handleLookupRequest } from './lookup-handler';
 import { handleQuoteRequest, handleAcceptRequest } from './offers';
 import { handleReceiptsRequest } from './x402-receipts';
+import { handleReconcileRequest } from './x402-reconcile';
 import { handleOdaInit, handleOdaStats } from './oda-handlers';
 import { checkProjectionAuth, projectionUnauthorizedResponse } from './projection-handlers';
 import type { RouteContext } from './route-context';
@@ -157,6 +158,8 @@ export const ROUTES: readonly RouteEntry[] = [
   { path: '/api/quote/accept', methods: ['POST'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'demo', handler: handleAcceptRequest },
   // Operator reconciliation view for the x402 rail. Internal + admin-gated: never public.
   { path: '/api/x402/receipts', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleReceiptsRequest },
+  // Run x402 reconciliation on demand: confirm stored settlements against the chain.
+  { path: '/api/x402/reconcile', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleReconcileRequest },
 
   // ODA geocoding surface — geocode/reverse/normalize stay legacy (see billing-invariants gate);
   // the admin pair is ported.
