@@ -520,7 +520,7 @@ main.shell > .panel {
 
 .price-card--featured,
 .price-card.is-current {
-  border-color: var(--primary);
+  box-shadow: var(--shadow);
 }
 
 .price-card__heading {
@@ -976,7 +976,7 @@ code {
 .empty-state p { margin: 0; color: var(--muted-foreground); font-size: .875rem; }
 .auth-layout { display: flex; flex-direction: column; min-height: 100svh; }
 .auth-main { flex: 1; width: min(464px, calc(100% - 2.5rem)); margin: 3.5rem auto 5rem; }
-.auth-main .panel { border-top: 3px solid var(--primary); box-shadow: var(--shadow); }
+.auth-main .panel { border: 0; box-shadow: var(--shadow); }
 .auth-main h1 { font-size: 1.75rem; line-height: 1.2; letter-spacing: -.035em; }
 .auth-description { margin: .5rem 0 1.5rem; color: var(--muted-foreground); font-size: .95rem; line-height: 1.6; }
 .auth-main form > [data-slot="button"] { width: 100%; margin-top: 1.5rem; }
