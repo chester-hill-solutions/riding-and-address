@@ -179,47 +179,5 @@
   color: inherit;
 }
 
-/* Metric accents convey tone against cards, rather than a solid button fill. */
-:is(
-    :root:not([data-style]),
-    [data-style="stark"],
-    [data-style="chs"],
-    [data-style="callcaster"],
-    [data-style="gocanvass"]
-  )
-  :where([data-slot="metric-card"][data-tone="ok"]) {
-  border-top-color: var(--ui-success-text);
-}
-
-:is(
-    :root:not([data-style]),
-    [data-style="stark"],
-    [data-style="chs"],
-    [data-style="callcaster"],
-    [data-style="gocanvass"]
-  )
-  :where([data-slot="metric-card"][data-tone="warn"]) {
-  border-top-color: var(--ui-warning-text);
-}
-
-:is(
-    :root:not([data-style]),
-    [data-style="stark"],
-    [data-style="chs"],
-    [data-style="callcaster"],
-    [data-style="gocanvass"]
-  )
-  :where([data-slot="metric-card"][data-tone="danger"]) {
-  border-top-color: var(--ui-destructive-text);
-}
-
-:is(
-    :root:not([data-style]),
-    [data-style="stark"],
-    [data-style="chs"],
-    [data-style="callcaster"],
-    [data-style="gocanvass"]
-  )
-  :where([data-slot="metric-card"][data-tone="action"]) {
-  border-top-color: var(--ui-info-text);
-}
+/* Card hierarchy uses content and surface tone; never decorative accent borders. */
+:where([data-slot="metric-card"]) { border-top-color: var(--border); }
