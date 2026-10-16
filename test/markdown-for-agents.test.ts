@@ -71,6 +71,22 @@ describe('htmlToMarkdown', () => {
     expect(md).not.toContain('ignored');
   });
 
+  it('separates adjacent inline elements and drops decorative aria-hidden content', () => {
+    const md = htmlToMarkdown(`
+      <a class="brand" href="/"><span aria-hidden="true">CC</span>CanCoder</a><a href="/pricing">Pricing</a>
+      <div><span class="eyebrow">Example lookup</span><span class="tag">Canada</span></div>
+    `);
+    // The aria-hidden glyph is gone, and the brand link did not become "CCCanCoder".
+    expect(md).toContain('[CanCoder](/)[Pricing](/pricing)'.replace(')[', ') ['));
+    expect(md).not.toContain('CCCanCoder');
+    expect(md).toContain('Example lookup Canada');
+  });
+
+  it('keeps a line break inside a heading', () => {
+    const md = htmlToMarkdown('<h1>From address to riding.<br/><span>One row.</span></h1>');
+    expect(md).toContain('# From address to riding. One row.');
+  });
+
   it('decodes entities and collapses whitespace', () => {
     const md = htmlToMarkdown('<p>Riding &amp; address &mdash;   Canada&#39;s&#160;data</p>');
     expect(md).toContain("Riding & address — Canada's data");

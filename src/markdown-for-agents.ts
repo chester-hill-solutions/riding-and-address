@@ -51,6 +51,22 @@ export function htmlToMarkdown(html: string): string {
   out = out.replace(/<!--[\s\S]*?-->/g, '');
   out = out.replace(/<(script|style|noscript|svg|template|iframe)\b[\s\S]*?<\/\1>/gi, '');
   out = out.replace(/<head\b[\s\S]*?<\/head>/gi, '');
+  // Decorative content marked aria-hidden (icon glyphs, brand symbols) is not prose.
+  out = out.replace(/<([a-z0-9]+)\b[^>]*\baria-hidden=["']true["'][^>]*>[\s\S]*?<\/\1>/gi, '');
+
+  // Adjacent inline elements carry no whitespace in minified markup, so two spans would otherwise
+  // run together ("Example lookupCanada"). A space between them is what the rendering implies.
+  out = out.replace(
+    /<\/(a|span|strong|em|b|i|code)>(?=<(a|span|strong|em|b|i|code)[\s>])/gi,
+    '</$1> '
+  );
+
+  // Block openings need a boundary too, or a link ending a header runs straight into the next
+  // section's first link. Excess newlines are collapsed at the end.
+  out = out.replace(
+    /<(nav|header|footer|main|section|article|div|p|ul|ol|table|dl|li|pre|blockquote|figure|h[1-6])\b/gi,
+    '\n\n<$1'
+  );
 
   // Links and images before tags are stripped, so their labels survive.
   out = out.replace(
@@ -84,12 +100,15 @@ export function htmlToMarkdown(html: string): string {
   );
 
   // Headings, deepest first so h1 does not match inside h10 (there is no h10, but the ordering is
-  // what keeps the replacement deterministic).
+  // what keeps the replacement deterministic). A <br> inside a heading is a line break in the
+  // rendered title, so it becomes a space rather than being swallowed.
   for (let level = 6; level >= 1; level -= 1) {
     out = out.replace(
       new RegExp(`<h${level}\\b[^>]*>([\\s\\S]*?)<\\/h${level}>`, 'gi'),
       (_m, text: string) =>
-        `\n\n${'#'.repeat(level)} ${decodeEntities(stripTags(text)).replace(/\s+/g, ' ').trim()}\n\n`
+        `\n\n${'#'.repeat(level)} ${decodeEntities(stripTags(text.replace(/<br\s*\/?>/gi, ' ')))
+          .replace(/\s+/g, ' ')
+          .trim()}\n\n`
     );
   }
 
