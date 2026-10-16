@@ -39,6 +39,10 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `
         (+ `X402_FACILITATOR_TOKEN`) — the x402 account-free rail. `/api/quote/accept` fails closed
         (`503 PAYMENTS_UNAVAILABLE`) until the rail is enabled and fully configured. Do not enable
         before the security review and the stablecoin treasury policy in ADR 0007
+  - [ ] **`X402_RECEIPTS` KV namespace** — the receipt store. Required before enabling the rail:
+        without it `/api/quote/accept` fails closed, because a settled payment would leave no
+        reconciliation trace. Create with `wrangler kv namespace create X402_RECEIPTS`, bind it in
+        `wrangler.jsonc`, then read `GET /api/x402/receipts` (admin) to reconcile
   - [ ] Staging: copy the same secrets with `wrangler secret put … --env staging`
   - `MAPBOX_TOKEN` — only if the Mapbox fallback is used
 - [x] **Production hosts**: the combined Worker serves the custom domain

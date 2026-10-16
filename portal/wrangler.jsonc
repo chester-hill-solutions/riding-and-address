@@ -43,6 +43,13 @@
       "binding": "API_KEYS",
       "id": "2d0152b0958c48fab4a98b3046e0c08e"
     }
+    // x402 receipt store (ADR 0007). Required whenever X402_ENABLED is set: without it a settled
+    // payment leaves no reconciliation trace, so /api/quote/accept fails closed. Create it with
+    // `wrangler kv namespace create X402_RECEIPTS` and uncomment this before enabling the rail.
+    // {
+    //   "binding": "X402_RECEIPTS",
+    //   "id": "<paste-namespace-id>"
+    // }
   ],
 
   "d1_databases": [

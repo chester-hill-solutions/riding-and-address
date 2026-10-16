@@ -67,9 +67,15 @@ unless `X402_ENABLED` is set and fully configured, so it cannot charge by accide
 only happen once for a given signed payload, and the delivered lookup is a read-only idempotent
 operation, so a retry can neither double-charge nor change the result.
 
-Still required before enabling it in production: the security review; a durable receipt store and a
-settlement reconciliation job (an x402 receipt is not written to the Customer ledger, so nothing
-reconciles it yet); the credit/refund path for a settled-but-undelivered result — today that returns
-`SETTLEMENT_DELIVERY_FAILED` with the settlement reference and logs it; and stablecoin treasury,
-receipt and tax policy. The facilitator request/response envelope follows the v2 contract but must
-be confirmed against the chosen facilitator.
+Every settled payment is written to the `X402_RECEIPTS` store, which is what reconciles the rail
+against the Customer ledger it deliberately bypasses; `GET /api/x402/receipts` (admin) reports what
+settled, what was delivered, and what still needs crediting. The rail **requires** that store: with
+no place to record a receipt, `/api/quote/accept` fails closed rather than take money it cannot
+account for.
+
+Still required before enabling it in production: the security review; a reconciliation job that
+compares stored receipts against on-chain settlements rather than only listing them; the
+credit/refund path for a settled-but-undelivered result — today that is recorded with
+`delivered: false` and returns `SETTLEMENT_DELIVERY_FAILED` with the settlement reference; and
+stablecoin treasury, receipt and tax policy. The facilitator request/response envelope follows the
+v2 contract but must be confirmed against the chosen facilitator.

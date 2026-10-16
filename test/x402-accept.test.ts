@@ -26,11 +26,37 @@ const MOCK_CTX = {
   props: {},
 } as unknown as ExecutionContext;
 
+/** Minimal KV double for the receipt store. */
+function fakeKv(): KVNamespace {
+  const store = new Map<string, string>();
+  return {
+    get: async (key: string, type?: string) => {
+      const value = store.get(key);
+      if (value === undefined) return null;
+      return type === 'json' ? JSON.parse(value) : value;
+    },
+    put: async (key: string, value: string) => {
+      store.set(key, value);
+    },
+    delete: async (key: string) => {
+      store.delete(key);
+    },
+    list: async ({ prefix }: { prefix?: string } = {}) => ({
+      keys: [...store.keys()]
+        .filter((name) => !prefix || name.startsWith(prefix))
+        .map((name) => ({ name })),
+      list_complete: true,
+      cacheStatus: null,
+    }),
+  } as unknown as KVNamespace;
+}
+
 function baseEnv(overrides: Partial<Env> = {}): Env {
   return {
     ...createLookupTestEnv(),
     OFFER_SIGNING_SECRET: SECRET,
     ...X402_ENV,
+    X402_RECEIPTS: fakeKv(),
     ...overrides,
   } as unknown as Env;
 }
@@ -174,6 +200,16 @@ describe('POST /api/quote/accept', () => {
 
   it('fails closed when the rail is not configured', async () => {
     const env = baseEnv({ X402_ENABLED: 'false' });
+    const offerId = await quote(env);
+    const response = await handleAcceptRequest(context(`/api/quote/accept?offer=${offerId}`, env));
+
+    expect(response.status).toBe(503);
+    expect(((await response.json()) as { code?: string }).code).toBe('PAYMENTS_UNAVAILABLE');
+  });
+
+  it('fails closed when the receipt store is unbound', async () => {
+    // A settled payment with nowhere to record its receipt cannot be reconciled.
+    const env = baseEnv({ X402_RECEIPTS: undefined });
     const offerId = await quote(env);
     const response = await handleAcceptRequest(context(`/api/quote/accept?offer=${offerId}`, env));
 
