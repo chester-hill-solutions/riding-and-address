@@ -176,6 +176,51 @@ for (const file of files) {
   });
 }
 
+// ── Rule: the demo-tier throttle has one definition (src/utils.ts) ───────────
+// The keyless demo rate is quoted to agents in the MCP tool text, the OpenAPI demo note and the
+// agent quickstart. A bare literal in any of those drifts from what the Worker actually enforces.
+const DEMO_RATE_CONSTANT_RE = /export const DEFAULT_DEMO_RATE_LIMIT\s*=\s*\d+/;
+if (!DEMO_RATE_CONSTANT_RE.test(readFileSync(path.join(ROOT, 'src/utils.ts'), 'utf8'))) {
+  fail(
+    'demo-rate-constant-missing',
+    path.join(ROOT, 'src/utils.ts'),
+    1,
+    'DEFAULT_DEMO_RATE_LIMIT must be defined in src/utils.ts'
+  );
+}
+
+const DEMO_DEFAULT_LITERAL_RE = /DEMO_RATE_LIMIT\s*\|\|\s*['"]?30['"]?/;
+const DEMO_PROSE_LITERAL_RE = /\b30 requests per minute\b/;
+const DEMO_RATE_ALLOW = [
+  /^src\/utils\.ts$/,
+  /^test\//,
+  /^scripts\/check-billing-invariants\.mjs$/,
+  /^docs\//,
+];
+for (const file of files) {
+  const r = rel(file);
+  if (DEMO_RATE_ALLOW.some((re) => re.test(r))) continue;
+  const lines = readFileSync(file, 'utf8').split('\n');
+  lines.forEach((line, i) => {
+    if (DEMO_DEFAULT_LITERAL_RE.test(line)) {
+      fail(
+        'demo-rate-literal',
+        file,
+        i + 1,
+        'Use DEFAULT_DEMO_RATE_LIMIT from src/utils.ts instead of a bare 30 default'
+      );
+    }
+    if (DEMO_PROSE_LITERAL_RE.test(line)) {
+      fail(
+        'demo-rate-prose-literal',
+        file,
+        i + 1,
+        'Interpolate DEFAULT_DEMO_RATE_LIMIT instead of writing the demo throttle as a literal'
+      );
+    }
+  });
+}
+
 // ── Rule: 200 lookup/search paths must record Billable units ─────────────────
 // A Billable unit is one successful HTTP 200 lookup or search response. The realtime lookup
 // handler and the search route must each call recordSuccessfulBillable, or 200s go unmetered.
@@ -287,4 +332,4 @@ if (violations.length) {
   process.exit(1);
 }
 
-console.log('billing-invariants: ok (void-stripe-meter, key-status, price/allowance literals, billable call sites, shared utc-month)');
+console.log('billing-invariants: ok (void-stripe-meter, key-status, price/allowance literals, demo-rate literal, billable call sites, shared utc-month)');

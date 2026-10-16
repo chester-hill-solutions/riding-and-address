@@ -4,6 +4,7 @@ import { handleLookupRequest } from './lookup-handler';
 import { type LookupRidingFn } from './lookup-expansion';
 import type { KeyAuthResult } from './api-keys';
 import type { RouteContext } from './route-context';
+import { DEFAULT_DEMO_RATE_LIMIT } from './utils';
 
 const DATASETS = [
   'federal', 'combined', 'on', 'qc', 'bc', 'ab', 'ns', 'nb', 'mb', 'sk', 'nl', 'pe', 'nt', 'nu', 'yt',
@@ -28,7 +29,7 @@ export function createCanCoderMcpHandler(options: CanCoderMcpOptions) {
       {
         instructions:
           'Resolve Canadian addresses or coordinates to current federal, provincial, or combined electoral district data. ' +
-          'The result includes the dataset vintage. Demo calls without a Server API key are limited to 30 requests per minute per IP. ' +
+          `The result includes the dataset vintage. Demo calls without a Server API key are limited to ${DEFAULT_DEMO_RATE_LIMIT} requests per minute per IP. ` +
           'Do not treat an address match as Canada Post-certified.',
       }
     );
@@ -40,7 +41,7 @@ export function createCanCoderMcpHandler(options: CanCoderMcpOptions) {
         description:
           'Map a Canadian postal code, street address, or coordinate pair to an electoral riding. ' +
           'Use a province code as the dataset for a provincial or territorial riding, or choose federal/combined. ' +
-          'Without Authorization: Bearer <Server API key>, this uses the unbilled demo tier, limited to 30 requests per minute per IP.',
+          `Without Authorization: Bearer <Server API key>, this uses the unbilled demo tier, limited to ${DEFAULT_DEMO_RATE_LIMIT} requests per minute per IP.`,
         inputSchema: z.object({
           location: z.string().min(1).max(300).optional().describe(
             'Canadian postal code or street address. For a street address, provide city and province when known.'
@@ -153,7 +154,7 @@ Add this remote MCP server URL to your MCP client:
 \`${publicOrigin}/mcp\`
 
 The server exposes the read-only \`lookup_riding\` tool. A limited demo is available without a
-key (30 requests per minute per IP). For metered production calls, create a CanCoder Server API key and configure your MCP client
+key (${DEFAULT_DEMO_RATE_LIMIT} requests per minute per IP). For metered production calls, create a CanCoder Server API key and configure your MCP client
 to send it as \`Authorization: Bearer <server-key>\`. Never paste a live key into a prompt or a
 public conversation.
 
