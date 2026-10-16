@@ -12,9 +12,23 @@
  */
 
 import { z } from 'zod';
-import { datasetMetaForPath, isLookupPath } from './datasets';
+import { datasetMetaForPath, getRouteForR2Key, isLookupPath, type RidingDatasetKey } from './datasets';
+import { handleLookupRequest } from './lookup-handler';
 import { UPLOAD_ROW_PRICE_USD } from './upload-sheet';
 import { badRequest, parseQuery, timingSafeEqual } from './utils';
+import {
+  base64Json,
+  buildPaymentRequired,
+  decodeBase64Json,
+  HttpFacilitator,
+  PAYMENT_REQUIRED_HEADER,
+  PAYMENT_RESPONSE_HEADER,
+  PAYMENT_SIGNATURE_HEADER,
+  x402ConfigFromEnv,
+  type PaymentFacilitator,
+  type PaymentRequirements,
+  type X402Config,
+} from './x402';
 import type { QueryParams } from './types';
 import type { RouteContext } from './route-context';
 
@@ -121,7 +135,8 @@ export function offerInputs(query: QueryParams): Record<string, unknown> {
   if (query.state !== undefined) inputs.state = query.state;
   if (query.country !== undefined) inputs.country = query.country;
   if (query.includeProvince !== undefined) inputs.includeProvince = query.includeProvince;
-  if (query.geocodeMethod !== undefined) inputs.geocodeMethod = query.geocodeMethod;
+  // The API's own parameter name, so delivery replays the exact request the quote bound.
+  if (query.geocodeMethod !== undefined) inputs.geocode_method = query.geocodeMethod;
   return inputs;
 }
 
@@ -180,6 +195,188 @@ export async function handleQuoteRequest(ctx: RouteContext): Promise<Response> {
       'content-type': 'application/json; charset=UTF-8',
       'cache-control': 'no-store',
       ...corsHeaders(request.headers.get('Origin')),
+    },
+  });
+}
+
+/** A `402` carrying the payment requirements, per the x402 flow. */
+function paymentRequired(
+  ctx: RouteContext,
+  offer: Offer,
+  config: X402Config,
+  error: string,
+  status = 402
+): Response {
+  const requirements = buildPaymentRequired(
+    config,
+    offer,
+    `${ctx.url.origin}${ctx.url.pathname}`
+  );
+  return new Response(JSON.stringify({ ...requirements, error }), {
+    status,
+    headers: {
+      'content-type': 'application/json; charset=UTF-8',
+      'cache-control': 'no-store',
+      [PAYMENT_REQUIRED_HEADER]: base64Json({ ...requirements, error }),
+      ...ctx.corsHeaders(ctx.request.headers.get('Origin')),
+    },
+  });
+}
+
+/** Retry settlement exactly once on `settlement_pending`, which is non-terminal. */
+async function settleWithRetry(
+  facilitator: PaymentFacilitator,
+  paymentPayload: unknown,
+  requirements: PaymentRequirements
+) {
+  const first = await facilitator.settle(paymentPayload, requirements);
+  if (first.pending) {
+    return facilitator.settle(paymentPayload, requirements);
+  }
+  return first;
+}
+
+/** Re-run the exact lookup the offer bound, with no workspace billing — a direct payment is its own. */
+async function deliverOffer(ctx: RouteContext, offer: Offer): Promise<Response> {
+  const inputs = offer.scope.inputs as Record<string, unknown>;
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(inputs)) {
+    if (key === 'includeProvince') {
+      if (value === true) params.set('include_province', 'true');
+      continue;
+    }
+    params.set(key, String(value));
+  }
+  const pathname = getRouteForR2Key(offer.scope.datasetId as RidingDatasetKey);
+  const url = `${ctx.url.origin}${pathname}?${params.toString()}`;
+  const lookupRequest = new Request(url, { method: 'GET', headers: ctx.request.headers });
+  return handleLookupRequest({
+    ...ctx,
+    request: lookupRequest,
+    url: new URL(url),
+    billing: null,
+  });
+}
+
+/**
+ * `POST /api/quote/accept?offer=<offerId>` — execute an accepted offer through x402.
+ *
+ * Without a `PAYMENT-SIGNATURE` header this answers `402` with the requirements. With one it
+ * verifies, settles, then delivers the quoted lookup and a receipt. Settlement can only happen once
+ * for a given signed payload (the facilitator/chain enforces it), and the delivered lookup is a
+ * read-only, idempotent operation, so a retry can neither double-charge nor produce a different
+ * result.
+ */
+export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> {
+  const { request, env, correlationId } = ctx;
+
+  const secret = env.OFFER_SIGNING_SECRET;
+  if (!secret) {
+    return badRequest('Quoting is not configured', 503, 'QUOTES_UNAVAILABLE', correlationId);
+  }
+
+  const offerId = ctx.url.searchParams.get('offer');
+  if (!offerId) {
+    return badRequest('Provide ?offer=<offerId>', 400, 'OFFER_REQUIRED', correlationId);
+  }
+
+  const payload = await verifyOffer(secret, offerId);
+  if (!payload) {
+    return badRequest(
+      'The offer is invalid, tampered with, or expired',
+      410,
+      'OFFER_INVALID',
+      correlationId
+    );
+  }
+  const offer: Offer = { offerId, ...payload };
+
+  const config = x402ConfigFromEnv(env);
+  if (!config) {
+    return badRequest('Payments are not available', 503, 'PAYMENTS_UNAVAILABLE', correlationId);
+  }
+
+  const paymentHeader = request.headers.get(PAYMENT_SIGNATURE_HEADER);
+  if (!paymentHeader) {
+    return paymentRequired(ctx, offer, config, 'Payment required');
+  }
+
+  let paymentPayload: unknown;
+  try {
+    paymentPayload = decodeBase64Json(paymentHeader);
+  } catch {
+    return badRequest('Malformed PAYMENT-SIGNATURE header', 400, 'PAYMENT_MALFORMED', correlationId);
+  }
+
+  const requirements = buildPaymentRequired(config, offer, `${ctx.url.origin}${ctx.url.pathname}`)
+    .accepts[0];
+  const facilitator = new HttpFacilitator(config);
+
+  let verification;
+  try {
+    verification = await facilitator.verify(paymentPayload, requirements);
+  } catch {
+    return badRequest('Payment verification failed', 502, 'PAYMENT_VERIFY_FAILED', correlationId);
+  }
+  if (!verification.isValid) {
+    return paymentRequired(ctx, offer, config, verification.invalidReason || 'Payment is not valid');
+  }
+
+  let settlement;
+  try {
+    settlement = await settleWithRetry(facilitator, paymentPayload, requirements);
+  } catch {
+    return badRequest('Settlement failed', 502, 'SETTLEMENT_FAILED', correlationId);
+  }
+  if (settlement.pending) {
+    // Non-terminal: the transaction may still confirm. Never re-charge; reconcile on chain.
+    return badRequest(
+      'Settlement is pending; reconcile before retrying',
+      502,
+      'SETTLEMENT_PENDING',
+      correlationId
+    );
+  }
+  if (!settlement.success) {
+    return paymentRequired(ctx, offer, config, settlement.errorReason || 'Settlement failed');
+  }
+
+  // Settled. Deliver exactly what was quoted.
+  const delivered = await deliverOffer(ctx, offer);
+  const result = await delivered.json();
+  if (!delivered.ok) {
+    // Charged but not delivered: report the settlement so the buyer can reconcile, and never
+    // re-charge on a retry. A durable receipt/credit store is the follow-up named in ADR 0007.
+    console.error(
+      `[X402] settled but delivery failed (${delivered.status}) for offer ${offerId}: ${settlement.transaction ?? 'no-tx'}`
+    );
+    return badRequest(
+      'Payment settled but delivery failed; contact support with this correlation id',
+      502,
+      'SETTLEMENT_DELIVERY_FAILED',
+      correlationId
+    );
+  }
+
+  const receipt = {
+    offerId,
+    operation: offer.operation,
+    settlement: {
+      transaction: settlement.transaction,
+      network: settlement.network ?? config.network,
+    },
+    amount: { currency: offer.price.currency, value: offer.price.maximum },
+    scope: offer.scope,
+    resultCount: offer.estimate.resultCount,
+    correlationId,
+  };
+
+  return new Response(JSON.stringify({ receipt, result }), {
+    headers: {
+      'content-type': 'application/json; charset=UTF-8',
+      'cache-control': 'no-store',
+      [PAYMENT_RESPONSE_HEADER]: base64Json(settlement),
+      ...ctx.corsHeaders(ctx.request.headers.get('Origin')),
     },
   });
 }

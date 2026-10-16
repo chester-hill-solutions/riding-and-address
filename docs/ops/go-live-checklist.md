@@ -35,6 +35,10 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `
   - [ ] `RESEND_API_KEY`, `EMAIL_FROM`
   - [ ] `OFFER_SIGNING_SECRET` — signs `/api/quote` offers; quoting fails closed
         (`503 QUOTES_UNAVAILABLE`) until this is set
+  - [ ] `X402_ENABLED`, `X402_PAY_TO`, `X402_NETWORK`, `X402_ASSET`, `X402_FACILITATOR_URL`
+        (+ `X402_FACILITATOR_TOKEN`) — the x402 account-free rail. `/api/quote/accept` fails closed
+        (`503 PAYMENTS_UNAVAILABLE`) until the rail is enabled and fully configured. Do not enable
+        before the security review and the stablecoin treasury policy in ADR 0007
   - [ ] Staging: copy the same secrets with `wrangler secret put … --env staging`
   - `MAPBOX_TOKEN` — only if the Mapbox fallback is used
 - [x] **Production hosts**: the combined Worker serves the custom domain

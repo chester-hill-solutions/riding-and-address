@@ -47,6 +47,24 @@ export interface Env {
    */
   OFFER_SIGNING_SECRET?: string;
   /**
+   * x402 account-free payment rail (ADR 0007). Off unless `X402_ENABLED` is set and the rail is
+   * fully configured; `GET /api/quote/accept` fails closed with PAYMENTS_UNAVAILABLE otherwise.
+   */
+  X402_ENABLED?: string;
+  /** Receiving address that settled funds go to. */
+  X402_PAY_TO?: string;
+  /** CAIP-2 network id, e.g. `eip155:84532` (Base Sepolia) or `eip155:8453` (Base). */
+  X402_NETWORK?: string;
+  /** Token contract address of the settlement asset (USDC). */
+  X402_ASSET?: string;
+  X402_ASSET_DECIMALS?: string;
+  X402_ASSET_NAME?: string;
+  X402_ASSET_VERSION?: string;
+  X402_MAX_TIMEOUT_SECONDS?: string;
+  /** Facilitator base URL; `/verify` and `/settle` are appended. */
+  X402_FACILITATOR_URL?: string;
+  X402_FACILITATOR_TOKEN?: string;
+  /**
    * Comma-separated origins allowed for credentialed CORS (portal + embeds).
    * When unset, reflect request Origin or `*` (legacy open CORS).
    */

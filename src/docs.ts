@@ -413,6 +413,38 @@ export function createOpenAPISpec(baseUrl: string) {
           },
         },
       },
+      "/api/quote/accept": {
+        post: {
+          summary: "Accept an offer and pay for a lookup with x402",
+          description:
+            "Executes an offer returned by /api/quote. Without a PAYMENT-SIGNATURE header the response is 402 Payment Required carrying payment requirements in the PAYMENT-REQUIRED header. With a signed payment payload the offer is verified, settled through the configured facilitator, and the quoted lookup is returned with a receipt and a PAYMENT-RESPONSE header. Payment is account-free: no key or account is required, and the caller's wallet authorizes the spend.",
+          tags: ["Offers"],
+          parameters: [
+            {
+              name: "offer",
+              in: "query" as const,
+              required: true,
+              description: "The offerId returned by /api/quote.",
+              schema: { type: "string" },
+            },
+          ],
+          responses: {
+            "200": { description: "Payment settled: the quoted lookup plus a machine-readable receipt" },
+            "400": { description: "OFFER_REQUIRED, PAYMENT_MALFORMED, or INVALID_QUERY" },
+            "402": {
+              description:
+                "Payment required or not valid; requirements are carried in the PAYMENT-REQUIRED header",
+            },
+            "410": { description: "OFFER_INVALID — the offer is invalid, tampered with, or expired" },
+            "429": { description: "Rate limit exceeded (per client IP)" },
+            "502": {
+              description:
+                "PAYMENT_VERIFY_FAILED, SETTLEMENT_FAILED, SETTLEMENT_PENDING, or SETTLEMENT_DELIVERY_FAILED",
+            },
+            "503": { description: "QUOTES_UNAVAILABLE or PAYMENTS_UNAVAILABLE" },
+          },
+        },
+      },
       "/api": {
         get: {
           summary: "Lookup federal riding by location (alias)",
