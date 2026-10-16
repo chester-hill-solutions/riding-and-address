@@ -59,10 +59,19 @@ not just the importer:
   or any electoral body endorses CanCoder.
 - **No official symbols** (names, crests, logos, wordmarks) without written authorization.
 
-**Coverage gap:** Newfoundland and Labrador, Nunavut, and Yukon have **no ODA/NAR address data**
-(see [`docs/oda-data-import.md`](../oda-data-import.md)). Area queries in those jurisdictions must
-return an explicit *no address coverage* result, never an empty set that reads as "no addresses
-here".
+**Coverage today:** production has imported the 10 provinces **ODA** covers. **ODA has no NL, NU, or
+YT rows — but NAR does.** The importer already supports all 13 jurisdictions
+(`PROVINCE_ID_TO_CODE` maps `10`/`60`/`62`), and the only reason those three are absent is that
+their NAR imports have not run and they are not in `ODA_PROVINCES` (see
+[`docs/nar-data-import.md`](../nar-data-import.md)). The gap is therefore an **ingestion gap, not a
+source or rights gap**: running NAR for NL/NU/YT and adding them to `ODA_PROVINCES` brings the area
+product to all 13 jurisdictions, and riding boundaries already exist for all of them.
+
+Until a jurisdiction is imported, an area query there must return an explicit *no address coverage*
+result, never an empty set that reads as "no addresses here".
+
+**Scale note:** a full national NAR migration grows `oda-addresses` from ~3.47 GB toward ~5–6 GB —
+within D1's 10 GB per-database limit, but worth watching when NL/NU/YT are added.
 
 **Dependency:** ODA is the 2021 collection; NAR is the current source and migrates city by city.
 Every record's vintage is reported, and a requested vintage that is unavailable fails hard rather
@@ -143,7 +152,9 @@ exact numbers; W0 fixes only `maximumResults = 250` for v1.
 1. **Approve the record type** — civic address points, and the explicit exclusions in §1.
 2. **Clear the licence items** in [`licence-checklist.md`](../legal/licence-checklist.md) — ODA,
    NAR, and each boundary source — with the product addendum covering attribution and metering.
-3. **Confirm the coverage-gap behaviour** for NL/NU/YT.
+3. **Confirm the coverage-gap behaviour** for not-yet-imported jurisdictions (today NL, NU, YT):
+   explicit *no address coverage* — and schedule the NAR imports plus the `ODA_PROVINCES` addition
+   that close the gap.
 4. **Set the price** for the area unit (recommendation: $2.00 / 250 records).
 5. **Confirm retention** on licence termination.
 
