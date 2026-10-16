@@ -1,3 +1,8 @@
+import { useState } from 'react';
+import { Input } from '~/components/ui/input';
+import { Label } from '~/components/ui/label';
+import { NativeSelect } from '~/components/ui/native-select';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '~/components/ui/table';
 import { Form } from 'react-router';
 import type { Route } from './+types/app.keys';
 import { isOwnerOrAdmin, listKeys, requireCustomer, requireOwnerOrAdmin } from '~/lib/customer.server';
@@ -17,8 +22,8 @@ export function meta(): Route.MetaDescriptors {
   ];
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const { billing, membership } = await requireCustomer(request);
+export async function loader({ request, url }: Route.LoaderArgs) {
+  const { billing, membership } = await requireCustomer(request, url);
   const keys = await listKeys(billing.workspaceId);
   return {
     keys,
@@ -27,8 +32,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   };
 }
 
-export async function action({ request }: Route.ActionArgs) {
-  const { billing, membership } = await requireCustomer(request);
+export async function action({ request, url }: Route.ActionArgs) {
+  const { billing, membership } = await requireCustomer(request, url);
   requireOwnerOrAdmin(membership);
   const form = await request.formData();
   const intent = String(form.get('intent') || '');
@@ -93,6 +98,7 @@ export async function action({ request }: Route.ActionArgs) {
 
 export default function KeysPage({ loaderData, actionData }: Route.ComponentProps) {
   const { keys, canManageKeys } = loaderData;
+  const [kind, setKind] = useState<'server' | 'browser'>('server');
 
   return (
     <Panel title="API keys">
@@ -120,50 +126,57 @@ export default function KeysPage({ loaderData, actionData }: Route.ComponentProp
       {canManageKeys ? (
         <Form method="post">
           <input type="hidden" name="intent" value="create" />
-          <label htmlFor="kind">Kind</label>
-          <select id="kind" name="kind" defaultValue="server">
+          <Label htmlFor="kind">Kind</Label>
+          <NativeSelect size="touch" id="kind" name="kind" value={kind} onChange={(event) => setKind(event.target.value === 'browser' ? 'browser' : 'server')}>
             <option value="server">Server (sk_*)</option>
             <option value="browser">Browser (pk_*)</option>
-          </select>
-          <label htmlFor="label">Label</label>
-          <input id="label" name="label" placeholder="Production backend" />
-          <label htmlFor="origins">Origins (browser keys, comma-separated)</label>
-          <input
+          </NativeSelect>
+          <Label htmlFor="label">Label</Label>
+          <Input size="touch" id="label" name="label" placeholder="Production backend" />
+          {kind === 'browser' ? <>
+          <Label htmlFor="origins">Allowed websites (comma-separated)</Label>
+          <Input size="touch"
             id="origins"
             name="origins"
-            placeholder="https://app.example.com,https://*.example.com"
+            placeholder="https://app.example.com"
+            required
           />
-          <SubmitButton pendingText="Minting…">Mint key</SubmitButton>
+          <p className="field-hint">Browser keys only work on the websites you list here.</p>
+          </> : null}
+          <SubmitButton pendingText="Creating…">Create key</SubmitButton>
         </Form>
       ) : (
-        <p className="muted">You can view keys; ask an owner or admin to mint or revoke.</p>
+        <p className="muted">You can view keys; ask an owner or admin to create or revoke them.</p>
       )}
 
-      <table>
-        <thead>
-          <tr>
-            <th>Id</th>
-            <th>Kind</th>
-            <th>Label</th>
-            <th>Origins</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
+      {keys.length === 0 ? <div className="empty-state">
+        <h2>No API keys yet</h2>
+        <p>Your keys will appear here once an owner or admin creates one.</p>
+      </div> : <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Id</TableHead>
+            <TableHead>Kind</TableHead>
+            <TableHead>Label</TableHead>
+            <TableHead>Origins</TableHead>
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {keys.map((key) => (
-            <tr key={key.id}>
-              <td>
+            <TableRow key={key.id}>
+              <TableCell>
                 <code>{key.id}</code>
-              </td>
-              <td>{key.kind}</td>
-              <td>{key.label || '—'}</td>
-              <td>{key.origins || '—'}</td>
-              <td>
+              </TableCell>
+              <TableCell>{key.kind}</TableCell>
+              <TableCell>{key.label || '—'}</TableCell>
+              <TableCell>{key.origins || '—'}</TableCell>
+              <TableCell>
                 {!key.disabled && canManageKeys ? (
                   <Form method="post">
                     <input type="hidden" name="intent" value="revoke" />
                     <input type="hidden" name="id" value={key.id} />
-                    <SubmitButton className="secondary" pendingText="Revoking…">
+                    <SubmitButton variant="secondary" pendingText="Revoking…">
                       Revoke
                     </SubmitButton>
                   </Form>
@@ -172,11 +185,11 @@ export default function KeysPage({ loaderData, actionData }: Route.ComponentProp
                 ) : (
                   <span className="muted">revoked</span>
                 )}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>}
     </Panel>
   );
 }

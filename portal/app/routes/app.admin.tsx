@@ -1,3 +1,5 @@
+import { Checkbox } from '~/components/ui/checkbox';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '~/components/ui/table';
 import { Form } from 'react-router';
 import type { Route } from './+types/app.admin';
 import { isFounder, requireSessionUserId } from '~/lib/auth.server';
@@ -15,8 +17,8 @@ export function meta(): Route.MetaDescriptors {
   ];
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const userId = await requireSessionUserId(request);
+export async function loader({ request, url }: Route.LoaderArgs) {
+  const userId = await requireSessionUserId(request, url);
   if (!isFounder(userId)) {
     return { allowed: false as const, customers: [] };
   }
@@ -24,8 +26,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   return { allowed: true as const, customers };
 }
 
-export async function action({ request }: Route.ActionArgs) {
-  const userId = await requireSessionUserId(request);
+export async function action({ request, url }: Route.ActionArgs) {
+  const userId = await requireSessionUserId(request, url);
   if (!isFounder(userId)) return { error: 'Forbidden' };
 
   const form = await request.formData();
@@ -60,37 +62,34 @@ export default function AdminPage({ loaderData, actionData }: Route.ComponentPro
             : null
         }
       />
-      <table>
-        <thead>
-          <tr>
-            <th>Customer</th>
-            <th>Plan</th>
-            <th>Batch</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Customer</TableHead>
+            <TableHead>Plan</TableHead>
+            <TableHead>Batch</TableHead>
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {loaderData.customers.map((c) => (
-            <tr key={c.customerId}>
-              <td>
+            <TableRow key={c.customerId}>
+              <TableCell>
                 <code>{c.customerId}</code>
-              </td>
-              <td>{c.plan}</td>
-              <td>{c.batchEnabled ? 'on' : 'off'}</td>
-              <td>
+              </TableCell>
+              <TableCell>{c.plan}</TableCell>
+              <TableCell>{c.batchEnabled ? 'on' : 'off'}</TableCell>
+              <TableCell>
                 <Form method="post">
                   <input type="hidden" name="customerId" value={c.customerId} />
-                  <label>
-                    <input type="checkbox" name="batchEnabled" defaultChecked={c.batchEnabled} />{' '}
-                    batchEnabled
-                  </label>
+                  <Checkbox name="batchEnabled" defaultSelected={c.batchEnabled}>Enable batch</Checkbox>
                   <SubmitButton pendingText="Saving…">Save</SubmitButton>
                 </Form>
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </Panel>
   );
 }

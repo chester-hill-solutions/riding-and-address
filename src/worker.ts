@@ -457,10 +457,8 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
     return handleNormalizeAddressRoute(routeCtx);
   }
 
-  // Address autocomplete. Must stay above the /api catch-all below, which would otherwise swallow
-  // it and silently serve a federal lookup (pickDataset falls back to federal) — a wrong-but-200
-  // response. Gated on the flag so that when it is off, /api/search falls through to exactly the
-  // behaviour it had before this route existed.
+  // Address autocomplete. Must stay above the /api catch-all below, which rejects
+  // unregistered lookup paths. Disabled autocomplete therefore returns 404.
   if (
     pathname === '/api/search' &&
     request.method === 'GET' &&

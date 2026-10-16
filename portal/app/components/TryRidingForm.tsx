@@ -1,3 +1,6 @@
+import { Button } from '~/components/ui/button';
+import { Input } from '~/components/ui/input';
+import { Label } from '~/components/ui/label';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 type TryRidingFormProps = {
@@ -241,7 +244,7 @@ export function TryRidingForm({ apiBaseUrl, demoBrowserKey }: TryRidingFormProps
         if (cancelled) return;
         setWidgetReady(false);
         setStatus('error');
-        setMessage('Autocomplete unavailable — is the API running with suggest enabled?');
+        setMessage('Address search is unavailable. Please try again shortly.');
       }
     })();
 
@@ -286,20 +289,21 @@ export function TryRidingForm({ apiBaseUrl, demoBrowserKey }: TryRidingFormProps
   return (
     <div className="try-embed">
       <form className="try-embed__form" ref={formRef} onSubmit={onSubmit}>
-        <label htmlFor="try-address">Canadian address</label>
+        <Label htmlFor="try-address">Canadian address</Label>
         <div className="try-embed__row">
-          <input
+          <Input size="touch"
             ref={inputRef}
             id="try-address"
             name="address"
             autoComplete="street-address"
             placeholder="Start typing an address…"
+            className="min-h-13 text-base"
             disabled={!widgetReady}
           />
         </div>
         <div className="try-embed__samples" role="group" aria-label="Sample searches">
           {SAMPLES.map((sample) => (
-            <button
+            <Button variant="secondary" size="sm"
               key={sample.label}
               type="button"
               className={
@@ -307,11 +311,11 @@ export function TryRidingForm({ apiBaseUrl, demoBrowserKey }: TryRidingFormProps
                   ? 'try-embed__sample is-active'
                   : 'try-embed__sample'
               }
-              onClick={() => runSample(sample)}
-              disabled={!widgetReady}
+              onPress={() => runSample(sample)}
+              isDisabled={!widgetReady}
             >
               {sample.label}
-            </button>
+            </Button>
           ))}
         </div>
         <p className="try-embed__hint">

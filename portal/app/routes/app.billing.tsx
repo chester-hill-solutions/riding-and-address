@@ -1,3 +1,5 @@
+import { Card } from '~/components/ui/card';
+import { Badge } from '~/components/ui/badge';
 import { Form, redirect } from 'react-router';
 import type { Route } from './+types/app.billing';
 import { isOwnerOrAdmin, requireCustomer, requireOwnerOrAdmin } from '~/lib/customer.server';
@@ -20,8 +22,8 @@ export function meta(): Route.MetaDescriptors {
   ];
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const { billing, membership } = await requireCustomer(request);
+export async function loader({ request, url }: Route.LoaderArgs) {
+  const { billing, membership } = await requireCustomer(request, url);
   return {
     billing,
     paidCheckoutEnabled: env().paidCheckoutEnabled,
@@ -29,8 +31,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   };
 }
 
-export async function action({ request }: Route.ActionArgs) {
-  const { billing, membership } = await requireCustomer(request);
+export async function action({ request, url }: Route.ActionArgs) {
+  const { billing, membership } = await requireCustomer(request, url);
   requireOwnerOrAdmin(membership);
 
   const form = await request.formData();
@@ -93,10 +95,10 @@ export default function BillingPage({ loaderData, actionData }: Route.ComponentP
       <FormFeedback error={actionData?.error} />
 
       <div className="pricing-grid pricing-grid--portal">
-        <article className={`price-card ${billing.plan === 'free' ? 'is-current' : ''}`}>
+        <Card role="article" className={`price-card gap-0 p-6 ${billing.plan === 'free' ? 'is-current' : ''}`}>
           <div className="price-card__heading">
             <h2>Free</h2>
-            {billing.plan === 'free' ? <span className="current-badge">Current plan</span> : null}
+            {billing.plan === 'free' ? <Badge variant="secondary">Current plan</Badge> : null}
           </div>
           <p className="price">$0</p>
           <p className="price-detail">No expiry</p>
@@ -105,13 +107,13 @@ export default function BillingPage({ loaderData, actionData }: Route.ComponentP
             <li>Server and Browser keys</li>
             <li>Monthly usage fuse</li>
           </ul>
-        </article>
+        </Card>
 
-        <article className={`price-card ${billing.plan === 'metered' ? 'is-current' : ''}`}>
+        <Card role="article" className={`price-card gap-0 p-6 ${billing.plan === 'metered' ? 'is-current' : ''}`}>
           <div className="price-card__heading">
             <h2>Metered</h2>
             {billing.plan === 'metered' ? (
-              <span className="current-badge">Current plan</span>
+              <Badge variant="secondary">Current plan</Badge>
             ) : null}
           </div>
           <p className="price">
@@ -132,7 +134,7 @@ export default function BillingPage({ loaderData, actionData }: Route.ComponentP
               </SubmitButton>
             </Form>
           ) : null}
-        </article>
+        </Card>
       </div>
 
       {!canManageBilling ? (
@@ -152,7 +154,7 @@ export default function BillingPage({ loaderData, actionData }: Route.ComponentP
           </div>
           <Form method="post">
             <input type="hidden" name="intent" value="portal" />
-            <SubmitButton className="secondary" pendingText="Opening portal…">
+            <SubmitButton variant="secondary" pendingText="Opening portal…">
               Open billing portal
             </SubmitButton>
           </Form>

@@ -287,14 +287,26 @@ describe('embed widget docs page', () => {
     }
   });
 
-  it('links back to the API reference', () => {
-    expect(createEmbedDocsPage(BASE)).toContain(`href="${BASE}/docs"`);
+  it('keeps every navigation link relative to the current deployment', () => {
+    const html = createEmbedDocsPage(BASE);
+    const links = [...html.matchAll(/<a\b[^>]*href="([^"]+)"/g)].map((match) => match[1]);
+    expect(links.length).toBeGreaterThan(3);
+    expect(links.every((href) => href.startsWith('/') && !href.startsWith('//'))).toBe(true);
   });
 });
 
 describe('API reference page', () => {
+  it('uses an explicit mount point without triggering Scalar HTML auto-initialization', () => {
+    const html = createApiReference(BASE);
+    // The standalone bundle auto-mounts any #api-reference element before our explicit call.
+    expect(html).not.toMatch(/id=["']api-reference["']/);
+    expect(html).toContain("Scalar.createApiReference('#cancoder-api-reference'");
+  });
+
   it('points the API reference at the spec endpoint', () => {
-    expect(createApiReference(BASE)).toContain(`${BASE}/api/docs`);
+    const html = createApiReference(BASE);
+    expect(html).toContain('var openApiUrl = "/api/docs";');
+    expect(html).not.toContain(`${BASE}/api/docs`);
   });
 
   it('loads the same Scalar version the devDependency pins', () => {

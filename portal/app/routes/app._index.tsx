@@ -1,3 +1,5 @@
+import { Card } from '~/components/ui/card';
+import { ActionLink } from '~/components/ActionLink';
 import { Link } from 'react-router';
 import type { Route } from './+types/app._index';
 import { listKeys, requireCustomer } from '~/lib/customer.server';
@@ -11,8 +13,8 @@ export function meta(): Route.MetaDescriptors {
   ];
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const { billing } = await requireCustomer(request);
+export async function loader({ request, url }: Route.LoaderArgs) {
+  const { billing } = await requireCustomer(request, url);
   const keys = await listKeys(billing.workspaceId);
   try {
     const usage = await fetchUsage(billing.customerId);
@@ -46,9 +48,9 @@ export default function UsageDashboard({ loaderData }: Route.ComponentProps) {
           <h1>Overview</h1>
           <p>Manage access and keep this month’s API usage under control.</p>
         </div>
-        <Link className="btn btn--compact" to="/app/keys">
+        <ActionLink to="/app/keys">
           {activeKeyCount > 0 ? 'Manage keys' : 'Create your first key'}
-        </Link>
+        </ActionLink>
       </div>
 
       {activeKeyCount === 0 ? (
@@ -79,7 +81,7 @@ export default function UsageDashboard({ loaderData }: Route.ComponentProps) {
       ) : null}
 
       <div className="dashboard-grid">
-        <section className="panel usage-panel">
+        <Card className="panel usage-panel gap-0 p-6">
           <div className="panel-heading">
             <div>
               <h2>This month’s usage</h2>
@@ -111,9 +113,9 @@ export default function UsageDashboard({ loaderData }: Route.ComponentProps) {
           ) : (
             <p className="muted">Usage will appear after the projection API is configured.</p>
           )}
-        </section>
+        </Card>
 
-        <section className="panel">
+        <Card className="panel gap-0 p-6">
           <div className="panel-heading">
             <div>
               <h2>Plan</h2>
@@ -128,7 +130,7 @@ export default function UsageDashboard({ loaderData }: Route.ComponentProps) {
           <p className="fine-print">
             Metered usage is {formatMeteredUnitPrice()} USD per successful call after the allowance.
           </p>
-        </section>
+        </Card>
       </div>
     </>
   );

@@ -1,11 +1,12 @@
-import { Form, Link, NavLink, Outlet } from 'react-router';
+import { SiteHeader } from '~/components/SiteHeader';
+import { Form, NavLink, Outlet } from 'react-router';
 import type { Route } from './+types/app';
 import { requireCustomer } from '~/lib/customer.server';
 import { isFounder } from '~/lib/auth.server';
 import { SubmitButton } from '~/components/SubmitButton';
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const { userId, billing } = await requireCustomer(request);
+export async function loader({ request, url }: Route.LoaderArgs) {
+  const { userId, billing } = await requireCustomer(request, url);
   return {
     userId,
     workspaceId: billing.workspaceId,
@@ -17,20 +18,10 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
-  const { customerId, plan, showAdmin } = loaderData;
+  const { plan, showAdmin } = loaderData;
   return (
     <div className="app-shell">
-      <header className="app-header">
-        <div className="shell">
-          <Link className="brand" to="/app">
-            CanCoder
-          </Link>
-          <div className="account-summary">
-            <span className="plan-badge">{plan} plan</span>
-            <span className="account-summary__id">{customerId}</span>
-          </div>
-        </div>
-      </header>
+      <SiteHeader plan={plan} />
       <div className="app-body shell">
         <aside className="app-sidebar">
           <nav aria-label="Portal navigation">
@@ -44,7 +35,7 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
             {showAdmin ? <NavLink to="/app/admin">Admin</NavLink> : null}
           </nav>
           <Form method="post" action="/api/auth/sign-out">
-            <SubmitButton className="secondary sidebar-signout" pendingText="Signing out…">
+            <SubmitButton variant="secondary" className="sidebar-signout" pendingText="Signing out…">
               Sign out
             </SubmitButton>
           </Form>

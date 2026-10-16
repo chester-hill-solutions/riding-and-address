@@ -7,7 +7,7 @@ import { performExpandedLookup, expandedLookupResponseFields } from './lookup-ex
 import { resolveLookupPath } from './return-selector';
 import { recordSuccessfulBillable } from './billing';
 import { cachedLookupRiding } from './riding-lookup';
-import { FEDERAL_DATASET, PROVINCIAL_DATASETS } from './datasets';
+import { FEDERAL_DATASET, PROVINCIAL_DATASETS, isLookupPath } from './datasets';
 import type { RouteContext } from './route-context';
 import {
   handleGeocodeRoute,
@@ -35,6 +35,9 @@ export async function handleLookupRequest(ctx: RouteContext): Promise<Response> 
   const { request, env, correlationId, startTime, corsHeaders, deferTask, billing } = ctx;
   const lookupRiding = ctx.deps?.lookup ?? cachedLookupRiding;
   const pathname = ctx.url.pathname;
+  if (!isLookupPath(pathname)) {
+    return badRequest('Not found', 404, 'NOT_FOUND', correlationId);
+  }
   const { lookupPathname } = resolveLookupPath(pathname);
   const { validation } = parseQuery(request);
 
@@ -107,11 +110,11 @@ export async function handleLookupRequest(ctx: RouteContext): Promise<Response> 
   }
 }
 
-/** A copy of `ctx` whose `url.pathname` is the real route the demo path mirrors. */
+/** Keep the request URL and context URL aligned with the route the demo mirrors. */
 function withLookupPath(ctx: RouteContext, pathname: string): RouteContext {
   const url = new URL(ctx.url.toString());
   url.pathname = pathname;
-  return { ...ctx, url };
+  return { ...ctx, url, request: new Request(url, ctx.request) };
 }
 
 /**
@@ -120,8 +123,9 @@ function withLookupPath(ctx: RouteContext, pathname: string): RouteContext {
  */
 export function handleDemoRoute(ctx: RouteContext): Promise<Response> {
   const demoPath = ctx.url.pathname.replace(/^\/api\/demo/, '/api') || '/api';
-  if (demoPath === '/api/geocode') return handleGeocodeRoute(ctx);
-  if (demoPath === '/api/reverse') return handleReverseRoute(ctx);
-  if (demoPath === '/api/normalize-address') return handleNormalizeAddressRoute(ctx);
-  return handleLookupRequest(withLookupPath(ctx, demoPath === '/api' ? '/api/federal' : demoPath));
+  const mirrored = withLookupPath(ctx, demoPath);
+  if (demoPath === '/api/geocode') return handleGeocodeRoute(mirrored);
+  if (demoPath === '/api/reverse') return handleReverseRoute(mirrored);
+  if (demoPath === '/api/normalize-address') return handleNormalizeAddressRoute(mirrored);
+  return handleLookupRequest(mirrored);
 }

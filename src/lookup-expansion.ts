@@ -6,6 +6,8 @@ import {
   CanadaPostStyleAddress,
   CircuitBreakerExecutor,
   DeferTaskFn,
+  PostalMatchMetadata,
+  LookupGeocodeMetadata,
 } from './types';
 import type { GeocodeIfNeededFn } from './geocoding';
 import { runOrDefer } from './utils';
@@ -30,6 +32,7 @@ export interface NormalizedAddressContext {
   mailingAddress?: CanadaPostStyleAddress;
   geocodeMethod?: string;
   geocodeConfidence?: number;
+  postalMatch?: PostalMatchMetadata;
 }
 
 export interface ExpandedLookupPayload {
@@ -40,7 +43,7 @@ export interface ExpandedLookupPayload {
   normalizedAddress?: string;
   addressComponents?: GoogleAddressComponents;
   mailingAddress?: CanadaPostStyleAddress;
-  geocode?: { method: string; confidence?: number };
+  geocode?: LookupGeocodeMetadata;
   cacheStatus: 'HIT' | 'MISS' | 'PARTIAL';
 }
 
@@ -248,6 +251,7 @@ export function buildExpandedLookupPayload(
     payload.geocode = {
       method: addressContext.geocodeMethod,
       confidence: addressContext.geocodeConfidence,
+      postalMatch: addressContext.postalMatch,
     };
   }
 
@@ -282,7 +286,7 @@ export function expandedLookupResponseFields(expanded: ExpandedLookupPayload): {
   normalizedAddress?: string;
   addressComponents?: GoogleAddressComponents;
   mailingAddress?: CanadaPostStyleAddress;
-  geocode?: { method: string; confidence?: number };
+  geocode?: LookupGeocodeMetadata;
 } {
   return {
     riding: expanded.riding,
@@ -343,6 +347,7 @@ async function resolveCoordinates(
       mailingAddress: geocodeResult.mailingAddress,
       geocodeMethod: geocodeResult.geocodeMethod,
       geocodeConfidence: geocodeResult.confidence,
+      postalMatch: geocodeResult.postalMatch,
       ...options.addressContext,
     },
   };
@@ -374,7 +379,15 @@ export async function performExpandedLookup(
     env,
     sanitizedQuery,
     cached?.point,
-    options
+    cached ? { ...options, addressContext: {
+      normalizedAddress: cached.normalizedAddress,
+      addressComponents: cached.addressComponents,
+      mailingAddress: cached.mailingAddress,
+      geocodeMethod: cached.geocode?.method,
+      geocodeConfidence: cached.geocode?.confidence,
+      postalMatch: cached.geocode?.postalMatch,
+      ...options.addressContext,
+    } } : options
   );
 
   let baseResult: LookupResult;
@@ -404,6 +417,11 @@ export async function performExpandedLookup(
         {
           properties: lookup.properties,
           riding: lookup.riding,
+          geocode: resolvedAddressContext?.geocodeMethod ? {
+            method: resolvedAddressContext.geocodeMethod,
+            confidence: resolvedAddressContext.geocodeConfidence,
+            postalMatch: resolvedAddressContext.postalMatch,
+          } : undefined,
           normalizedAddress: resolvedAddressContext?.normalizedAddress,
           addressComponents: resolvedAddressContext?.addressComponents,
           mailingAddress: resolvedAddressContext?.mailingAddress,

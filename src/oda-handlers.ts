@@ -1,7 +1,8 @@
+import { jsonOk, jsonError } from '@chester-hill-solutions/http';
 import { Env, QueryParams, SuggestQueryParams, SuggestResponse } from './types';
 import { initializeOdaDatabase, getOdaStats } from './oda-schema';
 import { isOdaEnabled, getOdaConfig, getOdaSuggestConfig, ODA_DEFAULTS } from './oda-config';
-import type { RouteContext } from './route-context';
+import { jsonHeaders, type RouteContext } from './route-context';
 import {
   geocodeWithOda,
   reverseGeocodeWithOda,
@@ -30,24 +31,17 @@ function odaErrorResponse(error: unknown, ctx: RouteContext): Response {
   return badRequest(message, 500, 'GEOCODING_ERROR', ctx.correlationId);
 }
 
-/** CORS + security + correlation headers, matching every other JSON response. */
-function odaJsonHeaders(ctx: RouteContext): Record<string, string> {
-  return {
-    'content-type': 'application/json; charset=UTF-8',
-    ...ctx.corsHeaders(ctx.request.headers.get('Origin')),
-  };
-}
-
 function geocodeJsonResponse(
   ctx: RouteContext,
   query: QueryParams,
   result: Awaited<ReturnType<typeof geocodeWithOda>>
 ): Response {
-  return new Response(
-    JSON.stringify({
+  return jsonOk(
+    {
       query,
       point: { lon: result.lon, lat: result.lat },
       geocodeMethod: result.geocodeMethod,
+      postalMatch: result.postalMatch,
       confidence: result.confidence,
       matchedFields: result.matchedFields,
       distanceMeters: result.distanceMeters,
@@ -56,25 +50,25 @@ function geocodeJsonResponse(
       addressComponents: result.addressComponents,
       dataSource: result.dataSource,
       correlationId: ctx.correlationId,
-    }),
-    { headers: odaJsonHeaders(ctx) }
+    },
+    { headers: jsonHeaders(ctx) }
   );
 }
 
 export async function handleOdaInit(ctx: RouteContext): Promise<Response> {
   const success = await initializeOdaDatabase(ctx.env);
-  return new Response(
-    JSON.stringify({
+  return jsonOk(
+    {
       success,
       message: success ? 'ODA database initialized successfully' : 'ODA database initialization failed',
-    }),
-    { headers: odaJsonHeaders(ctx) }
+    },
+    { headers: jsonHeaders(ctx) }
   );
 }
 
 export async function handleOdaStats(ctx: RouteContext): Promise<Response> {
   const stats = await getOdaStats(ctx.env);
-  return new Response(JSON.stringify(stats), { headers: odaJsonHeaders(ctx) });
+  return jsonOk(stats, { headers: jsonHeaders(ctx) });
 }
 
 export async function handleGeocodeRoute(ctx: RouteContext): Promise<Response> {
@@ -145,18 +139,19 @@ export async function handleNormalizeAddressRoute(ctx: RouteContext): Promise<Re
 
   try {
     const result = await normalizeAddressWithOda(env, validation.sanitized);
-    return new Response(
-      JSON.stringify({
+    return jsonOk(
+      {
         query: validation.sanitized,
         normalizedAddress: result.normalizedAddress,
         mailingAddress: result.mailingAddress,
         addressComponents: result.addressComponents,
         geocodeMethod: result.geocodeMethod,
+        postalMatch: result.postalMatch,
         confidence: result.confidence,
         dataSource: result.dataSource,
         correlationId,
-      }),
-      { headers: odaJsonHeaders(ctx) }
+      },
+      { headers: jsonHeaders(ctx) }
     );
   } catch (error) {
     return odaErrorResponse(error, ctx);
@@ -255,7 +250,7 @@ export async function handleSearchRoute(ctx: RouteContext): Promise<Response> {
       dataSource: { provider: ODA_DEFAULTS.PROVIDER, version: getOdaConfig(env).dataVersion },
       correlationId,
     };
-    return new Response(JSON.stringify(body), {
+    return jsonOk(body, {
       headers: {
         'content-type': 'application/json; charset=UTF-8',
         // A shared edge cache in front of an authenticated endpoint would serve one tenant's
@@ -403,8 +398,7 @@ function suggestErrorResponse(
           status: 500,
         };
 
-  return new Response(JSON.stringify({ error: message, code, correlationId }), {
-    status,
+  return jsonError({ error: message, code, correlationId }, status, {
     headers: { 'content-type': 'application/json; charset=UTF-8', ...corsHeaders },
   });
 }

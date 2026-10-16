@@ -7,6 +7,7 @@ import {
   isRouteErrorResponse,
 } from 'react-router';
 import type { Route } from './+types/root';
+import { SITE_BRAND_STYLES, SITE_FONT_STYLESHEET } from '../../src/site-chrome';
 import appStylesheet from './app.css?url';
 
 const FAVICON =
@@ -15,10 +16,7 @@ const FAVICON =
 export const links: Route.LinksFunction = () => [
   { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
   { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' },
-  {
-    rel: 'stylesheet',
-    href: 'https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap',
-  },
+  { rel: 'stylesheet', href: SITE_FONT_STYLESHEET },
   { rel: 'stylesheet', href: appStylesheet },
   { rel: 'icon', type: 'image/svg+xml', href: FAVICON },
 ];
@@ -41,6 +39,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
+        <style>{SITE_BRAND_STYLES}</style>
         <Links />
       </head>
       <body>

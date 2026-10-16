@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "vintage": "202606",
+  "province": "ON",
+  "provinceComplete": true,
+  "completenessEvidence": "Complete synthetic fixture only; not a StatCan province completeness claim",
+  "parts": [
+    {
+      "kind": "addresses",
+      "path": "addresses.csv",
+      "sha256": "d52b5d43ef209868826e1ed6e02ba404d872c67000f08721564300f767de5a92",
+      "rows": 5
+    }
+  ]
+}

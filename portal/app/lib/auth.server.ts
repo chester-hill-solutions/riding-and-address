@@ -6,13 +6,13 @@ import { env } from '~/lib/env.server';
 import { authSchema } from '~/db/schema';
 
 function buildAuth() {
-  const { authSecret, baseUrl } = env();
+  const { authSecret, baseUrl, authTrustedOrigins } = env();
   if (!authSecret) throw new Error('AUTH_SECRET is required');
 
   return createBetterAuth({
     secret: authSecret,
     baseURL: baseUrl,
-    trustedOrigins: [baseUrl],
+    trustedOrigins: [...new Set([baseUrl, ...authTrustedOrigins])],
     database: drizzleAdapter(getDb(), {
       provider: 'sqlite',
       schema: authSchema,
@@ -43,14 +43,13 @@ export function getSession() {
   return createSessionReader(getAuth());
 }
 
-const requireSessionUserIdImpl = createRequireSessionUserId({
-  getSessionUserId: (request) => getSession().getSessionUserId(request),
-  loginUrlWithContinue: (req) => `/login?continue=${encodeURIComponent(new URL(req.url).pathname)}`,
-});
-
-/** Convenience wrapper for loaders/actions. */
-export async function requireSessionUserId(request: Request): Promise<string> {
-  return requireSessionUserIdImpl(request, new Headers());
+/** Use RR's normalized route URL so login continuations never contain a `.data` suffix. */
+export async function requireSessionUserId(request: Request, url: URL): Promise<string> {
+  const requireUser = createRequireSessionUserId({
+    getSessionUserId: (req) => getSession().getSessionUserId(req),
+    loginUrlWithContinue: () => `/login?continue=${encodeURIComponent(url.pathname)}`,
+  });
+  return requireUser(request, new Headers());
 }
 
 export function isFounder(userId: string): boolean {

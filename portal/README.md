@@ -4,12 +4,17 @@ Self-serve Customer portal (signup, org/workspace, invites, Server/Browser keys,
 
 ## Stack
 
-- React Router 7 on Cloudflare Workers (`@cloudflare/vite-plugin`)
+- React Router 8 on Cloudflare Workers (`@cloudflare/vite-plugin`)
 - `@chester-hill-solutions/auth` + `auth-d1` + `auth-react-router`
 - D1 (`PORTAL_DB` / `cancoder-portal`) for auth + billing
 - In-process projection into Worker KV for API keys / Customer fuse (`src/projection-handlers.ts`)
 
 Config lives in [`wrangler.jsonc`](./wrangler.jsonc). Root `bun run deploy` builds and deploys from this directory.
+
+RR8 uses a fresh `RouterContextProvider` per request. Cloudflare bindings still flow through
+request-scoped AsyncLocalStorage. Guards receive React Router's normalized `url` so data-request
+suffixes do not enter post-login continuations. React/React DOM require 19.2.7+, Vite 7+, and
+Node 22.22+; CI uses Node 24.
 
 ## Local setup
 
@@ -28,6 +33,10 @@ Config lives in [`wrangler.jsonc`](./wrangler.jsonc). Root `bun run deploy` buil
    To refresh vendored CHS packages from a sibling checkout, see [`vendor/README.md`](./vendor/README.md).
 
 3. Uncomment `API_KEYS` in `wrangler.jsonc` (and set `PROJECTION_ADMIN_SECRET` in `.dev.vars`) for key minting. Soft free API works with `API_KEYS` unbound.
+
+`bun run test:runtime` checks the built Worker locally: public pages, RR8 data requests,
+signup/session cookies, normalized login redirects, invite validation and API ownership. It uses
+a temporary local database and does not access remote bindings or send email.
 
 ## Migrations (D1)
 
@@ -49,3 +58,36 @@ Checkout keeps `plan: free` until `checkout.session.completed` activates `metere
 ## Founder admin
 
 Users listed in `FOUNDER_USER_IDS` can toggle Enterprise `batchEnabled` on a Customer via the admin UI (projects to Worker KV).
+
+
+## CHS UI kit
+
+Shared buttons, inputs, labels, checkboxes, cards, badges and tables are vendored from
+`@chester-hill-solutions/ui-kit` 0.5.0, upstream commit
+`d1ee02287b8d58dd72dcf2ec9dd757ffb86f4960`. Component source lives in
+`app/components/ui`; `.chs-ui.json` records the generator configuration. The app uses
+React Aria for controls and Tailwind v4 through the Vite plugin. No private registry
+credential or UI-kit runtime package is needed to build the checked-in components.
+
+CanCoder theme values live in `app/styles/cancoder.css`: civic blue, cool surfaces,
+Source Sans 3 body type and Source Serif 4 headings. `ui-theme.css` and `base.css`
+remain upstream copies. Use semantic tokens and slot treatments in `cancoder.css`
+for brand changes, rather than editing the generated components. `ActionLink` bridges
+CHS button styles to React Router navigation; `SubmitButton` adds route submission
+state to the CHS pending-state control. Internal navigation, documentation links,
+and the homepage widget use root-relative URLs so both public hostnames stay on
+the current origin.
+
+With the UI-kit CLI available, run from `portal/`:
+
+```sh
+ui-kit add button input label card table native-select checkbox badge --overwrite
+```
+
+Review generated diffs before committing an upstream refresh. Keep the app-owned
+CanCoder theme and router/form adapters.
+
+## Shared validation
+
+Invite forms use the shared CHS `EmailSchema` and form validator. The portal and API use the
+same vendored validation build; see [`../vendor/README.md`](../vendor/README.md) for provenance.

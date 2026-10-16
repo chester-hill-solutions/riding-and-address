@@ -1,3 +1,4 @@
+import { CANADIAN_PROVINCE_ALIASES, normalizeCanadianProvinceCode } from '@chester-hill-solutions/validation';
 import { validatePostalCode } from './utils';
 
 /** StatCan province/territory numeric ID → two-letter code */
@@ -17,38 +18,7 @@ export const PROVINCE_ID_TO_CODE: Record<string, string> = {
   '62': 'NU',
 };
 
-export const PROVINCE_NAME_TO_CODE: Record<string, string> = {
-  NL: 'NL',
-  NEWFOUNDLAND: 'NL',
-  PE: 'PE',
-  PEI: 'PE',
-  'PRINCE EDWARD ISLAND': 'PE',
-  NS: 'NS',
-  'NOVA SCOTIA': 'NS',
-  NB: 'NB',
-  'NEW BRUNSWICK': 'NB',
-  QC: 'QC',
-  QUE: 'QC',
-  QUEBEC: 'QC',
-  QUÉBEC: 'QC',
-  ON: 'ON',
-  ONT: 'ON',
-  ONTARIO: 'ON',
-  MB: 'MB',
-  MANITOBA: 'MB',
-  SK: 'SK',
-  SASKATCHEWAN: 'SK',
-  AB: 'AB',
-  ALBERTA: 'AB',
-  BC: 'BC',
-  'BRITISH COLUMBIA': 'BC',
-  YT: 'YT',
-  YUKON: 'YT',
-  NT: 'NT',
-  'NORTHWEST TERRITORIES': 'NT',
-  NU: 'NU',
-  NUNAVUT: 'NU',
-};
+export const PROVINCE_NAME_TO_CODE: Readonly<Record<string, string>> = CANADIAN_PROVINCE_ALIASES;
 
 /** Search normalization: expand abbreviations to canonical search tokens */
 /**
@@ -225,8 +195,7 @@ export function normalizeProvince(input: string | undefined): string | undefined
   if (/^\d+$/.test(trimmed)) {
     return PROVINCE_ID_TO_CODE[trimmed];
   }
-  const key = foldAccents(trimmed);
-  return PROVINCE_NAME_TO_CODE[key];
+  return normalizeCanadianProvinceCode(trimmed);
 }
 
 export function normalizeStreetType(type: string | undefined): string {
@@ -393,37 +362,41 @@ export function buildSearchKey(parts: {
   ].join('|');
 }
 
+const FRENCH_STREET_TYPE_PREFIXES = new Set([
+  'RUE', 'CH', 'CHEMIN', 'BOULEVARD', 'BLVD', 'AVENUE', 'AVE', 'AV',
+  'PLACE', 'PL', 'ROUTE', 'RTE', 'RANG', 'MONTEE', 'COTE', 'CROIS', 'PROM', 'VOIE',
+]);
+
 /** Parse street tokens after civic number is extracted */
 function parseStreetTail(rest: string): {
   streetName?: string;
   streetType?: string;
   streetDirection?: string;
 } {
-  const tokens = rest.trim().split(/\s+/);
-  if (tokens.length === 0) {
-    return {};
+  const tokens = rest.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return {};
+
+  let streetDirection: string | undefined;
+  const last = normalizeSearchToken(tokens[tokens.length - 1]);
+  if (tokens.length > 1 && STREET_DIR_SEARCH[last]) {
+    streetDirection = normalizeStreetDirection(tokens.pop());
   }
 
-  const last = tokens[tokens.length - 1].toUpperCase();
-  const secondLast = tokens.length > 1 ? tokens[tokens.length - 2].toUpperCase() : '';
-
-  if (STREET_DIR_SEARCH[last]) {
-    const streetType = tokens.length > 2 ? normalizeStreetType(tokens[tokens.length - 2]) : '';
-    const streetName = tokens.slice(0, -2).join(' ') || tokens[0];
-    return {
-      streetName,
-      streetType: streetType || undefined,
-      streetDirection: normalizeStreetDirection(last),
-    };
+  // Suffix types take precedence: "Avenue Rd" is a street named Avenue.
+  const suffix = normalizeSearchToken(tokens[tokens.length - 1]);
+  if (tokens.length > 1 && STREET_TYPE_SEARCH[suffix]) {
+    tokens.pop();
+    return { streetName: tokens.join(' '), streetType: normalizeStreetType(suffix), streetDirection };
   }
 
-  if (STREET_TYPE_SEARCH[last] || STREET_TYPE_SEARCH[secondLast]) {
-    const streetType = normalizeStreetType(last);
-    const streetName = tokens.slice(0, -1).join(' ');
-    return { streetName, streetType };
+  // French street types precede the name, while the stored key keeps type separate.
+  const prefix = normalizeSearchToken(tokens[0]);
+  if (tokens.length > 1 && FRENCH_STREET_TYPE_PREFIXES.has(prefix)) {
+    tokens.shift();
+    return { streetName: tokens.join(' '), streetType: normalizeStreetType(prefix), streetDirection };
   }
 
-  return { streetName: rest.trim() };
+  return { streetName: tokens.join(' '), streetDirection };
 }
 
 /** Normalize unit identifiers for DB comparison */

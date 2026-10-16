@@ -1,0 +1,32 @@
+{
+  "name": "@chester-hill-solutions/http",
+  "version": "0.1.0",
+  "description": "Fetch Response helpers and request parsing utilities",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chester-hill-solutions/chester-hill-solutions.git",
+    "directory": "packages/http"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@chester-hill-solutions/errors": "file:../errors",
+    "@chester-hill-solutions/validation": "file:../validation",
+    "zod": "^4.3.5"
+  }
+}

@@ -1,0 +1,109 @@
+@import "./ui-theme.css";
+
+/* CanCoder owns brand values; upstream component and foundation CSS stay intact. */
+:root:not([data-style]) {
+  --style-font-sans: var(--site-font);
+  --style-font-heading: var(--site-display);
+  --style-font-display: var(--style-font-heading);
+  --style-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: var(--style-font-sans);
+  --font-display: var(--style-font-display);
+  --radius: 0.75rem;
+  --space-unit: 0.25rem;
+  --font-size-base: 1rem;
+  --font-size-sm: 0.875rem;
+  --font-size-xs: 0.75rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+
+  --bg: var(--background);
+  --surface: var(--card);
+  --surface-subtle: var(--muted);
+  --text: var(--foreground);
+  --primary-strong: var(--site-primary-strong);
+  --primary-soft: var(--site-primary-soft);
+  --border-strong: #aebdd0;
+  --error: var(--destructive);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: var(--radius);
+  --shadow: 0 8px 24px rgb(19 32 51 / 5%);
+  --hero-ink: #f4f8fc;
+}
+
+:root:not(.dark) {
+  --background: var(--site-canvas);
+  --foreground: var(--site-ink);
+  --card: #ffffff;
+  --card-foreground: var(--site-ink);
+  --popover: #ffffff;
+  --popover-foreground: var(--site-ink);
+  --primary: var(--site-primary);
+  --primary-foreground: #ffffff;
+  --secondary: var(--site-primary-soft);
+  --secondary-foreground: var(--site-primary-strong);
+  --muted: #f0f3f8;
+  --muted-foreground: var(--site-muted);
+  --accent: #dcebf9;
+  --accent-foreground: var(--site-primary-strong);
+  --border: var(--site-border);
+  --input: #aebdd0;
+  --ring: var(--site-primary);
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+  --success: #14733e;
+  --success-foreground: #ffffff;
+  --warning: #f3b61f;
+  --warning-foreground: #3a2900;
+  --info: var(--site-primary);
+  --info-foreground: #ffffff;
+  --ui-primary-text: var(--site-primary);
+  --ui-success-text: #14733e;
+  --ui-destructive-text: #b42318;
+  --ui-warning-text: #754508;
+  --ui-info-text: var(--site-primary);
+}
+
+/* Slot chrome is themed here, without editing copied component source. */
+[data-slot="input"],
+[data-slot="native-select"] {
+  min-height: 44px;
+  font-size: 1rem;
+  background: var(--card);
+  border-color: var(--input);
+}
+
+[data-slot="input"]:focus-visible,
+[data-slot="native-select"]:focus-visible {
+  border-color: var(--ring);
+}
+
+[data-slot="input"][aria-invalid="true"],
+[data-slot="native-select"][aria-invalid="true"] {
+  border-color: var(--destructive);
+}
+
+[data-slot="checkbox-indicator"] {
+  border-color: var(--input);
+}
+
+[data-slot="checkbox"][data-selected] [data-slot="checkbox-indicator"] {
+  border-color: var(--primary);
+}
+
+/* Secondary actions retain the same contrast on every page. */
+.marketing-outline { border-color: var(--border); background: var(--card); color: var(--text); }
+.marketing-outline:hover { background: var(--primary-soft); color: var(--primary-strong); }
+
+/* The hero uses reversed brand colours over the blue surface. */
+.hero-marketing .button-row > [data-slot="button"]:first-child {
+  background: white;
+  color: var(--primary-strong);
+}
+.hero-marketing .button-row > .marketing-outline {
+  background: transparent;
+  color: white;
+  border-color: #759bc9;
+}
+.hero-marketing .button-row > .marketing-outline:hover {
+  background: rgb(255 255 255 / 12%);
+}

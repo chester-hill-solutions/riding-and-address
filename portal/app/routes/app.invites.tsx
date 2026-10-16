@@ -1,3 +1,7 @@
+import { EmailSchema, validateFormData } from '@chester-hill-solutions/validation';
+import { z } from 'zod';
+import { Input } from '~/components/ui/input';
+import { Label } from '~/components/ui/label';
 import { Form } from 'react-router';
 import type { Route } from './+types/app.invites';
 import { isOwnerOrAdmin, requireCustomer } from '~/lib/customer.server';
@@ -18,17 +22,18 @@ export function meta(): Route.MetaDescriptors {
   ];
 }
 
-export async function action({ request }: Route.ActionArgs) {
-  const { userId, membership } = await requireCustomer(request);
+const inviteFormSchema = z.object({ email: z.string().trim().pipe(EmailSchema) });
+
+export async function action({ request, url }: Route.ActionArgs) {
+  const { userId, membership } = await requireCustomer(request, url);
   if (!isOwnerOrAdmin(membership)) {
     return { error: 'Only owners/admins can invite' };
   }
 
   const form = await request.formData();
-  const email = String(form.get('email') || '')
-    .trim()
-    .toLowerCase();
-  if (!email) return { error: 'Email required' };
+  const parsed = await validateFormData(inviteFormSchema, form);
+  if (!parsed.success) return { error: parsed.error };
+  const { email } = parsed.data;
 
   const ws = (
     await getDb().select().from(workspaces).where(eq(workspaces.id, membership.workspaceId)).limit(1)
@@ -64,8 +69,8 @@ export default function InvitesPage({ actionData }: Route.ComponentProps) {
         }
       />
       <Form method="post">
-        <label htmlFor="email">Email</label>
-        <input id="email" name="email" type="email" required />
+        <Label htmlFor="email">Email</Label>
+        <Input size="touch" id="email" name="email" type="email" required />
         <SubmitButton pendingText="Sending…">Send invite</SubmitButton>
       </Form>
     </Panel>
