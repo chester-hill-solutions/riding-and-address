@@ -27,12 +27,18 @@ admin, queue, and billing paths are excluded from crawling. Search crawlers are 
 training crawlers are disallowed. Content Signals are emitted in `robots.txt` as
 `ai-train=no, search=yes, ai-input=yes`.
 
+## Markdown for Agents
+
+Implemented in the Worker (`src/markdown-for-agents.ts`), not as a Cloudflare zone toggle. A client
+that sends an explicit `Accept: text/markdown` gets a markdown rendering of the HTML page; browsers,
+which never ask for markdown, keep getting HTML. Only an explicit ask counts — a wildcard does not —
+so no browser is accidentally served markdown. Responses carry `Content-Type: text/markdown` and an
+`x-markdown-tokens` hint, and add `Accept` to `Vary`.
+
 ## Cloudflare dashboard settings
 
-Enable **Markdown for Agents** for the production zone in Cloudflare's AI Crawl Control settings
-to negotiate Markdown from HTML pages when a client sends `Accept: text/markdown`. This requires
-zone dashboard access and cannot be enabled from this repository. Add any future custom hostname
-to `PUBLIC_API_HOSTS` so discovery documents and MCP accept that hostname.
+Add any future custom hostname to `PUBLIC_API_HOSTS` so discovery documents and MCP accept that
+hostname.
 
 ## DNS-AID
 
