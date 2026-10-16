@@ -3,6 +3,8 @@ import { drizzleAdapter } from '@better-auth/drizzle-adapter';
 import { createRequireSessionUserId } from '@chester-hill-solutions/auth-react-router';
 import { getDb } from '~/lib/db.server';
 import { env } from '~/lib/env.server';
+import { requireCloudflareEnv } from './cloudflare-context.server';
+import { sendEmail, escapeHtml } from './email.server';
 import { authSchema } from '~/db/schema';
 
 function buildAuth() {
@@ -18,6 +20,22 @@ function buildAuth() {
       schema: authSchema,
     }),
     emailAndPassword: { enabled: true },
+    emailVerification: {
+      sendVerificationEmail: async ({ user, url }) => {
+        const binding = requireCloudflareEnv().API_KEY_USAGE;
+        if (!binding) throw new Error('Verification is temporarily unavailable');
+        const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(authSecret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+        const hash = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(user.email.trim().toLowerCase()));
+        const bucket = [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2, '0')).join('');
+        const day = new Date().toISOString().slice(0, 10);
+        const response = await binding.get(binding.idFromName(`verification:${bucket}`)).fetch(`https://usage/consume?day=${day}&limit=5`, { method: 'POST' });
+        if (!response.ok || !(await response.json() as { allowed: boolean }).allowed) throw new Error('Verification email limit reached. Try again tomorrow.');
+        await sendEmail({
+          to: user.email, subject: 'Verify your CanCoder email', required: true,
+          html: `<p>Verify your email to use CanCoder uploads and API keys.</p><p><a href="${escapeHtml(url)}">Verify email</a></p>`,
+        });
+      },
+    },
     advanced: {
       database: {
         // The CHS auth schema uses uuid primary keys; better-auth's default

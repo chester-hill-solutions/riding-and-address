@@ -9,6 +9,9 @@ export default [
   route('app', 'routes/app.tsx', [
     index('routes/app._index.tsx'),
     route('keys', 'routes/app.keys.tsx'),
+    route('uploads', 'routes/app.uploads.tsx'),
+    route('uploads/:id/results.csv', 'routes/app.upload-results.ts'),
+    route('uploads/:id', 'routes/app.upload.tsx'),
     route('billing', 'routes/app.billing.tsx'),
     route('invites', 'routes/app.invites.tsx'),
     route('settings', 'routes/app.settings.tsx'),

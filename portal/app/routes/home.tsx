@@ -44,14 +44,14 @@ export default function Home() {
           <div className="shell hero-marketing__inner">
             <div className="hero-marketing__copy">
             <p className="eyebrow">Canadian address intelligence</p>
-            <h1>From address to riding.<br /><span>In one call.</span></h1>
+            <h1>From address to riding.<br /><span>One row. Or a whole sheet.</span></h1>
             <p className="hero-marketing__lead">
-              Help people find their address, pinpoint a location, and connect with the right
-              electoral district. One API for your forms and campaign tools.
+              Upload a spreadsheet, review the price, and download addresses matched to electoral
+              districts. Or use our API and autocomplete widget in your own tools.
             </p>
             <div className="button-row">
-              <ActionLink to="/signup">
-                Start free
+              <ActionLink to="/app/uploads">
+                Upload a sheet
               </ActionLink>
               <LinkButton variant="outline" size="touch" className="marketing-outline" href="#try-it">
                 Try a lookup
@@ -159,16 +159,16 @@ export default function Home() {
                 </ActionLink>
               </Card>
               <Card role="article" className="price-card price-card--featured gap-0 p-6 sm:p-8">
-                <h3>Metered</h3>
+                <h3>Pay per upload</h3>
                 <p className="price">
                   {formatMeteredUnitPrice()}
                   <span> USD</span>
                 </p>
-                <p className="price-detail">per successful call after the free allowance</p>
+                <p className="price-detail">per successful row after the free allowance</p>
                 <ul className="check-list">
-                  <li>Includes the free monthly allowance</li>
-                  <li>No charge for 4xx or 5xx responses</li>
-                  <li>Set a monthly hard limit at any time</li>
+                  <li>See your quote before paying</li>
+                  <li>Failed paid rows become account credit</li>
+                  <li>One-time payment. No subscription.</li>
                 </ul>
                 <ActionLink to="/signup">
                   Create an account
@@ -176,8 +176,8 @@ export default function Home() {
               </Card>
             </div>
             <p className="pricing-note">
-              Usage resets each UTC calendar month. Paid access is enabled after the product
-              addendum is signed.
+              The free allowance resets each UTC calendar month and is shared across your workspace.
+              Card payments start at US$0.50; unused funds remain as credit.
             </p>
           </div>
         </section>

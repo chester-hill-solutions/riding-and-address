@@ -999,3 +999,23 @@ code {
 [data-slot="table-container"] { margin-top: 1.25rem; }
 [data-slot="table-head"] { color: var(--muted-foreground); font-size: 0.76rem; letter-spacing: 0.03em; text-transform: uppercase; }
 }
+
+/* Uploads share the same quiet surfaces as the rest of the portal. */
+.upload-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.5rem; margin: 2rem 0; }
+.upload-facts strong, .upload-facts span { display: block; }
+.upload-facts strong { font-size: 1.1rem; }
+.upload-facts span { margin-top: .4rem; color: var(--muted-foreground); font-size: .875rem; }
+.upload-form { display: grid; gap: .75rem; padding: 1.5rem; background: var(--bg); border-radius: var(--radius-md); }
+.upload-form > label { font-weight: 650; }
+.upload-form input[type="file"] { width: 100%; padding-block: .75rem; }
+.upload-history { margin-top: 3rem; }
+.upload-history ul { list-style: none; padding: 0; }
+.upload-history li { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .75rem; padding-block: 1rem; }
+.upload-history li > span { color: var(--muted-foreground); }
+.upload-quote { max-width: 560px; padding: 1.5rem; margin-block: 1.5rem; background: var(--bg); border-radius: var(--radius-md); }
+.upload-quote dl { display: grid; grid-template-columns: 1fr auto; gap: 1rem; }
+.upload-quote dd { text-align: right; margin: 0; font-weight: 650; }
+.upload-quote .quote-total { padding-top: 1rem; font-size: 1.2rem; font-weight: 700; }
+.upload-progress { margin-block: 2rem; }
+.upload-progress progress { width: 100%; accent-color: var(--primary); }
+.upload-download { display: inline-block; padding: .85rem 1.25rem; color: var(--primary-foreground); background: var(--primary); border-radius: var(--radius-md); text-decoration: none; font-weight: 650; }

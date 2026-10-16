@@ -18,7 +18,7 @@ export function SiteHeader({ plan }: { plan?: string }) {
         <div className="site-header__actions">
           {plan ? (
             <>
-              <Badge variant="secondary">{plan} plan</Badge>
+              <Badge variant="secondary">{plan} API plan</Badge>
               <span className="site-account">Your workspace</span>
             </>
           ) : (

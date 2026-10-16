@@ -48,8 +48,8 @@ export default function UsageDashboard({ loaderData }: Route.ComponentProps) {
           <h1>Overview</h1>
           <p>Manage access and keep this month’s API usage under control.</p>
         </div>
-        <ActionLink to="/app/keys">
-          {activeKeyCount > 0 ? 'Manage keys' : 'Create your first key'}
+        <ActionLink to="/app/uploads">
+          Upload a sheet
         </ActionLink>
       </div>
 

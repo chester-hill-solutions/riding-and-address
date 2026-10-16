@@ -13,6 +13,7 @@ import { and, eq } from 'drizzle-orm';
 import { Panel } from '~/components/Panel';
 import { FormFeedback } from '~/components/FormFeedback';
 import { SubmitButton } from '~/components/SubmitButton';
+import { claimFreeAllowance } from '~/lib/upload.server';
 import { CopyButton } from '~/components/CopyButton';
 
 export function meta(): Route.MetaDescriptors {
@@ -33,7 +34,7 @@ export async function loader({ request, url }: Route.LoaderArgs) {
 }
 
 export async function action({ request, url }: Route.ActionArgs) {
-  const { billing, membership } = await requireCustomer(request, url);
+  const { userId, billing, membership } = await requireCustomer(request, url);
   requireOwnerOrAdmin(membership);
   const form = await request.formData();
   const intent = String(form.get('intent') || '');
@@ -70,6 +71,9 @@ export async function action({ request, url }: Route.ActionArgs) {
   }
 
   try {
+    if (billing.plan === 'free' && !(await claimFreeAllowance(userId, billing.customerId))) {
+      return { error: 'This email identity already has a free allowance in another workspace. Use that workspace or contact support.' };
+    }
     const minted = await mirrorKeyMinted({
       workspaceId: billing.workspaceId,
       customerId: billing.customerId,

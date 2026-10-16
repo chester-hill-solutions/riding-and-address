@@ -21,8 +21,8 @@ export interface CloudflareEnv extends ApiWorkerEnv {
   DEMO_BROWSER_API_KEY?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
-  STRIPE_PRICE_METERED?: string;
   PAID_CHECKOUT_ENABLED?: string;
+  UPLOAD_CHECKOUT_ENABLED?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
   FOUNDER_USER_IDS?: string;

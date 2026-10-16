@@ -2,6 +2,8 @@ import { createRequestHandler, RouterContextProvider } from 'react-router';
 import apiWorker, { ApiKeyUsageDO, CircuitBreakerDO, QueueManagerDO } from '../../src/worker';
 import { ownerOf } from '../../src/routes';
 import type { CloudflareEnv } from '~/lib/cloudflare-env';
+import { isSignupRequest } from '../../src/free-access-policy';
+import { guardSignup } from '~/lib/signup-guard.server';
 import { runWithCloudflareContext } from '~/lib/cloudflare-context.server';
 
 const requestHandler = createRequestHandler(
@@ -23,6 +25,11 @@ async function handlePortalRequest(
     // itself via env() at the point of use.
     // RR8 requires a fresh provider for every request. Bindings remain request-scoped
     // in AsyncLocalStorage above, as used by the portal's database and auth helpers.
+    const path = new URL(request.url).pathname.replace(/\/$/, '');
+    if (isSignupRequest(request.method, path)) {
+      const denied = await guardSignup(request);
+      if (denied) return denied;
+    }
     return requestHandler(request, new RouterContextProvider());
   });
 }

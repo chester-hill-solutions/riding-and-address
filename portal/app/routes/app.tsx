@@ -28,6 +28,7 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
             <NavLink end to="/app">
               Overview
             </NavLink>
+            <NavLink to="/app/uploads">Upload a sheet</NavLink>
             <NavLink to="/app/keys">API keys</NavLink>
             <NavLink to="/app/billing">Plan & billing</NavLink>
             <NavLink to="/app/invites">Team</NavLink>
