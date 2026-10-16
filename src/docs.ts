@@ -446,6 +446,32 @@ export function createOpenAPISpec(baseUrl: string) {
           },
         },
       },
+      "/api/area": {
+        get: {
+          summary: "Read the pages after the first of an area search",
+          description:
+            "Continues a paged area search. There is no keyed area route: retrieval is offer-only, so this takes the signed page cursor returned by accepting an area offer (POST /api/quote/accept). One cursor authorizes every page of one accepted offer, so pages are delivery rather than separate charges. An unsigned, tampered or expired cursor is refused with CURSOR_INVALID.",
+          tags: ["Offers"],
+          parameters: [
+            {
+              name: "cursor",
+              in: "query" as const,
+              required: true,
+              description: "The signed page cursor returned by accepting an area offer.",
+              schema: { type: "string" },
+            },
+          ],
+          responses: {
+            "200": { description: "A page of address records with the next page cursor" },
+            "400": { description: "INVALID_QUERY — no cursor supplied" },
+            "404": { description: "RIDING_NOT_FOUND, DATASET_UNAVAILABLE, or NO_ADDRESS_COVERAGE" },
+            "410": { description: "CURSOR_INVALID — the cursor is invalid, tampered with, or expired" },
+            "422": { description: "PROVINCE_UNKNOWN — the riding carries no province code" },
+            "429": { description: "Rate limit exceeded (per client IP)" },
+            "503": { description: "QUOTES_UNAVAILABLE" },
+          },
+        },
+      },
       "/api": {
         get: {
           summary: "Lookup federal riding by location (alias)",
