@@ -99,6 +99,13 @@ export function createServiceTerms(origin: string): ServiceTerms {
         ),
       },
       {
+        id: 'quote',
+        transport: 'http',
+        description:
+          'Request a free, expiring offer for a lookup, bound to the request inputs, dataset vintage and a maximum price. Quoting consumes no billable usage.',
+        endpoints: [`${origin}/api/quote`],
+      },
+      {
         id: 'mcp',
         transport: 'mcp',
         description: 'MCP server exposing the read-only lookup_riding tool.',

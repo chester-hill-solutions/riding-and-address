@@ -384,6 +384,35 @@ export function createOpenAPISpec(baseUrl: string) {
       },
     ],
     paths: {
+      "/api/quote": {
+        get: {
+          summary: "Request a no-charge, expiring quote for a lookup",
+          description:
+            "Returns a signed, expiring offer bound to the request inputs, the boundary dataset and its vintage, and a maximum price. Requesting a quote is free, consumes no billable usage, and needs no key. The dataset parameter selects the boundary dataset (federal by default).",
+          tags: ["Offers"],
+          parameters: [
+            ...LOOKUP_QUERY_PARAMETERS.filter((parameter) => parameter.name !== "dataset"),
+            {
+              name: "dataset",
+              in: "query" as const,
+              description:
+                "Boundary dataset the quote describes: federal (default), combined, or a province/territory code such as on or qc.",
+              required: false,
+              schema: { type: "string", example: "federal" },
+            },
+          ],
+          responses: {
+            "200": {
+              description:
+                "A signed offer: operation, scope (inputs, dataset id and year), estimate, price ceiling, limits and expiry",
+            },
+            "400": { description: "INVALID_QUERY — the lookup inputs are not usable" },
+            "404": { description: "DATASET_UNAVAILABLE — the requested dataset is not served" },
+            "429": { description: "Rate limit exceeded (per client IP)" },
+            "503": { description: "QUOTES_UNAVAILABLE — quoting is not configured" },
+          },
+        },
+      },
       "/api": {
         get: {
           summary: "Lookup federal riding by location (alias)",
@@ -1061,6 +1090,11 @@ export function createOpenAPISpec(baseUrl: string) {
         name: "Demo",
         description:
           "Public keyless demo tier: /api/demo/* mirrors of the lookup and ODA geolocation endpoints, rate-limited per IP and not billable",
+      },
+      {
+        name: "Offers",
+        description:
+          "Free, expiring quotes an agent accepts before paying: bound to the request inputs, dataset vintage and a maximum price, and never billable to request",
       },
       {
         name: "Batch Processing",

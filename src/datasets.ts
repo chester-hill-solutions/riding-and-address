@@ -129,6 +129,21 @@ export function getProvincialDatasetByPath(pathname: string): ProvincialDataset 
   return PROVINCIAL_DATASETS.find((d) => d.path === pathname);
 }
 
+/**
+ * Dataset identity for a lookup path: the id, year and name the response — and an offer — report.
+ * One definition, so a quote and the lookup it describes can never name different vintages.
+ */
+export function datasetMetaForPath(pathname: string): { id: string; year: number; name: string } {
+  if (pathname === '/api' || pathname === '/api/federal' || pathname === '/api/combined') {
+    return { id: FEDERAL_DATASET.r2Key, year: FEDERAL_DATASET.year, name: FEDERAL_DATASET.name };
+  }
+  const provincial = PROVINCIAL_DATASETS.find((d) => d.path === pathname);
+  if (provincial) {
+    return { id: provincial.r2Key, year: provincial.year, name: provincial.name };
+  }
+  return { id: FEDERAL_DATASET.r2Key, year: FEDERAL_DATASET.year, name: FEDERAL_DATASET.name };
+}
+
 export function getProvincialDatasetByCode(code: string): ProvincialDataset | undefined {
   return PROVINCIAL_DATASETS.find((d) => d.code === code.toLowerCase());
 }

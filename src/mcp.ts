@@ -236,5 +236,11 @@ or coordinates; \`INVALID_ARGUMENT\` means fix the tool call; any other code is 
 Capabilities, price, free tier, data coverage, auth, and error codes are published as JSON at
 \`${publicOrigin}/.well-known/cancoder.json\`, and the OpenAPI description is at
 \`${publicOrigin}/api/docs\`.
+
+## Quoting before paying
+
+\`GET ${publicOrigin}/api/quote\` returns a free, expiring offer bound to your inputs, the boundary
+dataset vintage and a maximum price. Requesting a quote consumes no billable usage and needs no key.
+Pass \`dataset\` to quote a provincial or combined lookup (federal by default).
 `;
 }

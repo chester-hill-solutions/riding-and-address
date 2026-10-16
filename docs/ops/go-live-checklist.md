@@ -33,6 +33,8 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `
   - [ ] `PROJECTION_ADMIN_SECRET` — optional for external ops tools; portal uses in-process projection
   - [ ] `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_METERED`, `STRIPE_METER_EVENT_NAME`
   - [ ] `RESEND_API_KEY`, `EMAIL_FROM`
+  - [ ] `OFFER_SIGNING_SECRET` — signs `/api/quote` offers; quoting fails closed
+        (`503 QUOTES_UNAVAILABLE`) until this is set
   - [ ] Staging: copy the same secrets with `wrangler secret put … --env staging`
   - `MAPBOX_TOKEN` — only if the Mapbox fallback is used
 - [x] **Production hosts**: the combined Worker serves the custom domain

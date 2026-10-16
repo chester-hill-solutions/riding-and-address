@@ -7,24 +7,13 @@ import { performExpandedLookup, expandedLookupResponseFields } from './lookup-ex
 import { resolveLookupPath } from './return-selector';
 import { recordSuccessfulBillable } from './billing';
 import { cachedLookupRiding } from './riding-lookup';
-import { FEDERAL_DATASET, PROVINCIAL_DATASETS, isLookupPath } from './datasets';
+import { isLookupPath, datasetMetaForPath } from './datasets';
 import type { RouteContext } from './route-context';
 import {
   handleGeocodeRoute,
   handleNormalizeAddressRoute,
   handleReverseRoute,
 } from './oda-handlers';
-
-function datasetMetaForPath(pathname: string): { id: string; year: number; name: string } {
-  if (pathname === '/api' || pathname === '/api/federal' || pathname === '/api/combined') {
-    return { id: FEDERAL_DATASET.r2Key, year: FEDERAL_DATASET.year, name: FEDERAL_DATASET.name };
-  }
-  const provincial = PROVINCIAL_DATASETS.find((d) => d.path === pathname);
-  if (provincial) {
-    return { id: provincial.r2Key, year: provincial.year, name: provincial.name };
-  }
-  return { id: FEDERAL_DATASET.r2Key, year: FEDERAL_DATASET.year, name: FEDERAL_DATASET.name };
-}
 
 /**
  * The lookup handler. Auth, rate limiting and the response-header policy have already run in the
