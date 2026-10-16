@@ -161,10 +161,21 @@ try {
   const timestamp = Math.floor(Date.now() / 1000);
   const signature = createHmac('sha256', 'whsec_local_runtime_only')
     .update(`${timestamp}.${payload}`).digest('hex');
-  const webhook = (body, header) => fetch(origin + '/api/stripe/webhook', {
-    method: 'POST', headers: { 'Content-Type': 'application/json',
-      ...(header ? { 'Stripe-Signature': header } : {}) }, body,
-  });
+  const webhook = async (body, header) => {
+    let response;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      response = await fetch(origin + '/api/stripe/webhook', {
+        method: 'POST', headers: { 'Content-Type': 'application/json',
+          ...(header ? { 'Stripe-Signature': header } : {}) }, body,
+      });
+      if (response.status !== 503 || !(await response.clone().text()).includes('Your worker restarted mid-request')) break;
+      // These invalid-signature / unsupported-event fixtures have no side effects.
+      // Retry only Wrangler's explicit development reload, never a webhook error.
+      const ready = await fetch(origin);
+      assert.equal(ready.status, 200, 'local Worker ready after webhook test development reload');
+    }
+    return response;
+  };
   const header = `t=${timestamp},v1=${signature}`;
   assert.equal((await webhook(payload)).status, 400, 'missing webhook signature');
   assert.equal((await webhook(payload + ' ', header)).status, 400, 'tampered webhook body');
