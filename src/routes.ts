@@ -28,7 +28,7 @@ import {
 import { handleWebhookAdmin } from './webhook-admin';
 import { getAllProvincialPaths } from './datasets';
 import { handleDemoRoute, handleLookupRequest } from './lookup-handler';
-import { handleQuoteRequest, handleAcceptRequest } from './offers';
+import { handleQuoteRequest, handleAcceptRequest, handleAreaRequest } from './offers';
 import { handleReceiptsRequest } from './x402-receipts';
 import { handleReconcileRequest } from './x402-reconcile';
 import { handleOdaInit, handleOdaStats } from './oda-handlers';
@@ -156,6 +156,9 @@ export const ROUTES: readonly RouteEntry[] = [
   { path: '/api/quote', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'demo', handler: handleQuoteRequest },
   // Accept an offer through x402: 402 with requirements, then verify → settle → deliver.
   { path: '/api/quote/accept', methods: ['POST'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'demo', handler: handleAcceptRequest },
+  // Area pages after the first. Offer-only: the signed cursor is the authorization, so there is no
+  // keyed route that could read addresses without paying.
+  { path: '/api/area', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'demo', handler: handleAreaRequest },
   // Operator reconciliation view for the x402 rail. Internal + admin-gated: never public.
   { path: '/api/x402/receipts', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleReceiptsRequest },
   // Run x402 reconciliation on demand: confirm stored settlements against the chain.

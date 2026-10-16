@@ -88,8 +88,17 @@ export function hasAddressCoverage(env: Env, province: string): boolean {
   return getOdaConfig(env).provinces.includes(province.toUpperCase());
 }
 
-export interface AreaEnvelopeInput {
-  ref: RidingRef;
+/**
+ * The attribution notices the address sources require (W0 §4). Both are included because a result
+ * set can mix ODA and NAR rows — NAR migrates city by city — so a per-record split would need the
+ * source on every row and still not reduce what must be shown.
+ */
+export const AREA_ATTRIBUTION = [
+  'Contains information licensed under the Open Government Licence – Canada.',
+  'Adapted from Statistics Canada, National Address Register, 2026-06-26. This does not constitute an endorsement by Statistics Canada of this product.',
+];
+
+export interface AreaEnvelopeInput {  ref: RidingRef;
   query: { dataset: string; riding: string };
   records: AddressRecord[];
   page: { cursor: string | null; hasMore: boolean; truncated: boolean };

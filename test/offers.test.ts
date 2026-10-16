@@ -5,6 +5,7 @@ import {
   signOffer,
   verifyOffer,
   OFFER_TTL_MS,
+  type LookupOfferPayload,
   type OfferPayload,
 } from '../src/offers';
 import { createRouteContext, type RouteContext } from '../src/route-context';
@@ -90,7 +91,8 @@ describe('createOffer', () => {
     });
 
     expect(offer.operation).toBe('lookup.point');
-    expect(offer.scope.inputs).toEqual({ postal: 'M5V 2T6' });
+    const lookup = offer as LookupOfferPayload;
+    expect(lookup.scope.inputs).toEqual({ postal: 'M5V 2T6' });
     expect(offer.scope.datasetId).toBe('ontarioridings-2022.geojson');
     expect(offer.scope.datasetYear).toBe(2022);
     expect(offer.price.maximum).toBe(UPLOAD_ROW_PRICE_USD);

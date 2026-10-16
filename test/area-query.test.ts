@@ -2,18 +2,16 @@ import { describe, it, expect } from 'vitest';
 import { createD1AddressStore } from '../src/address-store';
 import { createD1Shim, createOdaSqlite, seedOdaRows } from './helpers/oda-sqlite';
 import type { OdaMemoryAddressRow } from './helpers/oda-memory-db';
-import {
-  AREA_PAGE_MAX,
-  decodeAreaCursor,
-  encodeAreaCursor,
-  readAreaPage,
-} from '../src/area-query';
+import { AREA_PAGE_MAX, readAreaPage } from '../src/area-query';
 import type { GeoJSONGeometry } from '../src/types';
 
 /**
  * W8: the real SQL runs against in-memory SQLite, so the bounding-box prefilter and the keyset are
  * exercised for real, not mocked. The polygon below is a "U" — its bounding box contains points the
  * polygon does not, which is the whole reason the box is only a prefilter.
+ *
+ * Paging is by raw id here; authorization (the signed cursor) lives in the payment path, so this
+ * module has no token format to test.
  */
 
 // lon = x, lat = y. A U: the notch is x in [4,6], y in [4,10].
@@ -76,17 +74,13 @@ describe('readAreaPage', () => {
       const page = await readAreaPage({
         store: s,
         province: 'ON',
-        datasetId: 'ontarioridings-2022.geojson',
-        datasetYear: 2022,
         boundary: U_SHAPE,
         pageSize: 10,
       });
-      expect(page.ok).toBe(true);
-      if (!page.ok) return;
       // id 2 is inside the bounding box but in the notch, so the polygon excludes it; id 5 is QC.
       expect(page.records.map((r) => r.id)).toEqual([1, 3, 4]);
       expect(page.hasMore).toBe(false);
-      expect(page.nextCursor).toBeNull();
+      expect(page.nextId).toBeNull();
     } finally {
       close();
     }
@@ -96,22 +90,19 @@ describe('readAreaPage', () => {
     const { store: s, close } = store();
     try {
       const seen: number[] = [];
-      let cursor: string | undefined;
+      let afterId: number | undefined;
       for (let guard = 0; guard < 10; guard += 1) {
         const page = await readAreaPage({
           store: s,
           province: 'ON',
-          datasetId: 'd',
-          datasetYear: 2022,
           boundary: U_SHAPE,
           pageSize: 2,
-          cursor,
+          afterId,
         });
-        expect(page.ok).toBe(true);
-        if (!page.ok) return;
         seen.push(...page.records.map((r) => r.id));
         if (!page.hasMore) break;
-        cursor = page.nextCursor ?? undefined;
+        expect(page.nextId).not.toBeNull();
+        afterId = page.nextId ?? undefined;
       }
       // The same three records, in id order, with the excluded ones absent.
       expect(seen).toEqual([1, 3, 4]);
@@ -120,36 +111,23 @@ describe('readAreaPage', () => {
     }
   });
 
-  it('rejects a cursor from another dataset vintage', async () => {
+  it('resumes from the last row scanned, not the last row matched', async () => {
     const { store: s, close } = store();
     try {
-      const cursor = encodeAreaCursor({ id: 1, datasetId: 'd', datasetYear: 2021 });
-      const page = await readAreaPage({
-        store: s,
-        province: 'ON',
-        datasetId: 'd',
-        datasetYear: 2022,
-        boundary: U_SHAPE,
-        cursor,
-      });
-      expect(page).toEqual({ ok: false, code: 'CURSOR_INVALID' });
-    } finally {
-      close();
-    }
-  });
+      // A page of one: id 1 matches, then id 2 is scanned and does not. The cursor must sit at the
+      // last row *scanned* (or at least not skip id 3), so the next page still reaches id 3.
+      const first = await readAreaPage({ store: s, province: 'ON', boundary: U_SHAPE, pageSize: 1 });
+      expect(first.records.map((r) => r.id)).toEqual([1]);
+      expect(first.nextId).not.toBeNull();
 
-  it('rejects a malformed cursor', async () => {
-    const { store: s, close } = store();
-    try {
-      const page = await readAreaPage({
+      const second = await readAreaPage({
         store: s,
         province: 'ON',
-        datasetId: 'd',
-        datasetYear: 2022,
         boundary: U_SHAPE,
-        cursor: 'not-a-cursor',
+        pageSize: 10,
+        afterId: first.nextId ?? undefined,
       });
-      expect(page).toEqual({ ok: false, code: 'CURSOR_INVALID' });
+      expect(second.records.map((r) => r.id)).toEqual([3, 4]);
     } finally {
       close();
     }
@@ -161,35 +139,16 @@ describe('readAreaPage', () => {
       const page = await readAreaPage({
         store: s,
         province: 'ON',
-        datasetId: 'd',
-        datasetYear: 2022,
         boundary: U_SHAPE,
         pageSize: 10,
         scanBudget: 2,
       });
-      expect(page.ok).toBe(true);
-      if (!page.ok) return;
       expect(page.scanned).toBe(2);
       expect(page.budgetExhausted).toBe(true);
       expect(page.hasMore).toBe(true);
     } finally {
       close();
     }
-  });
-});
-
-describe('area cursors', () => {
-  it('round-trip', () => {
-    const cursor = { id: 42, datasetId: 'ontarioridings-2022.geojson', datasetYear: 2022 };
-    expect(decodeAreaCursor(encodeAreaCursor(cursor))).toEqual(cursor);
-  });
-
-  it('reject anything that is not a cursor', () => {
-    expect(decodeAreaCursor('')).toBeNull();
-    expect(decodeAreaCursor(btoa('{}'))).toBeNull();
-    expect(decodeAreaCursor(btoa('{"id":-1,"datasetId":"d","datasetYear":2022}'))).toBeNull();
-    expect(decodeAreaCursor(btoa('{"id":1.5,"datasetId":"d","datasetYear":2022}'))).toBeNull();
-    expect(decodeAreaCursor(btoa('{"id":1,"datasetId":"d"}'))).toBeNull();
   });
 
   it('clamps page size to one area unit', async () => {
@@ -198,13 +157,9 @@ describe('area cursors', () => {
       const page = await readAreaPage({
         store: s,
         province: 'ON',
-        datasetId: 'd',
-        datasetYear: 2022,
         boundary: U_SHAPE,
         pageSize: 10_000,
       });
-      expect(page.ok).toBe(true);
-      if (!page.ok) return;
       expect(page.records.length).toBeLessThanOrEqual(AREA_PAGE_MAX);
     } finally {
       close();
