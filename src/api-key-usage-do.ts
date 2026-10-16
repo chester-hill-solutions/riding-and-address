@@ -1,5 +1,6 @@
 import { Env } from './types';
 import { utcDay } from './time';
+import { UploadJobs } from './upload-jobs';
 
 // `utcDay`/`utcMonth` live in `src/time.ts`; import them from there.
 
@@ -16,13 +17,25 @@ import { utcDay } from './time';
  */
 export class ApiKeyUsageDO {
   private state: DurableObjectState;
+  private uploads: UploadJobs;
 
   constructor(state: DurableObjectState, _env: Env) {
     this.state = state;
+    this.uploads = new UploadJobs(state, _env);
   }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === '/claim-free' && request.method === 'POST') {
+      const { customerId } = await request.json() as { customerId: string };
+      if (!customerId) return new Response('Missing customer', { status: 400 });
+      return this.state.storage.transaction(async txn => {
+        const owner = await txn.get<string>('free:owner');
+        if (!owner) await txn.put('free:owner', customerId);
+        return json({ allowed: !owner || owner === customerId });
+      });
+    }
+    if (url.pathname.startsWith('/uploads/')) return this.uploads.handle(request);
     const period =
       url.searchParams.get('month') ||
       url.searchParams.get('day') ||
@@ -62,6 +75,8 @@ export class ApiKeyUsageDO {
 
     return json({ day: period, month: period, count: next, limit, allowed: true });
   }
+
+  async alarm(): Promise<void> { await this.uploads.alarm(); }
 
   /** Keep only a short window; without this every key accretes a row per day forever. */
   private async pruneOldDays(currentDay: string): Promise<void> {

@@ -1,10 +1,10 @@
 import type { Route } from './+types/api.stripe-webhook';
 import { env } from '~/lib/env.server';
 import { getStripe } from '~/lib/stripe.server';
-import { activateMeteredPlan } from '~/lib/billing-mutations.server';
+import { uploadCall } from '~/lib/upload.server';
 
 /**
- * Activate metered plan only after Stripe confirms Checkout — not when Checkout starts.
+ * Release a paid upload only after a verified Stripe payment webhook.
  * Register this URL in Stripe and set STRIPE_WEBHOOK_SECRET.
  */
 export async function action({ request }: Route.ActionArgs) {
@@ -26,24 +26,21 @@ export async function action({ request }: Route.ActionArgs) {
   const payload = await request.text();
   let event;
   try {
-    event = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
-  } catch (error) {
-    console.error('Stripe webhook signature verification failed', error);
+    event = await stripe.webhooks.constructEventAsync(payload, signature, webhookSecret);
+  } catch {
+    // Stripe errors can include the raw event body; keep payment/customer data out of logs.
+    console.warn('Stripe webhook signature verification failed');
     return new Response('Invalid signature', { status: 400 });
   }
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
-    const stripeCustomerId =
-      typeof session.customer === 'string' ? session.customer : session.customer?.id;
-    if (!stripeCustomerId) {
-      return Response.json({ ok: true, skipped: 'no_customer' });
-    }
-
-    const billing = await activateMeteredPlan(stripeCustomerId);
-    if (!billing) {
-      console.warn(`Stripe checkout completed for unknown customer ${stripeCustomerId}`);
-      return Response.json({ ok: true, skipped: 'unknown_customer' });
+    if (session.metadata?.purpose === 'sheet_upload') {
+      const { uploadId, customerId } = session.metadata;
+      if (!uploadId || !customerId) return new Response('Missing upload reference', { status: 400 });
+      // Storage verifies the expected session, customer, currency, amount and paid status.
+      // Failures remain non-2xx so Stripe retries; redirect URLs never grant processing access.
+      await uploadCall(customerId, 'paid', uploadId, session);
     }
   }
 

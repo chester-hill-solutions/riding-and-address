@@ -135,12 +135,13 @@
     // Portal (React Router) vars — see portal/.env.example for local dev via .dev.vars.
     // Secrets (AUTH_SECRET, STRIPE_*, RESEND_API_KEY) must be set with `wrangler secret put`.
     "ENVIRONMENT": "production",
-    "BASE_URL": "https://riding-lookup.chester-hill-solutions.workers.dev",
+    "BASE_URL": "https://cancoder.chesterhillsolutions.ca",
     "AUTH_TRUSTED_ORIGINS": "https://riding-lookup.chester-hill-solutions.workers.dev,https://cancoder.chesterhillsolutions.ca",
-    "PUBLIC_API_BASE_URL": "https://riding-lookup.chester-hill-solutions.workers.dev",
+    "PUBLIC_API_BASE_URL": "https://cancoder.chesterhillsolutions.ca",
     "PUBLIC_API_HOSTS": "cancoder.chesterhillsolutions.ca,riding-lookup.chester-hill-solutions.workers.dev",
     "PAID_CHECKOUT_ENABLED": "false",
-    "EMAIL_FROM": "CanCoder <noreply@example.com>",
+    "UPLOAD_CHECKOUT_ENABLED": "true",
+    "EMAIL_FROM": "CanCoder <noreply@chsolutions.ca>",
     "FOUNDER_USER_IDS": "",
     // Public pk_* for the marketing try-it embed (origin-allowlisted to this Worker's own
     // origin, 5k/day). Safe as a plain var: browser keys are public identifiers by design.
@@ -152,6 +153,8 @@
   "env": {
     "staging": {
       "name": "riding-lookup-staging",
+      // Staging must never inherit the production custom domain.
+      "routes": [],
       "vars": {
         "BATCH_SIZE": 50,
         "BATCH_TIMEOUT": 30000,
@@ -173,11 +176,15 @@
         "DEMO_RATE_LIMIT": "30",
         "ALERTS_ENABLED": "true",
         "ENVIRONMENT": "staging",
+        "STRIPE_METER_EVENT_NAME": "riding_lookup_api_call",
+        "AUTH_TRUSTED_ORIGINS": "https://riding-lookup-staging.chester-hill-solutions.workers.dev",
         "BASE_URL": "https://riding-lookup-staging.chester-hill-solutions.workers.dev",
         "PUBLIC_API_BASE_URL": "https://riding-lookup-staging.chester-hill-solutions.workers.dev",
         "PUBLIC_API_HOSTS": "riding-lookup-staging.chester-hill-solutions.workers.dev",
+        // Staging uses its own Stripe test key and isolated checkout webhook.
         "PAID_CHECKOUT_ENABLED": "false",
-        "EMAIL_FROM": "CanCoder <noreply@example.com>",
+        "UPLOAD_CHECKOUT_ENABLED": "true",
+        "EMAIL_FROM": "CanCoder <noreply@chsolutions.ca>",
         "FOUNDER_USER_IDS": ""
       },
       "r2_buckets": [
@@ -198,9 +205,8 @@
         {
           "binding": "WEBHOOKS",
           "id": "1e6ef0958b124067a0f453ea451c8667"
-        }
-        // Namespace created 2026-07-16. Uncomment with prod when enabling key gates:
-        // { "binding": "API_KEYS", "id": "363048976bc74248b091f69510a1b759" }
+        },
+        { "binding": "API_KEYS", "id": "363048976bc74248b091f69510a1b759" }
       ],
       "d1_databases": [
         {

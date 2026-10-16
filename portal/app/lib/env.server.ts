@@ -45,8 +45,7 @@ export function env() {
     demoBrowserKey: read('DEMO_BROWSER_API_KEY'),
     stripeSecretKey: read('STRIPE_SECRET_KEY'),
     stripeWebhookSecret: read('STRIPE_WEBHOOK_SECRET'),
-    stripePriceMetered: read('STRIPE_PRICE_METERED'),
-    paidCheckoutEnabled: read('PAID_CHECKOUT_ENABLED') === 'true',
+    uploadCheckoutEnabled: read('UPLOAD_CHECKOUT_ENABLED') === 'true',
     resendApiKey: read('RESEND_API_KEY'),
     emailFrom: read('EMAIL_FROM') || (prod ? '' : 'CanCoder <noreply@localhost>'),
     founderUserIds: read('FOUNDER_USER_IDS')

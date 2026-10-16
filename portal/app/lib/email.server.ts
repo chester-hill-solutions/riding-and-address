@@ -10,10 +10,11 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/** Best-effort Resend (or no-op when unset). */
-export async function sendEmail(opts: { to: string; subject: string; html: string }): Promise<void> {
+/** Best-effort notices; required verification delivery fails visibly instead of pretending success. */
+export async function sendEmail(opts: { to: string; subject: string; html: string; required?: boolean }): Promise<void> {
   const { resendApiKey, emailFrom } = env();
   if (!resendApiKey) {
+    if (opts.required) throw new Error('Email verification is temporarily unavailable. Please contact support.');
     console.info('[email] skipped (no RESEND_API_KEY):', opts.to, opts.subject);
     return;
   }
@@ -31,7 +32,8 @@ export async function sendEmail(opts: { to: string; subject: string; html: strin
     }),
   });
   if (!res.ok) {
-    console.warn('[email] Resend failed', res.status, await res.text());
+    console.warn('[email] Resend failed', res.status);
+    if (opts.required) throw new Error('Could not send the verification email. Please try again.');
   }
 }
 
