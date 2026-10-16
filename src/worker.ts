@@ -60,6 +60,7 @@ import {
 import { checkRateLimit, getClientId, rateLimitExceededResponse, DEFAULT_RATE_LIMIT, DEFAULT_DEMO_RATE_LIMIT } from './utils';
 import { getAgentQuickstart, createCanCoderMcpHandler } from './mcp';
 import { createUcpProfile } from './ucp-profile';
+import { createServiceTerms } from './service-terms';
 
 // Global state
 
@@ -538,12 +539,15 @@ function discoveryResponse(routeCtx: RouteContext): Response | null {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${paths.map((path) => `<url><loc>${origin}${path}</loc></url>`).join('')}</urlset>`;
     return new Response(xml, { headers: { 'content-type': 'application/xml; charset=utf-8' } });
   }
+  if (pathname === '/.well-known/cancoder.json' && request.method === 'GET') {
+    return Response.json(createServiceTerms(origin), { headers: { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*' } });
+  }
   if (pathname === '/.well-known/ucp' && request.method === 'GET') {
     return Response.json(createUcpProfile(origin), { headers: { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*' } });
   }
   if (pathname === '/.well-known/api-catalog' && request.method === 'GET') {
     return Response.json({ linkset: [
-      { anchor: `${origin}/api`, 'service-desc': [`${origin}/api/docs`], 'service-doc': [`${origin}/docs`], status: [`${origin}/health`] },
+      { anchor: `${origin}/api`, 'service-desc': [`${origin}/api/docs`, `${origin}/.well-known/cancoder.json`], 'service-doc': [`${origin}/docs`], status: [`${origin}/health`] },
       { anchor: `${origin}/mcp`, 'service-doc': [`${origin}/docs/agents.md`], status: [`${origin}/health`] },
     ] }, { headers: { 'content-type': 'application/linkset+json; charset=utf-8', 'access-control-allow-origin': '*' } });
   }

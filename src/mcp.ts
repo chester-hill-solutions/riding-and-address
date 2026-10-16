@@ -170,5 +170,11 @@ For provincial or territorial results, choose the matching dataset code (for exa
 Responses include the riding properties and the boundary dataset year. A match is not certified
 by Canada Post. If the result has no riding properties, treat it as unresolved and ask for a more
 complete address or coordinates.
+
+## Machine-readable terms
+
+Capabilities, price, free tier, data coverage, auth, and error codes are published as JSON at
+\`${publicOrigin}/.well-known/cancoder.json\`, and the OpenAPI description is at
+\`${publicOrigin}/api/docs\`.
 `;
 }

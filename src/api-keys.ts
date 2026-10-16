@@ -27,16 +27,24 @@ export interface ApiKeyRecord {
   createdAt?: string;
 }
 
-export type KeyDenialReason =
-  | 'KEY_REQUIRED'
-  | 'KEY_INVALID'
-  | 'KEY_DISABLED'
-  | 'ORIGIN_REQUIRED'
-  | 'ORIGIN_NOT_ALLOWED'
-  | 'DAILY_LIMIT_EXCEEDED'
-  | 'WRONG_KEY_KIND'
-  | 'CUSTOMER_NOT_FOUND'
-  | 'BATCH_NOT_ENABLED';
+/**
+ * The canonical key-denial vocabulary, as a runtime list so discovery documents can publish it.
+ * `KeyDenialReason` derives from this, so the set an agent reads and the set the Worker enforces
+ * cannot diverge. Statuses come from `httpStatusForKeyDenial` below.
+ */
+export const KEY_DENIAL_REASONS = [
+  'KEY_REQUIRED',
+  'KEY_INVALID',
+  'KEY_DISABLED',
+  'ORIGIN_REQUIRED',
+  'ORIGIN_NOT_ALLOWED',
+  'DAILY_LIMIT_EXCEEDED',
+  'WRONG_KEY_KIND',
+  'CUSTOMER_NOT_FOUND',
+  'BATCH_NOT_ENABLED',
+] as const;
+
+export type KeyDenialReason = (typeof KEY_DENIAL_REASONS)[number];
 
 export interface KeyAuthResult {
   ok: boolean;
