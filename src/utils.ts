@@ -428,15 +428,28 @@ export async function withRetry<T>(
  * @returns The result of the promise if it completes within the timeout
  * @throws Error if the operation times out
  */
+/**
+ * Thrown when a stage exceeds its budget. Callers branch on the type, never on message text, so a
+ * timeout can be counted and reported without string matching.
+ */
+export class TimeoutError extends Error {
+  readonly timeoutMs: number;
+  constructor(operation: string, timeoutMs: number) {
+    super(`${operation} timeout after ${timeoutMs}ms`);
+    this.name = 'TimeoutError';
+    this.timeoutMs = timeoutMs;
+  }
+}
+
 export async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
   operation: string
 ): Promise<T> {
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(`${operation} timeout after ${timeoutMs}ms`)), timeoutMs);
+    setTimeout(() => reject(new TimeoutError(operation, timeoutMs)), timeoutMs);
   });
-  
+
   return Promise.race([promise, timeoutPromise]);
 }
 
