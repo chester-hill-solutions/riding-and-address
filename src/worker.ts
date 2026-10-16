@@ -59,6 +59,7 @@ import {
 } from './api-keys';
 import { checkRateLimit, getClientId, rateLimitExceededResponse } from './utils';
 import { getAgentQuickstart, createCanCoderMcpHandler } from './mcp';
+import { createUcpProfile } from './ucp-profile';
 
 // Global state
 
@@ -536,6 +537,9 @@ function discoveryResponse(routeCtx: RouteContext): Response | null {
     const paths = ['/', '/docs', '/docs/embed', '/docs/agents.md', '/api/docs'];
     const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${paths.map((path) => `<url><loc>${origin}${path}</loc></url>`).join('')}</urlset>`;
     return new Response(xml, { headers: { 'content-type': 'application/xml; charset=utf-8' } });
+  }
+  if (pathname === '/.well-known/ucp' && request.method === 'GET') {
+    return Response.json(createUcpProfile(origin), { headers: { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*' } });
   }
   if (pathname === '/.well-known/api-catalog' && request.method === 'GET') {
     return Response.json({ linkset: [

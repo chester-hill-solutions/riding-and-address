@@ -122,7 +122,7 @@ const LOOKUP_PATHS = ['/api', '/api/federal', '/api/combined', ...getAllProvinci
 
 export const ROUTES: readonly RouteEntry[] = [
   // Agent discovery resources are public and served by the API Worker on both public hosts.
-  { path: ['/robots.txt', '/sitemap.xml', '/.well-known/api-catalog', '/.well-known/ai-catalog.json', '/docs/agents.md'], methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
+  { path: ['/robots.txt', '/sitemap.xml', '/.well-known/api-catalog', '/.well-known/ai-catalog.json', '/.well-known/ucp', '/docs/agents.md'], methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
   { path: '/mcp', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
   // Portal-owned (the portal entry decides with `ownerOf`).
   { path: '/', methods: ALL_METHODS, owner: 'portal', visibility: 'internal', auth: 'public', rateLimit: 'none' },
