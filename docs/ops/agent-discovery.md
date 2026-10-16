@@ -10,6 +10,8 @@ responses use the hostname from the request, while rejecting unconfigured hosts 
 - `/.well-known/ai-catalog.json` (ARD catalog)
 - `/.well-known/ucp` (UCP 2026-08-25 business profile: one MCP transport binding, no
   capabilities or payment handlers)
+- `/.well-known/cancoder.json` (machine-readable terms: capabilities, price, free tier, coverage,
+  auth, and error codes — every value read from the constant the Worker and Portal enforce)
 - `/mcp` with a read-only `lookup_riding` tool and public setup notes at `/docs/agents.md`
 - Homepage `Link` headers for the API docs, OpenAPI description, and API catalog
 
