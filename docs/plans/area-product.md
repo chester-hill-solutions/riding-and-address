@@ -1,14 +1,14 @@
 # Area product — W0 definition
 
-**Status: DRAFT for owner approval.** This is the W0 gate from
+**Status: APPROVED 2026-10-16.** This is the W0 gate from
 [`docs/ops/agent-first-product-plan.md`](../ops/agent-first-product-plan.md): W7–W9 (riding-bounded
-search, arbitrary-polygon search, and their limits) **cannot start** until the owner approves the
+search, arbitrary-polygon search, and their limits) were blocked until the owner approved the
 record type, source, rights, attribution, allowed use, retention, and the initial billable unit
-below.
+below. That approval is recorded here.
 
-The owner's approval is the deliverable. Nothing here authorizes exposing or charging for a record
-set. The licence items in [`docs/legal/licence-checklist.md`](../legal/licence-checklist.md) are
-still unchecked (☐) and gate the first paid release.
+Nothing here authorizes exposing or charging for a record set ahead of the licence clearances: the
+items in [`docs/legal/licence-checklist.md`](../legal/licence-checklist.md) are still unchecked (☐)
+and gate the first paid release.
 
 ## The decision, in one line
 
@@ -147,18 +147,23 @@ Per the plan, these must be set from source constraints and benchmarks and never
 geometry (vertices, area), result count, response size, compute time, and maximum spend. W7 owns the
 exact numbers; W0 fixes only `maximumResults = 250` for v1.
 
-## 9. What still needs the owner's signature
+## 9. Owner sign-off
 
-1. **Approve the record type** — civic address points, and the explicit exclusions in §1.
-2. **Clear the licence items** in [`licence-checklist.md`](../legal/licence-checklist.md) — ODA,
-   NAR, and each boundary source — with the product addendum covering attribution and metering.
-3. **Confirm the coverage-gap behaviour** for not-yet-imported jurisdictions (today NL, NU, YT):
-   explicit *no address coverage* — and schedule the NAR imports plus the `ODA_PROVINCES` addition
-   that close the gap.
-4. **Set the price** for the area unit (recommendation: $2.00 / 250 records).
-5. **Confirm retention** on licence termination.
+Approved 2026-10-16:
 
-## 10. What approval unblocks
+1. **Record type** — civic address points, with the explicit exclusions in §1. ✅
+2. **Coverage-gap behaviour** for not-yet-imported jurisdictions (today NL, NU, YT): explicit *no
+   address coverage*, with the NAR imports plus the `ODA_PROVINCES` addition scheduled to close it.
+   ✅
+3. **Area unit price** — $2.00 USD per 250-record area unit. ✅
+4. **Retention** on licence termination — as written in §5. ✅
+
+Still outstanding, and still gating the first paid release (not this gate):
+
+5. **Licence clearances** in [`licence-checklist.md`](../legal/licence-checklist.md) — ODA, NAR, and
+   each boundary source — with the product addendum covering attribution and metering.
+
+## 10. What this unblocks
 
 W7 (area-query geometry and record semantics) and then W8 (riding-bounded estimate and paged
 search), which are the last items before the agent journey can quote and retrieve records.
