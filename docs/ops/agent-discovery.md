@@ -8,6 +8,8 @@ responses use the hostname from the request, while rejecting unconfigured hosts 
 - `/robots.txt` and `/sitemap.xml`
 - `/.well-known/api-catalog` (RFC 9727 linkset)
 - `/.well-known/ai-catalog.json` (ARD catalog)
+- `/.well-known/ucp` (UCP 2026-08-25 business profile: one MCP transport binding, no
+  capabilities or payment handlers)
 - `/mcp` with a read-only `lookup_riding` tool and public setup notes at `/docs/agents.md`
 - Homepage `Link` headers for the API docs, OpenAPI description, and API catalog
 
@@ -40,3 +42,10 @@ or register browser tools through WebMCP. OAuth/OIDC discovery, OAuth protected-
 `auth.md`, an MCP Server Card, and an Agent Skills index are therefore not emitted; publishing
 placeholder metadata would direct agents to unsupported flows or endpoints. Add these resources
 when the corresponding service is implemented.
+
+The UCP profile declares one MCP transport binding but no service `schema`. A UCP service `schema`
+URL is authority-bound: its host must reverse-match the service namespace, so it could only be
+served from the canonical `cancoder.chesterhillsolutions.ca` domain and never from the
+`*.workers.dev` host, which is a public suffix. Publishing it would therefore break the rule that
+discovery resources resolve against the host that served them. Add the schema — an OpenRPC
+document under an authority-bound origin — when the profile is ready to pin one host.
