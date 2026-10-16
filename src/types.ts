@@ -65,6 +65,11 @@ export interface Env {
   X402_FACILITATOR_URL?: string;
   X402_FACILITATOR_TOKEN?: string;
   /**
+   * Receipt store. Required whenever the rail is enabled: without it a settled payment leaves no
+   * reconciliation trace, so `/api/quote/accept` fails closed. Separate from the Customer ledger.
+   */
+  X402_RECEIPTS?: KVNamespace;
+  /**
    * Comma-separated origins allowed for credentialed CORS (portal + embeds).
    * When unset, reflect request Origin or `*` (legacy open CORS).
    */

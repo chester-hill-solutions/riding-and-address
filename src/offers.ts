@@ -31,6 +31,7 @@ import {
 } from './x402';
 import type { QueryParams } from './types';
 import type { RouteContext } from './route-context';
+import { receiptsBound, recordReceipt, type X402Receipt } from './x402-receipts';
 
 /** How long a quote is valid. Short: it bounds how stale a price or vintage can be when accepted. */
 export const OFFER_TTL_MS = 10 * 60 * 1000;
@@ -295,6 +296,11 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
   if (!config) {
     return badRequest('Payments are not available', 503, 'PAYMENTS_UNAVAILABLE', correlationId);
   }
+  if (!receiptsBound(env)) {
+    // A settled payment with nowhere to record its receipt cannot be reconciled, so the rail stays
+    // closed rather than taking money it cannot account for.
+    return badRequest('Payments are not available', 503, 'PAYMENTS_UNAVAILABLE', correlationId);
+  }
 
   const paymentHeader = request.headers.get(PAYMENT_SIGNATURE_HEADER);
   if (!paymentHeader) {
@@ -344,9 +350,26 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
   // Settled. Deliver exactly what was quoted.
   const delivered = await deliverOffer(ctx, offer);
   const result = await delivered.json();
+
+  const receipt: X402Receipt = {
+    offerId,
+    operation: offer.operation,
+    settlement: {
+      transaction: settlement.transaction,
+      network: settlement.network ?? config.network,
+    },
+    amount: { currency: offer.price.currency, value: offer.price.maximum },
+    scope: { datasetId: offer.scope.datasetId, datasetYear: offer.scope.datasetYear },
+    resultCount: offer.estimate.resultCount,
+    delivered: delivered.ok,
+    correlationId,
+    recordedAt: new Date().toISOString(),
+  };
+  await recordReceipt(env, receipt);
+
   if (!delivered.ok) {
-    // Charged but not delivered: report the settlement so the buyer can reconcile, and never
-    // re-charge on a retry. A durable receipt/credit store is the follow-up named in ADR 0007.
+    // Charged but not delivered: the receipt records it so reconciliation can credit it, and a
+    // retry must never re-charge. A durable credit/refund path is the follow-up named in ADR 0007.
     console.error(
       `[X402] settled but delivery failed (${delivered.status}) for offer ${offerId}: ${settlement.transaction ?? 'no-tx'}`
     );
@@ -357,19 +380,6 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
       correlationId
     );
   }
-
-  const receipt = {
-    offerId,
-    operation: offer.operation,
-    settlement: {
-      transaction: settlement.transaction,
-      network: settlement.network ?? config.network,
-    },
-    amount: { currency: offer.price.currency, value: offer.price.maximum },
-    scope: offer.scope,
-    resultCount: offer.estimate.resultCount,
-    correlationId,
-  };
 
   return new Response(JSON.stringify({ receipt, result }), {
     headers: {
