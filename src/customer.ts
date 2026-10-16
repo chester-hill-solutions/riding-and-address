@@ -1,7 +1,24 @@
+import { z } from 'zod';
 import { Env } from './types';
 import { readJsonEntry, writeJsonEntry, deleteEntry } from './kv-cache';
 
 export type CustomerPlan = 'free' | 'metered' | 'enterprise';
+
+/**
+ * Shape check for a Customer read out of KV. `id`, `plan` and `fuseLimit` are required because the
+ * fuse and metering decisions depend on them; a record missing any of them is discarded as a miss
+ * rather than billed against. See docs/adr/0005-billing-invariants-gate.md.
+ */
+export const CustomerRecordSchema = z.object({
+  id: z.string(),
+  plan: z.enum(['free', 'metered', 'enterprise']),
+  fuseLimit: z.number(),
+  fuseSoftWarn: z.boolean().optional(),
+  batchEnabled: z.boolean().optional(),
+  stripeCustomerId: z.string().optional(),
+  label: z.string().optional(),
+  updatedAt: z.string().optional(),
+});
 
 /** Fallback free monthly Billable-unit allowance when env/plan does not override. */
 export const DEFAULT_FREE_MONTHLY_ALLOWANCE = 1000;
@@ -32,7 +49,7 @@ export async function loadCustomer(env: Env, customerId: string): Promise<Custom
   const cached = customerCache.get(customerId);
   if (cached && cached.expires > Date.now()) return cached.record;
 
-  const record = await readJsonEntry<CustomerRecord>(env.API_KEYS, `customer:${customerId}`);
+  const record = await readJsonEntry<CustomerRecord>(env.API_KEYS, `customer:${customerId}`, CustomerRecordSchema);
   customerCache.set(customerId, { record, expires: Date.now() + CUSTOMER_CACHE_TTL_MS });
   return record;
 }

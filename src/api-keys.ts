@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { Env } from './types';
 import { CustomerRecord, loadCustomer } from './customer';
 import { readJsonEntry, writeJsonEntry, deleteEntry } from './kv-cache';
@@ -6,6 +7,23 @@ import { readJsonEntry, writeJsonEntry, deleteEntry } from './kv-cache';
  * Browser API keys (`pk_*`) are PUBLIC — origin allowlist + optional daily cap.
  * Server API keys (`sk_*`) are secrets — stored as SHA-256 hashes in KV; raw shown once at mint.
  */
+
+/**
+ * Shape check for a record read out of KV. `origins` and `dailyLimit` default so a record written
+ * before those fields existed still authenticates; the identity fields are required, since a record
+ * without them cannot be used anyway. A mismatch is discarded as a miss, never trusted.
+ */
+export const ApiKeyRecordSchema = z.object({
+  id: z.string(),
+  kind: z.enum(['browser', 'server']),
+  customerId: z.string(),
+  label: z.string().optional(),
+  origins: z.array(z.string()).default([]),
+  dailyLimit: z.number().default(0),
+  secretHash: z.string().optional(),
+  disabled: z.boolean().optional(),
+  createdAt: z.string().optional(),
+});
 
 export type ApiKeyKind = 'browser' | 'server';
 
@@ -123,7 +141,7 @@ export async function loadApiKey(env: Env, id: string): Promise<ApiKeyRecord | n
   const cached = cacheGet(id);
   if (cached !== undefined) return cached;
 
-  const record = await readJsonEntry<ApiKeyRecord>(env.API_KEYS, `key:${id}`);
+  const record = await readJsonEntry<ApiKeyRecord>(env.API_KEYS, `key:${id}`, ApiKeyRecordSchema);
   cacheSet(id, record);
   return record;
 }
@@ -134,7 +152,7 @@ export async function loadServerKeyBySecret(env: Env, secret: string): Promise<A
   const cached = cacheGet(`hash:${hash}`);
   if (cached !== undefined) return cached;
 
-  const record = await readJsonEntry<ApiKeyRecord>(env.API_KEYS, `keyhash:${hash}`);
+  const record = await readJsonEntry<ApiKeyRecord>(env.API_KEYS, `keyhash:${hash}`, ApiKeyRecordSchema);
   cacheSet(`hash:${hash}`, record);
   if (record) cacheSet(record.id, record);
   return record;

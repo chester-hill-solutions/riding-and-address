@@ -30,8 +30,11 @@ Add a hard-fail CI gate (`scripts/check-billing-invariants.mjs`) wired into `npm
 ## Ratchet
 
 These rules are already at baseline **0**. New violations fail CI; the gate does not auto-raise.
-Further ratchet targets (separate cycles): Zod on projection/KV records; fail-closed vs fail-open
-policy on usage DO outages; Checkout→metered only after Stripe webhook confirmation.
+Further ratchet targets (separate cycles): **Zod on projection/KV records — done:** `readJsonEntry`
+and `readTimestampedEntry` take an optional schema and discard a mismatch as a miss, applied to
+`ApiKeyRecord` and `CustomerRecord`; **fail-closed vs fail-open policy on usage DO outages —
+implemented** in `DurableUsageLedger` (fails closed on a hard fuse, open when the limit is 0);
+Checkout→metered only after Stripe webhook confirmation.
 
 ## Consequences
 
