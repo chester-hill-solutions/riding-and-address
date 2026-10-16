@@ -70,6 +70,11 @@ export interface Env {
    */
   X402_RECEIPTS?: KVNamespace;
   /**
+   * EVM JSON-RPC endpoint used by the reconciliation job to confirm settlements on chain. Unset
+   * means `POST /api/x402/reconcile` fails closed with RECONCILE_UNAVAILABLE.
+   */
+  X402_RPC_URL?: string;
+  /**
    * Comma-separated origins allowed for credentialed CORS (portal + embeds).
    * When unset, reflect request Origin or `*` (legacy open CORS).
    */

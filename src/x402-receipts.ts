@@ -18,6 +18,11 @@ import type { Env } from './types';
 /** Receipt keys are prefixed so one namespace can hold them alongside future x402 records. */
 const RECEIPT_PREFIX = 'x402receipt:';
 
+/** The KV key a receipt is stored under. Exported so reconciliation can rewrite it in place. */
+export function receiptKey(receipt: Pick<X402Receipt, 'recordedAt' | 'offerId'>): string {
+  return `${RECEIPT_PREFIX}${receipt.recordedAt}:${receipt.offerId}`;
+}
+
 /** Receipts are reconciliation data, not history: 90 days is plenty to settle an incident. */
 const RECEIPT_TTL_SECONDS = 90 * 24 * 60 * 60;
 
@@ -33,6 +38,12 @@ export const X402ReceiptSchema = z.object({
   resultCount: z.number(),
   /** False means settled but not delivered — the case an operator must credit or retry. */
   delivered: z.boolean(),
+  /**
+   * Chain-confirmation state, written by the reconciliation job. Absent until it has run, so an
+   * unchecked receipt is distinguishable from a checked-but-unknown one.
+   */
+  confirmation: z.enum(['confirmed', 'failed', 'unknown']).optional(),
+  checkedAt: z.string().optional(),
   correlationId: z.string(),
   recordedAt: z.string(),
 });
@@ -52,7 +63,7 @@ export async function recordReceipt(env: Env, receipt: X402Receipt): Promise<voi
   if (!env.X402_RECEIPTS) return;
   try {
     await env.X402_RECEIPTS.put(
-      `${RECEIPT_PREFIX}${receipt.recordedAt}:${receipt.offerId}`,
+      receiptKey(receipt),
       JSON.stringify(receipt),
       { expirationTtl: RECEIPT_TTL_SECONDS }
     );

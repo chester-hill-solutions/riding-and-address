@@ -71,11 +71,12 @@ Every settled payment is written to the `X402_RECEIPTS` store, which is what rec
 against the Customer ledger it deliberately bypasses; `GET /api/x402/receipts` (admin) reports what
 settled, what was delivered, and what still needs crediting. The rail **requires** that store: with
 no place to record a receipt, `/api/quote/accept` fails closed rather than take money it cannot
-account for.
+account for. `POST /api/x402/reconcile` (admin) then confirms each stored settlement against the
+chain, so a receipt that merely *looked* settled is distinguishable from one that is paid for.
 
-Still required before enabling it in production: the security review; a reconciliation job that
-compares stored receipts against on-chain settlements rather than only listing them; the
-credit/refund path for a settled-but-undelivered result — today that is recorded with
-`delivered: false` and returns `SETTLEMENT_DELIVERY_FAILED` with the settlement reference; and
-stablecoin treasury, receipt and tax policy. The facilitator request/response envelope follows the
-v2 contract but must be confirmed against the chosen facilitator.
+Still required before enabling it in production: the security review; the credit/refund path for a
+settled-but-undelivered result — today that is recorded with `delivered: false` and returns
+`SETTLEMENT_DELIVERY_FAILED` with the settlement reference; scheduling the reconciliation job (today
+it runs on demand — a cron trigger is a one-line `wrangler.jsonc` addition); and stablecoin treasury,
+receipt and tax policy. The facilitator request/response envelope follows the v2 contract but must
+be confirmed against the chosen facilitator.
