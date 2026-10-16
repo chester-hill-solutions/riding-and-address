@@ -85,6 +85,7 @@ try {
   const blockedUpload = await fetch(origin + '/app/uploads', {
     method: 'POST', headers: { Origin: origin, Cookie: cookie }, body: unverified,
   });
+  assert.equal(blockedUpload.status, 200, 'same-origin unverified upload reaches the account guard');
   assert.match(await blockedUpload.text(), /Verify your email before/);
   // Only this disposable LOCAL fixture is marked verified; no test email is sent.
   const verified = spawnSync(process.execPath, ['node_modules/wrangler/bin/wrangler.js', 'd1', 'execute', 'PORTAL_DB',

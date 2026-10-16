@@ -1,9 +1,8 @@
-import { env } from './env.server';
 import { MAX_SHEET_BYTES } from '../../../src/upload-sheet';
 
 /** Bound multipart input before formData allocates it; reject cross-origin mutations. */
 export async function uploadForm(request: Request): Promise<FormData> {
-  if (request.headers.get('Origin') !== env().baseUrl) throw new Response('Invalid request origin', { status: 403 });
+  if (request.headers.get('Origin') !== new URL(request.url).origin) throw new Response('Invalid request origin', { status: 403 });
   const limit = MAX_SHEET_BYTES + 65536;
   if (Number(request.headers.get('Content-Length') ?? 0) > limit) throw new Response('File too large', { status: 413 });
   const reader = request.body?.getReader();

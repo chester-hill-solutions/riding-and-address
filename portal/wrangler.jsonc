@@ -135,9 +135,9 @@
     // Portal (React Router) vars — see portal/.env.example for local dev via .dev.vars.
     // Secrets (AUTH_SECRET, STRIPE_*, RESEND_API_KEY) must be set with `wrangler secret put`.
     "ENVIRONMENT": "production",
-    "BASE_URL": "https://riding-lookup.chester-hill-solutions.workers.dev",
+    "BASE_URL": "https://cancoder.chesterhillsolutions.ca",
     "AUTH_TRUSTED_ORIGINS": "https://riding-lookup.chester-hill-solutions.workers.dev,https://cancoder.chesterhillsolutions.ca",
-    "PUBLIC_API_BASE_URL": "https://riding-lookup.chester-hill-solutions.workers.dev",
+    "PUBLIC_API_BASE_URL": "https://cancoder.chesterhillsolutions.ca",
     "PAID_CHECKOUT_ENABLED": "false",
     "UPLOAD_CHECKOUT_ENABLED": "false",
     "EMAIL_FROM": "CanCoder <noreply@example.com>",
