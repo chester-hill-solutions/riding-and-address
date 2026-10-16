@@ -87,13 +87,34 @@ GET /api/area?dataset=on&riding=<id-or-name>&page_size=100&cursor=<opaque>
 
 ## 6. Paging
 
-- **Order** is deterministic and content-based, so it survives a re-import:
-  `(postal_code, street_name, street_type, civic_number, unit, id)`. `id` is a final tie-break only.
-- **Cursor** is opaque and encodes the last record's order key **and the dataset vintage**
+- **Order** is by `id` — the table's primary key — so keyset paging (`WHERE id > ? ORDER BY id
+  LIMIT ?`) is index-supported and costs one page, not one sort of the whole candidate set.
+- **Cursor** is opaque and encodes the last record's `id` **and the dataset vintage**
   (`datasetId` + `datasetYear`).
 - A cursor presented against a different vintage is rejected with `CURSOR_INVALID` rather than
   silently resuming against different data — the same rule as a dataset pin (ADR 0004).
 - Pages are stable within a vintage: the same cursor returns the same records.
+
+**Amended 2026-10-16, after checking the schema.** The order key was originally a content key —
+`(postal_code, street_name, street_type, civic_number, unit, id)` — chosen so paging would survive a
+re-import. Two things changed that:
+
+1. **It has no index.** `oda_addresses` is indexed on `(province, postal_code)`,
+   `(province, city_key, street_key, civic_number)`, `search_key`, `(province, city_key)` and
+   `(province, lat, lon)` (`src/oda-schema.ts`). None matches a six-column content key, so every page
+   would sort the riding's whole candidate set to return 100 records.
+2. **The vintage check already covers the re-import case.** A re-import changes the dataset vintage,
+   and the cursor carries the vintage, so a stale cursor is rejected with `CURSOR_INVALID` whatever
+   the order key is. The content key bought nothing the vintage check did not already give.
+
+Order is observable only as the sequence records arrive in, and a bulk consumer that wants address
+order can sort client-side. `id` is stable within a vintage, which is the only window a cursor is
+valid in.
+
+**Cost to watch in W8.** The bounding-box prefilter uses `idx_oda_coords (province, lat, lon)`, which
+supports `province = ? AND lat BETWEEN ? AND ?`; the `lon` range and the exact point-in-polygon test
+are applied per row. If a page turns out to scan too many rows to fill, the fix is a composite index —
+not a different order key.
 
 ## 7. Caps and billing — amends W0 §7
 
