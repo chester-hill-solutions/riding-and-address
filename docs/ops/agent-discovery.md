@@ -6,8 +6,14 @@ The combined Cloudflare Worker serves discovery resources on each configured pub
 responses use the hostname from the request, while rejecting unconfigured hosts for MCP:
 
 - `/robots.txt` and `/sitemap.xml`
+- `/llms.txt` and `/llms-full.txt` (the llmstxt.org convention: a concise index, and the index plus
+  the full agent guide)
 - `/.well-known/api-catalog` (RFC 9727 linkset)
-- `/.well-known/ai-catalog.json` (ARD catalog)
+- `/.well-known/ai-catalog.json` (ARD catalog: `identifier`/`host.displayName` per the ai-catalog data model)
+- `/.well-known/mcp/server-card.json` (MCP Server Card, SEP-1649)
+- `/.well-known/agent-skills/index.json` and the skill artifact under
+  `/.well-known/agent-skills/cancoder-riding-lookup/SKILL.md` (Agent Skills discovery, RFC v0.2.0)
+- `/auth.md` (how an agent authenticates — self-contained, since there is no OAuth server)
 - `/.well-known/ucp` (UCP 2026-08-25 business profile: one MCP transport binding, no
   capabilities or payment handlers)
 - `/.well-known/cancoder.json` (machine-readable terms: capabilities, price, free tier, coverage,
@@ -21,12 +27,18 @@ admin, queue, and billing paths are excluded from crawling. Search crawlers are 
 training crawlers are disallowed. Content Signals are emitted in `robots.txt` as
 `ai-train=no, search=yes, ai-input=yes`.
 
+## Markdown for Agents
+
+Implemented in the Worker (`src/markdown-for-agents.ts`), not as a Cloudflare zone toggle. A client
+that sends an explicit `Accept: text/markdown` gets a markdown rendering of the HTML page; browsers,
+which never ask for markdown, keep getting HTML. Only an explicit ask counts — a wildcard does not —
+so no browser is accidentally served markdown. Responses carry `Content-Type: text/markdown` and an
+`x-markdown-tokens` hint, and add `Accept` to `Vary`.
+
 ## Cloudflare dashboard settings
 
-Enable **Markdown for Agents** for the production zone in Cloudflare's AI Crawl Control settings
-to negotiate Markdown from HTML pages when a client sends `Accept: text/markdown`. This requires
-zone dashboard access and cannot be enabled from this repository. Add any future custom hostname
-to `PUBLIC_API_HOSTS` so discovery documents and MCP accept that hostname.
+Add any future custom hostname to `PUBLIC_API_HOSTS` so discovery documents and MCP accept that
+hostname.
 
 ## DNS-AID
 
@@ -38,12 +50,15 @@ DNSSEC with the registrar/provider before advertising the discovery zone.
 ## Not published
 
 The MCP endpoint supports a rate-limited demo without credentials and the existing metered Server
-API key through `Authorization: Bearer`. The service does not currently operate an OAuth
-authorization server, accept OAuth protected-resource metadata, provide agent self-registration,
-or register browser tools through WebMCP. OAuth/OIDC discovery, OAuth protected-resource metadata,
-`auth.md`, an MCP Server Card, and an Agent Skills index are therefore not emitted; publishing
-placeholder metadata would direct agents to unsupported flows or endpoints. Add these resources
-when the corresponding service is implemented.
+API key through `Authorization: Bearer`. The service does not operate an OAuth authorization server
+and does not offer agent self-registration, so **OAuth/OIDC discovery and OAuth protected-resource
+metadata are deliberately not emitted** — publishing them would point agents at an authorization
+server that does not exist. `/auth.md` *is* published, but kept self-contained: it documents the
+demo tier and the human-provisioned Server key rather than advertising a registration flow.
+
+Browser tool registration through **WebMCP** is also not implemented; it would need a real
+browser-side integration, not a discovery document. Add either resource when the corresponding
+service exists.
 
 The UCP profile declares one MCP transport binding but no service `schema`. A UCP service `schema`
 URL is authority-bound: its host must reverse-match the service namespace, so it could only be

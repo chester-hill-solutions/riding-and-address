@@ -55,4 +55,11 @@ describe('securityHeaders', () => {
   it('includes nosniff', () => {
     expect(securityHeaders()['X-Content-Type-Options']).toBe('nosniff');
   });
+
+  it('pins HTTPS with HSTS, without includeSubDomains', () => {
+    const hsts = securityHeaders()['Strict-Transport-Security'];
+    expect(hsts).toMatch(/max-age=\d+/);
+    // No includeSubDomains: a header set here must not pin sibling subdomains.
+    expect(hsts).not.toContain('includeSubDomains');
+  });
 });

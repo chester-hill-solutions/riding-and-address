@@ -3,6 +3,9 @@ import { Env } from './types';
 /** Baseline security headers for HTML and JSON responses. */
 export function securityHeaders(): Record<string, string> {
   return {
+    // The site is HTTPS-only (Cloudflare-served); no includeSubDomains, so sibling subdomains are
+    // not pinned by a header set here.
+    'Strict-Transport-Security': 'max-age=31536000',
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'X-Frame-Options': 'SAMEORIGIN',
