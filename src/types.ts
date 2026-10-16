@@ -1,6 +1,10 @@
 /// <reference types="@cloudflare/workers-types" />
 
 export interface Env {
+  BASE_URL?: string;
+  PUBLIC_API_BASE_URL?: string;
+  /** Comma-separated public hostnames that may serve API and agent discovery routes. */
+  PUBLIC_API_HOSTS?: string;
   RIDINGS: R2Bucket;
   GEOCODER?: string;
   MAPBOX_TOKEN?: string;

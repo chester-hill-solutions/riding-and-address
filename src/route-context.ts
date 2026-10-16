@@ -87,7 +87,7 @@ function responseHeaderPolicy(
       'Access-Control-Allow-Origin': cors.allowOrigin,
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers':
-        'Content-Type, Authorization, X-Api-Key, X-Google-API-Key, X-Correlation-ID, X-Request-ID',
+        'Accept, Content-Type, Authorization, X-Api-Key, X-Google-API-Key, X-Correlation-ID, X-Request-ID, Mcp-Method, Mcp-Name, Mcp-Protocol-Version',
       'Access-Control-Max-Age': '86400',
       // Credentials only for an origin explicitly matched against the configured allowlist.
       ...(cors.allowCredentials ? { 'Access-Control-Allow-Credentials': 'true' } : {}),

@@ -51,6 +51,14 @@ import { getStats as getQueueStats } from './queue-client';
 import { cachedLookupRiding as lookupRiding, loadGeo } from './riding-lookup';
 import { r2DatasetSource } from './dataset-source';
 import { recordSuccessfulBillable } from './billing';
+import {
+  authorizeLookupRequest,
+  extractBearerToken,
+  httpStatusForKeyDenial,
+  type KeyAuthResult,
+} from './api-keys';
+import { checkRateLimit, getClientId, rateLimitExceededResponse } from './utils';
+import { getAgentQuickstart, createCanCoderMcpHandler } from './mcp';
 
 // Global state
 
@@ -475,6 +483,77 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
   return badRequest("Not found", 404, "NOT_FOUND", correlationId)
 }
 
+function configuredPublicOrigins(env: Env): string[] {
+  const values = [
+    ...(env.PUBLIC_API_HOSTS || '').split(',').map((value) => value.trim()).filter(Boolean),
+    env.PUBLIC_API_BASE_URL,
+    env.BASE_URL,
+    'https://riding-lookup.chester-hill-solutions.workers.dev',
+  ];
+  return values.flatMap((value) => {
+    if (!value) return [];
+    try {
+      const url = new URL(value.includes('://') ? value : `https://${value}`);
+      return url.protocol === 'https:' || url.hostname === 'localhost' ? [url.origin.toLowerCase()] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+function discoveryOrigin(request: Request, env: Env): string {
+  const url = new URL(request.url);
+  const origin = url.origin.toLowerCase();
+  const local = ['localhost', '127.0.0.1'].includes(url.hostname) || url.hostname.endsWith('.localhost');
+  return local || configuredPublicOrigins(env).includes(origin)
+    ? url.origin
+    : configuredPublicOrigins(env)[0] || 'https://riding-lookup.chester-hill-solutions.workers.dev';
+}
+
+function discoveryResponse(routeCtx: RouteContext): Response | null {
+  const { request, env, url } = routeCtx;
+  const origin = discoveryOrigin(request, env);
+  const pathname = url.pathname;
+  if (pathname === '/docs/agents.md' && request.method === 'GET') {
+    return new Response(getAgentQuickstart(origin), { headers: { ...routeCtx.corsHeaders(request.headers.get('Origin')), 'content-type': 'text/markdown; charset=utf-8' } });
+  }
+  if (pathname === '/robots.txt' && request.method === 'GET') {
+    const disallow = ['Disallow: /app/', 'Disallow: /api/auth/', 'Disallow: /api/stripe/', 'Disallow: /api/database/', 'Disallow: /api/cache/', 'Disallow: /admin/', 'Disallow: /metrics', 'Disallow: /webhooks', 'Disallow: /queue/', 'Disallow: /batch'];
+    const body = [
+      'User-agent: *', 'Allow: /', ...disallow, '',
+      'User-agent: OAI-SearchBot', 'Allow: /', ...disallow, '',
+      'User-agent: Claude-SearchBot', 'Allow: /', ...disallow, '',
+      'User-agent: PerplexityBot', 'Allow: /', ...disallow, '',
+      'User-agent: GPTBot', 'Disallow: /', '',
+      'User-agent: ClaudeBot', 'Disallow: /', '',
+      'User-agent: Google-Extended', 'Disallow: /', '',
+      'Content-Signal: ai-train=no, search=yes, ai-input=yes',
+      `Sitemap: ${origin}/sitemap.xml`, '',
+    ].join('\n');
+    return new Response(body, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+  }
+  if (pathname === '/sitemap.xml' && request.method === 'GET') {
+    const paths = ['/', '/docs', '/docs/embed', '/docs/agents.md', '/api/docs'];
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${paths.map((path) => `<url><loc>${origin}${path}</loc></url>`).join('')}</urlset>`;
+    return new Response(xml, { headers: { 'content-type': 'application/xml; charset=utf-8' } });
+  }
+  if (pathname === '/.well-known/api-catalog' && request.method === 'GET') {
+    return Response.json({ linkset: [
+      { anchor: `${origin}/api`, 'service-desc': [`${origin}/api/docs`], 'service-doc': [`${origin}/docs`], status: [`${origin}/health`] },
+      { anchor: `${origin}/mcp`, 'service-doc': [`${origin}/docs/agents.md`], status: [`${origin}/health`] },
+    ] }, { headers: { 'content-type': 'application/linkset+json; charset=utf-8', 'access-control-allow-origin': '*' } });
+  }
+  if (pathname === '/.well-known/ai-catalog.json' && request.method === 'GET') {
+    return Response.json({
+      specVersion: '0.1.0', host: { name: 'CanCoder', url: origin }, entries: [
+        { id: `urn:air:${url.hostname}:api:canadian-riding-lookup`, displayName: 'CanCoder Canadian riding lookup API', type: 'application/vnd.oai.openapi+json', url: `${origin}/api/docs`, representativeQueries: ['Find the federal electoral district for a Canadian postal code', 'Look up the provincial electoral district for a Canadian address'] },
+        { id: `urn:air:${url.hostname}:mcp:cancoder-tools`, displayName: 'CanCoder MCP tools', type: 'application/json', url: `${origin}/mcp`, representativeQueries: ['Which federal riding contains this Canadian postal code?', 'Find the provincial riding for a Canadian street address'] },
+      ],
+    }, { headers: { 'access-control-allow-origin': '*' } });
+  }
+  return null;
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const startTime = Date.now();
@@ -498,6 +577,51 @@ export default {
           status: 200,
           headers: routeCtx.corsHeaders(origin)
         });
+      }
+
+      const discovery = discoveryResponse(routeCtx);
+      if (discovery) return discovery;
+
+      if (routeCtx.url.pathname === '/mcp') {
+        const requestHost = request.headers.get('Host')?.toLowerCase();
+        const localHost = !!requestHost && (
+          requestHost === 'localhost' || requestHost.startsWith('localhost:') ||
+          requestHost.startsWith('127.0.0.1:') || requestHost.endsWith('.localhost')
+        );
+        const requestOrigin = routeCtx.url.origin.toLowerCase();
+        if (!requestHost || requestHost !== routeCtx.url.host.toLowerCase() ||
+            (!localHost && !configuredPublicOrigins(env).includes(requestOrigin))) {
+          return badRequest('Unrecognized host', 421, 'MISDIRECTED_REQUEST', correlationId);
+        }
+        const origin = request.headers.get('Origin');
+        if (origin && !localHost && origin.toLowerCase() !== requestOrigin) {
+          return badRequest('Origin not allowed', 403, 'ORIGIN_NOT_ALLOWED', correlationId);
+        }
+
+        const bearerToken = extractBearerToken(request);
+        if (!bearerToken && (request.headers.has('Authorization') || request.headers.has('X-Api-Key'))) {
+          return badRequest('Use Authorization: Bearer <Server API key> for authenticated MCP calls.', 401, 'KEY_REQUIRED', correlationId);
+        }
+        let auth: KeyAuthResult | null = null;
+        if (bearerToken) {
+          auth = await authorizeLookupRequest(env, request, false);
+          if (!auth.ok) {
+            const status = auth.reason ? httpStatusForKeyDenial(auth.reason) : 401;
+            return badRequest(auth.message || 'Unauthorized', status, auth.reason || 'UNAUTHORIZED', correlationId);
+          }
+        }
+        const limit = parseInt(bearerToken ? String(env.RATE_LIMIT || 100) : (env.DEMO_RATE_LIMIT || '30'), 10);
+        if (!checkRateLimit({ ...env, RATE_LIMIT: limit }, `mcp:${getClientId(request)}`)) {
+          return rateLimitExceededResponse(correlationId);
+        }
+
+        const response = await createCanCoderMcpHandler({ request, routeContext: routeCtx, lookupRiding, auth }).fetch(request);
+        if (origin && (origin.toLowerCase() === requestOrigin || localHost)) {
+          const headers = new Headers(response.headers);
+          for (const [name, value] of Object.entries(routeCtx.corsHeaders(origin))) headers.set(name, value);
+          return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+        }
+        return response;
       }
 
       return await dispatch(routeCtx, legacyFetch);

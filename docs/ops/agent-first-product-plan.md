@@ -8,7 +8,7 @@ Ship an agent-accessible data service with machine-readable discovery, immediate
 
 ## Current state
 
-- The production Worker exposes a host-aware MCP server with the read-only `lookup_riding` tool on `cancoder.chesterhillsolutions.ca` and the Workers hostname. The MCP server supports a keyless demo and Server API key authentication.
+- The production Worker exposes a host-aware MCP server with the read-only `lookup_riding` tool on `cancoder.chesterhillsolutions.ca` and the Workers hostname. The MCP server supports a keyless demo and Server API key authentication. At the plan baseline, this deployed implementation was not tracked in `main`; W1 recovers it into source control and reconciles the operational checklist.
 - Existing public resources include `robots.txt`, a sitemap, an API linkset, an AI catalog, and `/docs/agents.md`. They describe the API but do not yet declare agent pricing, payment, or purchase capabilities in a complete machine-readable profile.
 - The Portal offers 1,000 free monthly billable units and displays a metered price of $0.005 USD per successful lookup/search after that allowance. Paid Checkout is disabled; paid upgrades currently require CHS coordination. The public MCP demo is rate limited to 30 requests per minute per IP.
 - Billing is per Customer. The Durable Object usage ledger is canonical, with Stripe Billing Meter delivery asynchronous. A quote-and-accept flow, direct agent payment, and payment receipt ledger do not exist.
@@ -92,7 +92,7 @@ The quote is not itself acceptance. Payment proof or workspace authorization mus
 | ID | Work | Role / tier | Depends on | Done when |
 |---|---|---|---|---|
 | W0 | Define the area product: record type, source, rights, attribution, allowed use, retention, and buyer-facing terms. | Product/data owner / large | — | A product note names the exact records an area query may return, the source and rights, and the initial billable unit. This is a hard gate for W7–W9. |
-| W1 | Reconcile the deployed MCP and host-aware source with `main`; update stale custom-domain and launch records. | Release engineer / fast | — | Source control contains the deployed agent baseline, and the go-live checklist accurately describes current production hosts. |
+| W1 | **Complete 2026-10-16:** recovered the deployed MCP and host-aware discovery implementation into `main`; corrected the stale custom-domain, API key, MCP, and checkout entries in the go-live checklist. | Release engineer / fast | — | Source control contains the deployed agent baseline, and the go-live checklist accurately describes current production hosts. |
 | W2 | Record payment and offer architecture in an ADR. Compare UCP Checkout/AP2, x402, and workspace billing for the real target agent ecosystem. | Protocol/security architect / large | W0 | One direct payment rail is selected for v1; spend authority, expiry, idempotency, settlement, failure, refund, receipts, and ledger semantics are defined. |
 | W3 | Publish UCP service profile and align its capabilities, payment handlers, and host URLs with MCP/API docs. | Worker/API implementer / mid | W2 | `/.well-known/ucp` validates against the selected UCP version on both public hosts and makes no unsupported claims. |
 | W4 | Publish machine-readable capability, price, free-tier, data-coverage, auth, and error information. | Worker/API implementer / mid | W2 | An agent can obtain these terms without scraping marketing copy, and the values match the Portal and Worker configuration. |

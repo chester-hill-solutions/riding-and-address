@@ -34,6 +34,10 @@ export function env() {
     baseUrl: read('BETTER_AUTH_URL') || read('BASE_URL') || (prod ? '' : 'http://localhost:5173'),
     /** Browser-facing Worker origin for docs links and marketing try-it (same origin — single Worker). */
     publicApiBaseUrl: read('PUBLIC_API_BASE_URL') || read('BASE_URL') || (prod ? '' : 'http://localhost:5173'),
+    publicApiHosts: read('PUBLIC_API_HOSTS')
+      .split(',')
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean),
     /**
      * Optional public browser key (pk_*) for the marketing try-it embed.
      * Required when the Worker has API_KEYS (or BASIC_AUTH) enabled; allowlist the portal origin.

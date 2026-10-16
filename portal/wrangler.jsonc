@@ -138,6 +138,7 @@
     "BASE_URL": "https://riding-lookup.chester-hill-solutions.workers.dev",
     "AUTH_TRUSTED_ORIGINS": "https://riding-lookup.chester-hill-solutions.workers.dev,https://cancoder.chesterhillsolutions.ca",
     "PUBLIC_API_BASE_URL": "https://riding-lookup.chester-hill-solutions.workers.dev",
+    "PUBLIC_API_HOSTS": "cancoder.chesterhillsolutions.ca,riding-lookup.chester-hill-solutions.workers.dev",
     "PAID_CHECKOUT_ENABLED": "false",
     "EMAIL_FROM": "CanCoder <noreply@example.com>",
     "FOUNDER_USER_IDS": "",
@@ -174,6 +175,7 @@
         "ENVIRONMENT": "staging",
         "BASE_URL": "https://riding-lookup-staging.chester-hill-solutions.workers.dev",
         "PUBLIC_API_BASE_URL": "https://riding-lookup-staging.chester-hill-solutions.workers.dev",
+        "PUBLIC_API_HOSTS": "riding-lookup-staging.chester-hill-solutions.workers.dev",
         "PAID_CHECKOUT_ENABLED": "false",
         "EMAIL_FROM": "CanCoder <noreply@example.com>",
         "FOUNDER_USER_IDS": ""

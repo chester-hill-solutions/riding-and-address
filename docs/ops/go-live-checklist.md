@@ -1,11 +1,11 @@
 # Go-Live Checklist
 
 Infrastructure and configuration steps required before production launch.
-Sourced from the 2026-07 production-readiness audit. Updated 2026-07-16 (Workers + D1 all-in-one).
+Sourced from the production-readiness audit. Updated 2026-10-16 after reconciling the public hosts and agent discovery baseline.
 
 ## Worker (Cloudflare) — API + portal
 
-Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`, `npm run deploy` from repo root or `portal/`).
+Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `bun run deploy` from the repo root or `bun run deploy` from `portal/`).
 
 - [x] **R2 buckets**: `ridings` (prod) exists with all boundary datasets verified
       (`npm run upload:r2-datasets -- --verify-only --remote`). `ridings-staging` created;
@@ -13,10 +13,10 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`, `npm 
 - [x] **Staging bindings**: KV/D1 ids pasted; staging Worker at
       `https://riding-lookup-staging.chester-hill-solutions.workers.dev`. Copy prod secrets
       with `wrangler secret put … --env staging` before relying on geocode/admin.
-- [x] **API_KEYS KV namespace**: created for prod (`2d0152b0958c48fab4a98b3046e0c08e`) and
-      staging (`363048976bc74248b091f69510a1b759`). Bindings remain **commented** so soft
-      free API stays open/unmetered. Uncomment both + redeploy before commercial/metered
-      launch; then seed via `npm run keys`.
+- [x] **API_KEYS KV namespace**: created and bound in production (`2d0152b0958c48fab4a98b3046e0c08e`);
+      this enables Server API keys and customer billing. Staging namespace
+      (`363048976bc74248b091f69510a1b759`) exists but its binding remains commented. Seed or
+      administer keys with `bun run keys`.
 - [x] **Portal D1**: `cancoder-portal` (`PORTAL_DB`) and staging counterpart created and bound
       in `portal/wrangler.jsonc`. Apply migrations:
       `npm --prefix portal run db:migrate:remote` (prod) /
@@ -35,15 +35,21 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`, `npm 
   - [ ] `RESEND_API_KEY`, `EMAIL_FROM`
   - [ ] Staging: copy the same secrets with `wrangler secret put … --env staging`
   - `MAPBOX_TOKEN` — only if the Mapbox fallback is used
-- [ ] **Routes / custom domain**: none configured yet; Worker is only at `*.workers.dev`
-      until a route or custom domain is added. Portal and API share that origin.
+- [x] **Production hosts**: the combined Worker serves the custom domain
+      `https://cancoder.chesterhillsolutions.ca` and the `workers.dev` host
+      `https://riding-lookup.chester-hill-solutions.workers.dev`. The host-aware public resource
+      list is in `PUBLIC_API_HOSTS`; portal and API share the deployment.
+- [x] **Agent discovery baseline**: MCP at `/mcp`, agent setup at `/docs/agents.md`, plus
+      `robots.txt`, sitemap, API linkset, and AI catalog are routed by the combined Worker.
+      These resources describe current lookup capability only; payment offers and direct agent
+      payment are not implemented.
 
 ## Stripe
 
 - [ ] Create the `riding_lookup_api_call` meter and a metered Price.
 - [ ] Set Stripe secrets on the Worker (above).
 - [ ] Register the webhook endpoint at `/api/stripe/webhook` (same Worker origin).
-- [ ] Only then flip `PAID_CHECKOUT_ENABLED`.
+- [ ] Only then flip `PAID_CHECKOUT_ENABLED` (currently `false` in production config).
 
 ## Portal (same Worker)
 

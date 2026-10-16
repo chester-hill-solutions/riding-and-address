@@ -37,7 +37,13 @@ export default {
     if (ownerOf(pathname) === 'api') {
       return apiWorker.fetch(request, env, ctx);
     }
-    return handlePortalRequest(request, env, ctx);
+    const response = await handlePortalRequest(request, env, ctx);
+    if (pathname !== '/') return response;
+    const headers = new Headers(response.headers);
+    const origin = new URL(request.url).origin;
+    headers.append('Link', `<${origin}/docs>; rel="service-doc", <${origin}/api/docs>; rel="service-desc", <${origin}/.well-known/api-catalog>; rel="api-catalog"`);
+    headers.append('Link', `<${origin}/docs/agents.md>; rel="service-doc"`);
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   },
   async scheduled(event: ScheduledEvent, env: CloudflareEnv, ctx: ExecutionContext): Promise<void> {
     await apiWorker.scheduled(event, env, ctx);
