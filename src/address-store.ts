@@ -139,6 +139,16 @@ export interface FindAddressesInBoundsInput {
   limit: number;
 }
 
+export interface ListAddressesInRidingInput {
+  province: string;
+  /** The riding polygon's bounding box; an exact point-in-polygon test follows in the caller. */
+  bounds: { minLat: number; minLon: number; maxLat: number; maxLon: number };
+  /** Keyset cursor: the last record's `id`. Ordering is `id` (the primary key). */
+  afterId?: number;
+  /** Page size; the adapter fetches `limit + 1` to detect a next page. */
+  limit: number;
+}
+
 export interface SearchStreetSuggestInput {
   /** FTS5 MATCH expression. */
   match: string;
@@ -218,6 +228,13 @@ export interface AddressStore {
 
   /** Addresses within a lat/lon box, with optional province/city/postal narrowing. */
   findAddressesInBounds(input: FindAddressesInBoundsInput): Promise<AddressRecord[]>;
+
+  /**
+   * One page of addresses inside a riding's bounding box, keyset-paged on `id`. The caller applies
+   * the exact point-in-polygon test — the box is a prefilter, so this returns candidates, not a
+   * final answer.
+   */
+  listAddressesInRiding(input: ListAddressesInRidingInput): Promise<AddressRecord[]>;
 
   /** FTS-backed street containers for autocomplete: the candidate window. */
   searchStreetSuggest(input: SearchStreetSuggestInput): Promise<StreetSuggestRecord[]>;
@@ -449,6 +466,39 @@ function newAddressStore(db: D1Database): AddressStore {
       return result.results || [];
     },
 
+    async listAddressesInRiding(input) {
+      const where = [
+        'province = ?',
+        'lat BETWEEN ? AND ?',
+        'lon BETWEEN ? AND ?',
+      ];
+      const binds: unknown[] = [
+        input.province,
+        input.bounds.minLat,
+        input.bounds.maxLat,
+        input.bounds.minLon,
+        input.bounds.maxLon,
+      ];
+      if (input.afterId !== undefined) {
+        where.push('id > ?');
+        binds.push(input.afterId);
+      }
+      binds.push(input.limit + 1);
+
+      const result = await db
+        .prepare(
+          `SELECT id, province, civic_number, street_name, street_type, street_direction,
+                  unit, postal_code, city, lat, lon, full_address
+             FROM oda_addresses
+            WHERE ${where.join(' AND ')}
+            ORDER BY id
+            LIMIT ?`
+        )
+        .bind(...binds)
+        .all<AddressRecord>();
+      return result.results || [];
+    },
+
     async searchStreetSuggest(input) {
       const where: string[] = ['oda_suggest_fts MATCH ?'];
       const binds: unknown[] = [input.match];
@@ -625,6 +675,7 @@ export function getAddressStore(db: D1Database, record: () => void): AddressStor
     findCityCentroid: (input) => call(() => store.findCityCentroid(input)),
     findCityCentroidsByPrefix: (input) => call(() => store.findCityCentroidsByPrefix(input)),
     findAddressesInBounds: (input) => call(() => store.findAddressesInBounds(input)),
+    listAddressesInRiding: (input) => call(() => store.listAddressesInRiding(input)),
     searchStreetSuggest: (input) => call(() => store.searchStreetSuggest(input)),
     findAddressAtCivic: (input) => call(() => store.findAddressAtCivic(input)),
     listCivicsInStreet: (input) => call(() => store.listCivicsInStreet(input)),
