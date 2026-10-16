@@ -42,6 +42,11 @@ export interface Env {
    */
   DEMO_BROWSER_API_KEY?: string;
   /**
+   * Signing key for the offer token (`GET /api/quote`). Unset means quoting is disabled and the
+   * route fails closed with QUOTES_UNAVAILABLE — an unsigned offer must never be issued.
+   */
+  OFFER_SIGNING_SECRET?: string;
+  /**
    * Comma-separated origins allowed for credentialed CORS (portal + embeds).
    * When unset, reflect request Origin or `*` (legacy open CORS).
    */
