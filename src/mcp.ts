@@ -21,6 +21,61 @@ function responseText(data: unknown): string {
   return JSON.stringify(data, null, 2);
 }
 
+/**
+ * The tool's result envelope. `ok` is false when no riding resolved or the lookup failed, and
+ * `error.code` carries a stable code so an agent can branch without parsing prose.
+ *
+ * Codes: `INVALID_ARGUMENT` for a bad tool call, `UNRESOLVED_LOCATION` for a valid query that
+ * matched nothing, and otherwise the HTTP API's own error code passed straight through — the same
+ * code the equivalent REST call returns, so the two surfaces stay one contract.
+ */
+const TOOL_OUTPUT_SCHEMA = z.object({
+  ok: z.boolean(),
+  summary: z.string(),
+  result: z.record(z.string(), z.unknown()).optional(),
+  error: z
+    .object({
+      code: z.string(),
+      message: z.string(),
+      correlationId: z.string().optional(),
+    })
+    .optional(),
+});
+
+type ToolOutput = z.infer<typeof TOOL_OUTPUT_SCHEMA>;
+
+/** A failed tool call: `isError` true, plus a structured body an agent can act on. */
+function toolError(code: string, message: string, correlationId?: string) {
+  const output: ToolOutput = {
+    ok: false,
+    summary: message,
+    error: { code, message, ...(correlationId ? { correlationId } : {}) },
+  };
+  return {
+    isError: true,
+    content: [{ type: 'text' as const, text: responseText(output) }],
+    structuredContent: output,
+  };
+}
+
+/** A completed tool call that resolved nothing: the tool worked, the data did not. */
+function unresolvedLocation(summary: string, result: Record<string, unknown>) {
+  const output: ToolOutput = {
+    ok: false,
+    summary,
+    result,
+    error: {
+      code: 'UNRESOLVED_LOCATION',
+      message:
+        'No electoral district matched the input. Provide a more complete address, a postal code, or coordinates.',
+    },
+  };
+  return {
+    content: [{ type: 'text' as const, text: responseText(output) }],
+    structuredContent: output,
+  };
+}
+
 /** Build the same lookup capability for both modern and legacy MCP clients. */
 export function createCanCoderMcpHandler(options: CanCoderMcpOptions) {
   return createMcpHandler(() => {
@@ -41,7 +96,9 @@ export function createCanCoderMcpHandler(options: CanCoderMcpOptions) {
         description:
           'Map a Canadian postal code, street address, or coordinate pair to an electoral riding. ' +
           'Use a province code as the dataset for a provincial or territorial riding, or choose federal/combined. ' +
-          `Without Authorization: Bearer <Server API key>, this uses the unbilled demo tier, limited to ${DEFAULT_DEMO_RATE_LIMIT} requests per minute per IP.`,
+          `Without Authorization: Bearer <Server API key>, this uses the unbilled demo tier, limited to ${DEFAULT_DEMO_RATE_LIMIT} requests per minute per IP. ` +
+          'The result carries `ok` and, when nothing resolved or the call failed, a structured `error.code` ' +
+          '(INVALID_ARGUMENT, UNRESOLVED_LOCATION, DATASET_UNAVAILABLE, INVALID_QUERY, RATE_LIMIT_EXCEEDED, KEY_REQUIRED, LOOKUP_ERROR).',
         inputSchema: z.object({
           location: z.string().min(1).max(300).optional().describe(
             'Canadian postal code or street address. For a street address, provide city and province when known.'
@@ -54,33 +111,24 @@ export function createCanCoderMcpHandler(options: CanCoderMcpOptions) {
             'federal (default), combined, or a province/territory code: on, qc, bc, ab, ns, nb, mb, sk, nl, pe, nt, nu, yt.'
           ),
         }),
-        outputSchema: z.object({
-          summary: z.string(),
-          result: z.record(z.string(), z.unknown()),
-        }),
+        outputSchema: TOOL_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
       },
       async (args) => {
         const hasCoordinates = args.latitude !== undefined || args.longitude !== undefined;
         if (hasCoordinates && (args.latitude === undefined || args.longitude === undefined)) {
-          return {
-            isError: true,
-            content: [{ type: 'text', text: 'Provide both latitude and longitude.' }],
-          };
+          return toolError('INVALID_ARGUMENT', 'Provide both latitude and longitude.');
         }
         if (hasCoordinates === Boolean(args.location)) {
-          return {
-            isError: true,
-            content: [{ type: 'text', text: 'Provide either location or both coordinates.' }],
-          };
+          return toolError('INVALID_ARGUMENT', 'Provide either location or both coordinates.');
         }
 
         const dataset = args.dataset || 'federal';
         if (dataset === 'combined' && !args.province) {
-          return {
-            isError: true,
-            content: [{ type: 'text', text: 'Provide province when requesting the combined federal and provincial result.' }],
-          };
+          return toolError(
+            'INVALID_ARGUMENT',
+            'Provide province when requesting the combined federal and provincial result.'
+          );
         }
 
         const path = `/api/${dataset}`;
@@ -114,7 +162,12 @@ export function createCanCoderMcpHandler(options: CanCoderMcpOptions) {
         });
         const body = await response.json() as Record<string, unknown>;
         if (!response.ok) {
-          return { isError: true, content: [{ type: 'text', text: responseText(body) }] };
+          // Pass the API's own code through, so the MCP and REST surfaces report the same code.
+          return toolError(
+            typeof body.code === 'string' ? body.code : 'LOOKUP_ERROR',
+            typeof body.error === 'string' ? body.error : 'The lookup failed.',
+            typeof body.correlationId === 'string' ? body.correlationId : undefined
+          );
         }
 
         const properties = body.properties && typeof body.properties === 'object'
@@ -129,10 +182,15 @@ export function createCanCoderMcpHandler(options: CanCoderMcpOptions) {
           ? body.dataset as Record<string, unknown>
           : {};
         const summary = `${riding} (${String(datasetMeta.name || dataset)}; dataset year ${String(datasetMeta.year || 'unknown')}).`;
-        const result = { summary, result: body };
+
+        if (!properties) {
+          return unresolvedLocation(summary, body);
+        }
+
+        const output: ToolOutput = { ok: true, summary, result: body };
         return {
-          content: [{ type: 'text', text: responseText(result) }],
-          structuredContent: result,
+          content: [{ type: 'text', text: responseText(output) }],
+          structuredContent: output,
         };
       }
     );
@@ -168,8 +226,10 @@ For provincial or territorial results, choose the matching dataset code (for exa
 \`qc\`). Choose \`combined\` and provide a province to return federal and provincial results.
 
 Responses include the riding properties and the boundary dataset year. A match is not certified
-by Canada Post. If the result has no riding properties, treat it as unresolved and ask for a more
-complete address or coordinates.
+by Canada Post. The tool returns a structured result with an \`ok\` flag. When \`ok\` is false, read
+\`error.code\`: \`UNRESOLVED_LOCATION\` means no district matched, so ask for a more complete address
+or coordinates; \`INVALID_ARGUMENT\` means fix the tool call; any other code is the API's own error
+(for example \`DATASET_UNAVAILABLE\` or \`RATE_LIMIT_EXCEEDED\`).
 
 ## Machine-readable terms
 
