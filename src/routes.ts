@@ -28,7 +28,7 @@ import {
 import { handleWebhookAdmin } from './webhook-admin';
 import { getAllProvincialPaths } from './datasets';
 import { handleDemoRoute, handleLookupRequest } from './lookup-handler';
-import { handleQuoteRequest } from './offers';
+import { handleQuoteRequest, handleAcceptRequest } from './offers';
 import { handleOdaInit, handleOdaStats } from './oda-handlers';
 import { checkProjectionAuth, projectionUnauthorizedResponse } from './projection-handlers';
 import type { RouteContext } from './route-context';
@@ -152,6 +152,8 @@ export const ROUTES: readonly RouteEntry[] = [
   // Offers: a free, expiring quote an agent accepts before paying. Keyless and rate-limited like
   // the demo tier, and never billable — requesting a quote does not touch the usage ledger.
   { path: '/api/quote', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'demo', handler: handleQuoteRequest },
+  // Accept an offer through x402: 402 with requirements, then verify → settle → deliver.
+  { path: '/api/quote/accept', methods: ['POST'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'demo', handler: handleAcceptRequest },
 
   // ODA geocoding surface — geocode/reverse/normalize stay legacy (see billing-invariants gate);
   // the admin pair is ported.

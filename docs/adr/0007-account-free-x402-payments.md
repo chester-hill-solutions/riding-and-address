@@ -59,3 +59,17 @@ before the rail is enabled in production.
 **Considered:** UCP Checkout as the v1 agent rail (human-in-the-loop, so not autonomous); workspace
 Server key only (fails the account-free thesis); adopting both direct rails at launch (deferred);
 settling in-process only (a facilitator keeps custody out of the Worker).
+
+**Implementation status (W6).** The adapter ships. `GET /api/quote` issues the signed offer and
+`POST /api/quote/accept` answers `402` with `PAYMENT-REQUIRED`, verifies and settles through a
+facilitator, then delivers the quoted lookup with a machine-readable receipt. The rail is disabled
+unless `X402_ENABLED` is set and fully configured, so it cannot charge by accident. Settlement can
+only happen once for a given signed payload, and the delivered lookup is a read-only idempotent
+operation, so a retry can neither double-charge nor change the result.
+
+Still required before enabling it in production: the security review; a durable receipt store and a
+settlement reconciliation job (an x402 receipt is not written to the Customer ledger, so nothing
+reconciles it yet); the credit/refund path for a settled-but-undelivered result — today that returns
+`SETTLEMENT_DELIVERY_FAILED` with the settlement reference and logs it; and stablecoin treasury,
+receipt and tax policy. The facilitator request/response envelope follows the v2 contract but must
+be confirmed against the chosen facilitator.
