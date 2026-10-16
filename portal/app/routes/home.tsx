@@ -22,22 +22,26 @@ export function meta(): Route.MetaDescriptors {
   ];
 }
 
-export function loader() {
-  const { demoBrowserKey } = env();
+export function loader({ request }: Route.LoaderArgs) {
+  const { publicApiBaseUrl, publicApiHosts, demoBrowserKey } = env();
+  const requestUrl = new URL(request.url);
+  const apiBaseUrl = publicApiHosts.includes(requestUrl.host.toLowerCase())
+    ? requestUrl.origin
+    : publicApiBaseUrl;
   return {
-    apiBaseUrl: '',
+    apiBaseUrl: apiBaseUrl.replace(/\/$/, ''),
     demoBrowserKey,
   };
 }
 
 export default function Home() {
   const { apiBaseUrl, demoBrowserKey } = useLoaderData<typeof loader>();
-  const docsUrl = '/docs';
-  const widgetDocsUrl = '/docs/embed';
+  const docsUrl = `${apiBaseUrl}/docs`;
+  const agentDocsUrl = `${apiBaseUrl}/docs/agents.md`;
 
   return (
     <div className="marketing">
-      <SiteHeader />
+      <SiteHeader agentDocsUrl={agentDocsUrl} />
 
       <main>
         <section className="hero-marketing">

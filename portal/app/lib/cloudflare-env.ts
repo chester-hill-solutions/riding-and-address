@@ -18,6 +18,7 @@ export interface CloudflareEnv extends ApiWorkerEnv {
   AUTH_TRUSTED_ORIGINS?: string;
   BASE_URL?: string;
   PUBLIC_API_BASE_URL?: string;
+  PUBLIC_API_HOSTS?: string;
   DEMO_BROWSER_API_KEY?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;

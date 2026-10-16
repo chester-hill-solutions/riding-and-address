@@ -138,6 +138,7 @@
     "BASE_URL": "https://cancoder.chesterhillsolutions.ca",
     "AUTH_TRUSTED_ORIGINS": "https://riding-lookup.chester-hill-solutions.workers.dev,https://cancoder.chesterhillsolutions.ca",
     "PUBLIC_API_BASE_URL": "https://cancoder.chesterhillsolutions.ca",
+    "PUBLIC_API_HOSTS": "cancoder.chesterhillsolutions.ca,riding-lookup.chester-hill-solutions.workers.dev",
     "PAID_CHECKOUT_ENABLED": "false",
     "UPLOAD_CHECKOUT_ENABLED": "true",
     "EMAIL_FROM": "CanCoder <noreply@chsolutions.ca>",
@@ -179,7 +180,8 @@
         "AUTH_TRUSTED_ORIGINS": "https://riding-lookup-staging.chester-hill-solutions.workers.dev",
         "BASE_URL": "https://riding-lookup-staging.chester-hill-solutions.workers.dev",
         "PUBLIC_API_BASE_URL": "https://riding-lookup-staging.chester-hill-solutions.workers.dev",
-        // Test-mode Stripe key only; production checkout remains disabled.
+        "PUBLIC_API_HOSTS": "riding-lookup-staging.chester-hill-solutions.workers.dev",
+        // Staging uses its own Stripe test key and isolated checkout webhook.
         "PAID_CHECKOUT_ENABLED": "false",
         "UPLOAD_CHECKOUT_ENABLED": "true",
         "EMAIL_FROM": "CanCoder <noreply@chsolutions.ca>",

@@ -2,7 +2,7 @@ import { Link } from 'react-router';
 import { PUBLIC_NAVIGATION } from '../../../src/site-chrome';
 import { Badge } from './ui/badge';
 
-export function SiteHeader({ plan }: { plan?: string }) {
+export function SiteHeader({ plan, agentDocsUrl = '/docs/agents.md' }: { plan?: string; agentDocsUrl?: string }) {
   return (
     <header className="site-header">
       <div className="site-header__inner">
@@ -14,6 +14,7 @@ export function SiteHeader({ plan }: { plan?: string }) {
           {PUBLIC_NAVIGATION.filter((item) => !plan || item.href.startsWith('/docs')).map((item) => (
             <a key={item.href} href={item.href}>{item.label}</a>
           ))}
+          {!plan && <a href={agentDocsUrl}>For agents</a>}
         </nav>
         <div className="site-header__actions">
           {plan ? (
