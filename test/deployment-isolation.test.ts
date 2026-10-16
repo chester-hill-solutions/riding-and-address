@@ -23,9 +23,12 @@ describe('staging deployment isolation', () => {
     for (const binding of staging.d1_databases) expect(productionD1.has(binding.database_id)).toBe(false);
   });
 
-  it('keeps production checkout disabled while staging tests use their own origin', () => {
+  it('enables approved upload checkout while keeping subscriptions off and staging isolated', () => {
     expect(config.vars.PAID_CHECKOUT_ENABLED).toBe('false');
-    expect(config.vars.UPLOAD_CHECKOUT_ENABLED).toBe('false');
+    expect(config.vars.UPLOAD_CHECKOUT_ENABLED).toBe('true');
+    expect(config.vars.BASE_URL).toBe('https://cancoder.chesterhillsolutions.ca');
+    expect(config.vars.EMAIL_FROM).toBe('CanCoder <noreply@chsolutions.ca>');
+    expect(staging.vars.PAID_CHECKOUT_ENABLED).toBe('false');
     expect(staging.vars.UPLOAD_CHECKOUT_ENABLED).toBe('true');
     expect(staging.vars.AUTH_TRUSTED_ORIGINS).toBe(staging.vars.BASE_URL);
     expect(staging.vars.BASE_URL).toBe('https://riding-lookup-staging.chester-hill-solutions.workers.dev');
