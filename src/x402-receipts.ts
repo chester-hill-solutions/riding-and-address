@@ -20,9 +20,25 @@ import type { Env } from './types';
 /** Receipt keys are prefixed so one namespace can hold them alongside future x402 records. */
 const RECEIPT_PREFIX = 'x402receipt:';
 
+/**
+ * A short, stable identifier for an offer, for use in a KV key.
+ *
+ * The offer id is a signed token of roughly 512 characters, and a KV key is limited to 512 **bytes**,
+ * so the offer id cannot be the key. Its signature half is an HMAC over the payload: uniformly
+ * distributed, and identical for the same offer — exactly the property a key needs, without hashing.
+ *
+ * This was found by paying a live facilitator: the key was 549 bytes, every receipt write failed, and
+ * nothing surfaced it because the fake KV in the tests did not enforce the limit. The tests now do.
+ */
+function offerKeyFragment(offerId: string): string {
+  const parts = offerId.split('.');
+  const tail = parts.length > 1 ? parts[parts.length - 1] : offerId;
+  return tail.slice(0, 32);
+}
+
 /** The KV key a receipt is stored under. Exported so reconciliation can rewrite it in place. */
 export function receiptKey(receipt: Pick<X402Receipt, 'recordedAt' | 'offerId'>): string {
-  return `${RECEIPT_PREFIX}${receipt.recordedAt}:${receipt.offerId}`;
+  return `${RECEIPT_PREFIX}${receipt.recordedAt}:${offerKeyFragment(receipt.offerId)}`;
 }
 
 /** Receipts are reconciliation data, not history: 90 days is plenty to settle an incident. */

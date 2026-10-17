@@ -44,18 +44,21 @@ Object ledger (ADR 0002) are out of scope and unchanged.
    Until there is, an undelivered result is a support ticket. The record is now written **before**
    delivery is attempted, so a delivery failure cannot lose it; what happens when the receipt store
    itself is down is named in `docs/ops/x402-receipts-durability.md`.
-3. **The facilitator envelope — verified against a live testnet facilitator; settlement still to
-   confirm.** `/verify` and `/settle` follow the v2 contract, and on 2026-10-17 the envelope was
-   checked against two live testnet facilitators (`x402.org`, `facilitator.x402.rs`): both advertise
-   `exact` on Base Sepolia, and both parse our request and reject the *payment* rather than the
-   request. x402.org answers `invalid_exact_evm_signature` with the payer read from
-   `payload.authorization.from` — which is also a live confirmation that our payer extraction reads
-   the field the facilitator uses. **Still to confirm:** a signed payload through `/settle` and a
-   real Worker. Two findings from the check: the v2 payload must echo `accepted`, and facilitators do
-   not necessarily advertise the token in `/supported`. Runbook and known-good list:
-   `docs/ops/x402-facilitator-verification.md`. That runbook also records how Cloudflare's own
-   guidance compares: their recommended flow matches this one step for step, and the facilitator
-   verified here is the one they recommend.
+3. **The facilitator envelope — verified against live facilitators, and one real bug found and
+   fixed.** Checking this was worth doing: it found that our `/verify` and `/settle` bodies omitted a
+   top-level `x402Version`, without which a facilitator answers `unsupported_scheme`. Proven by
+   replaying the exact request four ways against `facilitator.x402.rs` — only the body carrying
+   `x402Version` verified, and it verified a **real signature**, reading the payer correctly
+   (#170). Two things made this hard to see, both now fixed: our client discarded the facilitator's
+   answer, so the reason reached the caller as a bare `502`; and the verification probe's classifier
+   matched the whole response text, so the response's `payer` field made `unsupported_scheme` read as
+   a *pass*. **The lesson is recorded because it is the general one: a green envelope check did not
+   mean the envelope was right.**
+   Also learned, and documented in the runbook: the v2 payload must echo `accepted`, and facilitators
+   do not necessarily advertise the token in `/supported`.
+   **Still to confirm:** a settled payment end to end through `/settle` and a receipt.
+   Runbook and known-good list: `docs/ops/x402-facilitator-verification.md`.
+
 4. **Per-payer spend cap — addressed 2026-10-17, with three correctness fixes on review.** The
    initial implementation (#154) had three defects, all filed and fixed:
    - **#158 — it failed open.** The cap was skipped entirely when the payload named no payer, so it

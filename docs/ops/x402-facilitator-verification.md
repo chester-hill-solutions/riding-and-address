@@ -80,12 +80,18 @@ For production mainnet the options are a managed facilitator (Coinbase CDP, thir
 are listed in the x402 ecosystem directory) or self-hosting `x402-rs`
 (`ghcr.io/x402-rs/x402-facilitator`). That choice belongs with the treasury decision.
 
-### Two things the live check taught us
+### Three things the live check taught us
 
 **The probe payload must echo `accepted`.** Sending only `{x402Version, scheme, network, payload}`
 makes x402.org return `500 Cannot read properties of undefined (reading 'scheme')`. Adding
 `accepted: <the requirement being paid>` produces the semantic rejection instead. Both the probe and
 any real client must send it — this is a property of the v2 payload, and the harness now pins it.
+
+**The body needs a top-level `x402Version`.** Without it a facilitator answers `unsupported_scheme` —
+which looks like "unsupported payment" and is really "unresolvable request". Replayed four ways against
+`facilitator.x402.rs`, only the body carrying it verified. Our client was missing it, and the probe
+passed anyway, because the response's `payer` field made `unsupported_scheme` read as a semantic
+rejection. Both are fixed (#170).
 
 **Facilitators do not necessarily advertise the token.** `/supported` lists schemes and networks;
 neither facilitator named the asset. The check now reports "cannot tell" rather than "unsupported" in
