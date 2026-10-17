@@ -46,7 +46,10 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `
         `USDC`, 6 decimals) and `X402_FACILITATOR_URL` are all set. Verified live with it briefly
         enabled: a quote returns 200 and accepting it returns **402** carrying `exact` on
         `eip155:8453` for the right amount and payee.
-        **Two prerequisites stand before enabling it for real**, neither of them tax:
+        **The whole path is now proven live on staging**: quote → 402 → signed payment → verified →
+        settled → **delivered** (`Ottawa Centre` returned, `delivered: true`) → receipt persisted →
+        replay refused. The earlier delivery failure was staging having no geocoding data, not the rail.
+        **Two things still stand before enabling for real**, neither of them tax:
         direct Coinbase CDP requires short-lived request-specific JWTs the rail does not implement
         ([#176](https://github.com/chester-hill-solutions/riding-and-address/issues/176)), and the
         **delivery leg has never been exercised live** — the testnet payment settled and then failed

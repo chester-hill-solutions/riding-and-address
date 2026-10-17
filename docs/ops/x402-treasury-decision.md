@@ -1,6 +1,16 @@
 # x402 treasury and custody decision
 
-**Status: answered 2026-10-17. One item outstanding** — the tax treatment, which the owner confirms is in hand with their accountant. That is the only thing gating production.
+**Status: decisions recorded; the rail is NOT enabled in production.** Two things stand before
+enabling, and *neither* is only tax — that claim was made and is wrong:
+
+1. **A provider decision.** Direct Coinbase CDP requires short-lived, request-specific JWTs that the
+   rail does not implement ([#176](https://github.com/chester-hill-solutions/riding-address/issues/176));
+   a static-Bearer facilitator needs no such work. A trial enablement with one was reverted on
+   2026-10-17 because the provider had not been explicitly authorised.
+2. **The tax answer** — in hand with the accountant.
+
+Everything else about the rail is proven live on staging: quote → 402 → signed payment → verified →
+settled → **delivered** → receipt persisted → replay refused.
 
 `docs/adr/0007-account-free-x402-payments.md` records that the rail must not be enabled until
 stablecoin receipt, treasury and tax policy are resolved. This is that decision, as a form: each
