@@ -37,4 +37,26 @@ describe('forceHttpsRedirect', () => {
       expect(redirect(`http://${host}/api/docs`)).toBeNull();
     }
   });
+
+  it('leaves a request from the local machine alone, even on a routed hostname', () => {
+    // `wrangler dev` serves the routed production hostname over plain HTTP on a local port, so the
+    // hostname looks public. The client address is the only thing that gives it away.
+    for (const address of ['127.0.0.1', '127.0.0.2', '::1', '::ffff:127.0.0.1']) {
+      const request = new Request('http://cancoder.example/', {
+        headers: { 'CF-Connecting-IP': address },
+      });
+      expect(forceHttpsRedirect(request), address).toBeNull();
+    }
+  });
+
+  it('still redirects a routed hostname when the client is not local', () => {
+    const request = new Request('http://cancoder.example/', {
+      headers: { 'CF-Connecting-IP': '203.0.113.7' },
+    });
+    expect(forceHttpsRedirect(request)?.status).toBe(308);
+  });
+
+  it('redirects when no client address is present, rather than trusting the absence', () => {
+    expect(redirect('http://cancoder.example/')?.status).toBe(308);
+  });
 });
