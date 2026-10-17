@@ -56,7 +56,9 @@ Object ledger (ADR 0002) are out of scope and unchanged.
    mean the envelope was right.**
    Also learned, and documented in the runbook: the v2 payload must echo `accepted`, and facilitators
    do not necessarily advertise the token in `/supported`.
-   **Still to confirm:** a settled payment end to end through `/settle` and a receipt.
+   **Confirmed 2026-10-17:** a real testnet payment settled through `/settle` against the live staging
+   rail, and the receipt was read back from the store — offer, settlement transaction, amount, scope,
+   payer and `delivered: false`. See item 5 for the replay result.
    Runbook and known-good list: `docs/ops/x402-facilitator-verification.md`.
 
 4. **Per-payer spend cap — addressed 2026-10-17, with three correctness fixes on review.** The
@@ -84,9 +86,12 @@ Object ledger (ADR 0002) are out of scope and unchanged.
    cross-midnight release, unidentified payer, fail-closed) and `test/x402-accept.test.ts`, which
    asserts the refused accept never reached `/settle` and that an ambiguous settlement keeps its
    reservation.
-5. **Settlement replay is argued, not tested.** The claim rests on the facilitator/chain rejecting a
-   second settlement of the same payload. There is no test for it here because it is not our code —
-   but it is the control that prevents double charging, so it should be demonstrated, not assumed.
+5. **Settlement replay — demonstrated 2026-10-17.** The same signed payment payload was submitted
+   three times against the live staging rail. The first settled; the second and third were refused at
+   **verification** (`PAYMENT_VERIFY_FAILED`), so a second settlement was never even attempted, and the
+   payer's balance moved by exactly one payment. The control is the facilitator's, not ours — but it is
+   now *observed* rather than assumed, which is what this item asked for.
+
 6. **`OFFER_SIGNING_SECRET` is the root of trust** for both offers and cursors. Rotating it
    invalidates every outstanding offer and cursor (short TTLs make that acceptable, but it should be
    a deliberate act, not a surprise).
@@ -103,5 +108,6 @@ Object ledger (ADR 0002) are out of scope and unchanged.
 - [ ] Confirm the receipt store is required, and that no code path can settle without it.
 - [ ] Confirm the boundary/scope check precedes every payment step.
 - [ ] Confirm the spend cap precedes settlement, and that a refused accept makes no `/settle` call.
-- [ ] Decide items 1–7. Item 1 and item 3 gate enabling; items 4 and 7 were addressed 2026-10-17.
+- [ ] Decide items 1–7. Items 3, 4, 5 and 7 are done (2026-10-17); item 1 is in hand with the
+      accountant and is the gate on enabling; item 2 remains manual; item 6 is a documented rotation.
 - [ ] Confirm the facilitator against a real deployment on testnet before mainnet.
