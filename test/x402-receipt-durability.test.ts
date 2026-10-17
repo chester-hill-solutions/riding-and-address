@@ -84,6 +84,10 @@ function envFor(options: Options = {}) {
         },
         put: async (key: string, value: string) => {
           if (options.failWrites) throw new Error('KV write rejected');
+          // KV limits a key to 512 bytes. Correct fake behaviour; note the unit test in
+          // x402-receipts.test.ts is the real guard, because these fixtures happen to produce offer
+          // ids short enough to stay under the limit.
+          if (new TextEncoder().encode(key).length > 512) throw new Error('KV key too long');
           store.set(key, value);
         },
         delete: async (key: string) => {

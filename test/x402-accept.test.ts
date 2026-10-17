@@ -37,6 +37,11 @@ function fakeKv(): KVNamespace {
       return type === 'json' ? JSON.parse(value) : value;
     },
     put: async (key: string, value: string) => {
+      // KV limits a key to 512 bytes. A fake that does not enforce it cannot catch a key that is too
+      // long — which is how a 549-byte receipt key shipped with every write failing in production.
+      if (new TextEncoder().encode(key).length > 512) {
+        throw new Error(`KV key too long: ${key.length} chars`);
+      }
       store.set(key, value);
     },
     delete: async (key: string) => {

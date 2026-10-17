@@ -4,6 +4,7 @@ import {
   listReceipts,
   receiptsBound,
   reconciliationSummary,
+  receiptKey,
   recordReceipt,
   type X402Receipt,
 } from '../src/x402-receipts';
@@ -127,5 +128,39 @@ describe('GET /api/x402/receipts', () => {
     const response = await handleReceiptsRequest(context({} as Env));
     expect(response.status).toBe(503);
     expect(((await response.json()) as { code?: string }).code).toBe('RECEIPTS_UNAVAILABLE');
+  });
+});
+
+describe('receipt keys fit in a KV key', () => {
+  /**
+   * Found by paying a live facilitator: the offer id is a signed token of roughly 512 characters, and
+   * using it directly made the key 549 bytes against a 512-byte limit — so *every* receipt write
+   * failed. Nothing caught it because the fake KV here did not enforce the limit. These pin the
+   * invariant directly, which is what the fake could not.
+   */
+  const AT = '2026-10-17T21:16:13.892Z';
+  const longOffer = (sig: string) => `${'a'.repeat(470)}.${sig}`;
+
+  it('stays within 512 bytes for a realistically long offer id', () => {
+    const key = receiptKey({ recordedAt: AT, offerId: longOffer('b'.repeat(43)) });
+    expect(new TextEncoder().encode(key).length).toBeLessThanOrEqual(512);
+  });
+
+  it('is stable for the same offer and distinct for different ones', () => {
+    const a = receiptKey({ recordedAt: AT, offerId: longOffer('sigA') });
+    const b = receiptKey({ recordedAt: AT, offerId: longOffer('sigB') });
+    expect(a).not.toBe(b);
+    // Same offer, same key — reconciliation rewrites the receipt in place.
+    expect(receiptKey({ recordedAt: AT, offerId: longOffer('sigA') })).toBe(a);
+  });
+
+  it('still separates two offers for the same input, which differ only late in the token', () => {
+    // Two quotes for one postal code differ only in the expiry, deep inside the payload — so a
+    // truncated *prefix* of the offer id would collide. The signature half does not.
+    const early = 'x'.repeat(400) + 'expiryOne' + '.sigA';
+    const late = 'x'.repeat(400) + 'expiryTwo' + '.sigB';
+    expect(receiptKey({ recordedAt: AT, offerId: early })).not.toBe(
+      receiptKey({ recordedAt: AT, offerId: late })
+    );
   });
 });
