@@ -27,14 +27,19 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `
 - [ ] **Worker secrets** (`cd portal && wrangler secret put …`):
   - [x] `GOOGLE_MAPS_KEY` — set in prod
   - [x] `BASIC_AUTH` — set in prod
-  - [ ] `AUTH_SECRET` — Better Auth session signing
-  - [ ] `BASE_URL` / `APP_PUBLIC_ORIGIN` — public portal origin (cookies / redirects)
-  - [ ] `ALLOWED_ORIGINS` — required for restricted CORS with credentials
+  - [x] `AUTH_SECRET` — Better Auth session signing (present in prod and staging)
+  - [x] `BASE_URL` — public portal origin; a plain var in `wrangler.jsonc`, set for both hosts
+  - [ ] `APP_PUBLIC_ORIGIN` / `ALLOWED_ORIGINS` — required for restricted CORS with credentials
   - [ ] `PROJECTION_ADMIN_SECRET` — optional for external ops tools; portal uses in-process projection
-  - [ ] `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_METERED`, `STRIPE_METER_EVENT_NAME`
-  - [ ] `RESEND_API_KEY`, `EMAIL_FROM`
-  - [ ] `OFFER_SIGNING_SECRET` — signs `/api/quote` offers; quoting fails closed
-        (`503 QUOTES_UNAVAILABLE`) until this is set
+  - [ ] `STRIPE_PRICE_METERED`, `STRIPE_METER_EVENT_NAME` — the metered price and event name
+  - [x] `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` — present in prod and staging
+  - [x] `RESEND_API_KEY` — present in prod and staging
+  - [ ] `EMAIL_FROM` — sender identity
+  - [x] `OFFER_SIGNING_SECRET` — signs `/api/quote` offers. Set in prod and staging on 2026-10-17:
+        quoting is live and free (`GET /api/quote` returns a signed, expiring offer for a point
+        lookup and for an area search). Acceptance still fails closed with `503
+        PAYMENTS_UNAVAILABLE` while the rail is off, so nothing charges. Rotating it invalidates
+        every outstanding offer and page cursor.
   - [ ] `X402_ENABLED`, `X402_PAY_TO`, `X402_NETWORK`, `X402_ASSET`, `X402_FACILITATOR_URL`
         (+ `X402_FACILITATOR_TOKEN`) — the x402 account-free rail. `/api/quote/accept` fails closed
         (`503 PAYMENTS_UNAVAILABLE`) until the rail is enabled and fully configured. Do not enable
@@ -48,15 +53,23 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `
         reconcile
   - [ ] Staging: copy the same secrets with `wrangler secret put … --env staging`
   - `MAPBOX_TOKEN` — only if the Mapbox fallback is used
+- **Secrets audit, 2026-10-17.** `cf workers secrets list` confirms the production script carries
+  `AUTH_SECRET`, `BASIC_AUTH`, `GOOGLE_MAPS_KEY`, `INBOX_TOKEN`, `OFFER_SIGNING_SECRET`,
+  `RESEND_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`; staging carries a subset. Entries
+  above are marked from that list, so **presence is confirmed, values are not** — an unchecked entry
+  may be unverified rather than absent.
+- **Setting a secret needs the latest version deployed.** The secrets API refuses with error `10215`
+  while a newer version exists that has not been deployed, which is the normal state for a minute or
+  two after a Workers Build. Wait for the deployment to land (or deploy the version first).
 - [x] **Production hosts**: the combined Worker serves the custom domain
       `https://cancoder.chesterhillsolutions.ca` and the `workers.dev` host
       `https://riding-lookup.chester-hill-solutions.workers.dev`. The host-aware public resource
       list is in `PUBLIC_API_HOSTS`; portal and API share the deployment.
 - [x] **Agent discovery baseline**: MCP at `/mcp`, agent setup at `/docs/agents.md`, plus
       `robots.txt`, sitemap, API linkset, and AI catalog are routed by the combined Worker.
-      These resources describe lookup capability, and the offer and area tools that are implemented
-      but currently disabled: the machine-readable terms carry no price for the paid rail until
-      `OFFER_SIGNING_SECRET` and the x402 configuration are set.
+      These resources describe lookup capability, the two quote tools (live and free), and the area
+      search, which is quoted but not purchasable while the rail is off. The machine-readable terms
+      still carry no price for the paid rail.
 
 ## Zone TLS posture (checked 2026-10-17)
 
