@@ -7,7 +7,9 @@
  * expose enough to answer "what settled, what was delivered, what needs crediting".
  *
  * The rail requires this store: without it a settled payment would leave no trace, so
- * `/api/quote/accept` fails closed when `X402_RECEIPTS` is unbound and the rail is enabled.
+ * `/api/quote/accept` fails closed when `X402_RECEIPTS` is unbound and the rail is enabled. A write
+ * that *fails* is reported to the caller rather than swallowed (#129) — see
+ * `docs/ops/x402-receipts-durability.md` for what that does and does not cover.
  */
 
 import { z } from 'zod';
@@ -64,20 +66,30 @@ export function receiptsBound(env: Env): boolean {
 }
 
 /**
- * Record a receipt. Best-effort: a storage failure must not lose a payment that already settled, so
- * it logs rather than throws. The rail requires the binding, so this normally writes.
+ * Record a receipt.
+ *
+ * Returns **false** when the write did not happen, so the caller can refuse to claim a payment is
+ * recorded. This used to swallow the failure and log it, which meant a settled payment could vanish
+ * from reconciliation while the response still said success (#129). A caller that ignores the return
+ * value is now visibly wrong rather than quietly lossy.
+ *
+ * Retried once: a transient KV failure should not cost a settled payment its record.
  */
-export async function recordReceipt(env: Env, receipt: X402Receipt): Promise<void> {
-  if (!env.X402_RECEIPTS) return;
-  try {
-    await env.X402_RECEIPTS.put(
-      receiptKey(receipt),
-      JSON.stringify(receipt),
-      { expirationTtl: RECEIPT_TTL_SECONDS }
-    );
-  } catch (error) {
-    console.warn(`[X402] failed to record receipt for offer ${receipt.offerId}:`, error);
+export async function recordReceipt(env: Env, receipt: X402Receipt): Promise<boolean> {
+  if (!env.X402_RECEIPTS) return false;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      await env.X402_RECEIPTS.put(
+        receiptKey(receipt),
+        JSON.stringify(receipt),
+        { expirationTtl: RECEIPT_TTL_SECONDS }
+      );
+      return true;
+    } catch (error) {
+      console.warn(`[X402] receipt write attempt ${attempt} failed for offer ${receipt.offerId}:`, error);
+    }
   }
+  return false;
 }
 
 /** Read the most recent receipts, newest first. Malformed entries are skipped, never trusted. */

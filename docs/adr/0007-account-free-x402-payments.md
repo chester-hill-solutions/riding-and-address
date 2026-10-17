@@ -44,6 +44,13 @@ an on-chain refund under a stated policy; they are not an automatic cash refund.
 settlement reference, amount, currency, dataset id and vintage, and result count, so a buyer can
 reconcile without contacting us.
 
+The obligation is recorded **before** delivery is attempted, and corrected once the result is in
+hand, so a delivery that throws or a body that cannot be decoded leaves a settled-but-undelivered
+record rather than losing the payment. The write reports whether it happened: a rejected write is
+never reported as success, and the response carries `receiptPersisted` so a caller can tell. The
+residual gap — a receipt-store outage during a settlement — is named in
+`docs/ops/x402-receipts-durability.md` rather than papered over.
+
 **Ledger semantics.** An x402 receipt is a **separate record** from the Customer Durable Object
 ledger, which stays canonical for workspace billing only (ADR 0002). A direct payment creates no
 Customer, increments no Billable unit, and must never be counted against a Stripe meter or a
