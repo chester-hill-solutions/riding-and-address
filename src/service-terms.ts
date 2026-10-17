@@ -108,7 +108,7 @@ export function createServiceTerms(origin: string): ServiceTerms {
       {
         id: 'mcp',
         transport: 'mcp',
-        description: 'MCP server exposing the read-only lookup_riding tool.',
+        description: 'MCP server exposing the riding lookup, and the quote tools for a paid lookup or area search.',
         endpoints: [`${origin}/mcp`],
       },
       {

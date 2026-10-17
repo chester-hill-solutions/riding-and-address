@@ -69,6 +69,11 @@ export function createMcpServerCard(origin: string): unknown {
           description:
             'Request a free, expiring offer for a lookup, bound to the inputs, dataset vintage and a maximum price.',
         },
+        {
+          name: 'quote_area',
+          description:
+            'Request a free, expiring offer for an address search within a riding or a caller-supplied shape, priced in 250-record units.',
+        },
       ],
       resources: [],
       prompts: [],

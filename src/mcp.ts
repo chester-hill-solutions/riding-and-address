@@ -1,7 +1,7 @@
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { handleLookupRequest } from './lookup-handler';
-import { handleQuoteRequest } from './offers';
+import { AREA_MAX_RESULTS, AREA_UNIT_RECORDS, handleQuoteRequest } from './offers';
 import { type LookupRidingFn } from './lookup-expansion';
 import type { KeyAuthResult } from './api-keys';
 import type { RouteContext } from './route-context';
@@ -26,6 +26,31 @@ const LOOKUP_TOOL_SCHEMA = z.object({
 });
 
 type LookupToolArgs = z.infer<typeof LOOKUP_TOOL_SCHEMA>;
+
+/**
+ * The area quote's inputs. An area search is bounded either by a riding — resolved in a boundary
+ * dataset — or by a caller-supplied shape, never both. The price is a whole number of
+ * 250-record units, so the ceiling is charged, not the page count.
+ */
+const AREA_TOOL_SCHEMA = z.object({
+  riding: z.string().min(1).max(200).optional().describe(
+    'A riding id or name, resolved in the chosen boundary dataset. Provide this or boundary, not both.'
+  ),
+  boundary: z.record(z.string(), z.unknown()).optional().describe(
+    'A WGS84 GeoJSON Polygon or MultiPolygon. Provide this or riding, not both. Requires province.'
+  ),
+  province: z.string().min(2).max(80).optional().describe(
+    'Two-letter province. Required with boundary: polygon queries are province-scoped.'
+  ),
+  dataset: z.enum(DATASETS).optional().describe(
+    'The boundary dataset to resolve a riding in: federal (default) or a province/territory code.'
+  ),
+  maximum_results: z.number().int().positive().optional().describe(
+    `The most records to buy, up to ${AREA_MAX_RESULTS}. Priced in ${AREA_UNIT_RECORDS}-record units.`
+  ),
+});
+
+type AreaToolArgs = z.infer<typeof AREA_TOOL_SCHEMA>;
 
 /**
  * Validate the shared lookup inputs and build the query a lookup or quote route expects. Shared so
@@ -65,8 +90,49 @@ function lookupQueryFor(
   return { query, dataset };
 }
 
-/** The quote tool's result: an offer, or the API's own error code. */
-const QUOTE_OUTPUT_SCHEMA = z.object({
+/**
+ * Build the `/api/quote` request an area quote needs. A riding travels in the query string; a shape
+ * cannot, so it goes in a POST body together with the province it is scoped to. The route validates
+ * the shape, the dataset and the result cap, so this only decides which form to send.
+ */
+function areaQuoteRequestFor(
+  args: AreaToolArgs,
+  origin: string
+): { request: Request } | { error: string } {
+  const riding = args.riding?.trim();
+  const hasRiding = Boolean(riding);
+  const hasBoundary = args.boundary !== undefined && args.boundary !== null;
+  if (hasRiding === hasBoundary) {
+    return { error: 'Provide either riding or boundary, not both.' };
+  }
+  if (hasBoundary && !args.province) {
+    return { error: 'Provide province with a boundary; polygon queries are province-scoped.' };
+  }
+
+  if (hasBoundary) {
+    return {
+      request: new Request(`${origin}/api/quote`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          operation: 'area.search',
+          province: args.province,
+          ...(args.maximum_results !== undefined ? { maximum_results: args.maximum_results } : {}),
+          boundary: args.boundary,
+        }),
+      }),
+    };
+  }
+
+  const query = new URLSearchParams();
+  query.set('operation', 'area.search');
+  query.set('dataset', args.dataset || 'federal');
+  query.set('riding', riding as string);
+  if (args.maximum_results !== undefined) query.set('maximum_results', String(args.maximum_results));
+  return { request: new Request(`${origin}/api/quote?${query}`, { method: 'GET' }) };
+}
+
+/** The quote tool's result: an offer, or the API's own error code. */const QUOTE_OUTPUT_SCHEMA = z.object({
   ok: z.boolean(),
   offer: z.record(z.string(), z.unknown()).optional(),
   error: z
@@ -279,6 +345,49 @@ export function createCanCoderMcpHandler(options: CanCoderMcpOptions) {
       }
     );
 
+    server.registerTool(
+      'quote_area',
+      {
+        title: 'Quote an area search before paying',
+        description:
+          'Request a free, expiring offer for an address search within a riding or a caller-supplied ' +
+          `shape. Priced in ${AREA_UNIT_RECORDS}-record units, up to ${AREA_MAX_RESULTS} records per offer; ` +
+          'the accepted ceiling is charged, not the number of pages read. Requesting a quote consumes no ' +
+          'billable usage and needs no key. The offer carries a signed offerId to accept over HTTP ' +
+          '(`POST /api/quote/accept`); payment is account-free, and one acceptance covers every page.',
+        inputSchema: AREA_TOOL_SCHEMA,
+        outputSchema: QUOTE_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: true },
+      },
+      async (args) => {
+        const built = areaQuoteRequestFor(args, new URL(options.request.url).origin);
+        if ('error' in built) {
+          return quoteToolError('INVALID_ARGUMENT', built.error);
+        }
+        const { request: quoteRequest } = built;
+        const response = await handleQuoteRequest({
+          ...options.routeContext,
+          request: quoteRequest,
+          url: new URL(quoteRequest.url),
+        });
+        const body = (await response.json()) as Record<string, unknown>;
+        if (!response.ok) {
+          // The route owns validation, so its codes reach the agent unchanged: LIMIT_EXCEEDED,
+          // RIDING_NOT_FOUND, NO_ADDRESS_COVERAGE, INVALID_SHAPE, DATASET_UNAVAILABLE, …
+          return quoteToolError(
+            typeof body.code === 'string' ? body.code : 'QUOTE_ERROR',
+            typeof body.error === 'string' ? body.error : 'The quote failed.',
+            typeof body.correlationId === 'string' ? body.correlationId : undefined
+          );
+        }
+        const output = { ok: true, offer: body };
+        return {
+          content: [{ type: 'text' as const, text: responseText(output) }],
+          structuredContent: output,
+        };
+      }
+    );
+
     return server;
   }, { legacy: 'stateless' });
 }
@@ -295,8 +404,10 @@ Add this remote MCP server URL to your MCP client:
 
 \`${publicOrigin}/mcp\`
 
-The server exposes the read-only \`lookup_riding\` tool. A limited demo is available without a
-key (${DEFAULT_DEMO_RATE_LIMIT} requests per minute per IP). For metered production calls, create a CanCoder Server API key and configure your MCP client
+The server exposes three tools. \`lookup_riding\` maps a location to a riding — read-only, and free
+without a key on the demo tier (${DEFAULT_DEMO_RATE_LIMIT} requests per minute per IP). \`quote_lookup\`
+and \`quote_area\` return free, expiring offers for a paid lookup or an area search, without consuming
+usage. For metered production calls, create a CanCoder Server API key and configure your MCP client
 to send it as \`Authorization: Bearer <server-key>\`. Never paste a live key into a prompt or a
 public conversation.
 
@@ -356,6 +467,8 @@ curl -X POST "${publicOrigin}/api/quote/accept?offer=<offerId>" \\
    in \`PAYMENT-RESPONSE\`. A retry never charges twice.
 
 ## End-to-end: an area search
+
+Over MCP, call \`quote_area\` to get the same offer. Over HTTP:
 
 1. **Quote a riding** — priced in 250-record units, up to 1,000 records per offer:
 
