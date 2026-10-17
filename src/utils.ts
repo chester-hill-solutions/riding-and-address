@@ -511,6 +511,15 @@ export function getClientId(request: Request, principal?: string): string {
   return `ip:${ip}`;
 }
 
+/**
+ * Whether a hostname names the local machine. Local development serves plain HTTP and has no
+ * certificate, so anything that upgrades or canonicalises a scheme must leave loopback alone.
+ */
+export function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host.endsWith('.localhost');
+}
+
 // Generate correlation ID for request tracing
 export function generateCorrelationId(): string {
   return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

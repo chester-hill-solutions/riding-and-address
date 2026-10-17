@@ -54,8 +54,28 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `
       list is in `PUBLIC_API_HOSTS`; portal and API share the deployment.
 - [x] **Agent discovery baseline**: MCP at `/mcp`, agent setup at `/docs/agents.md`, plus
       `robots.txt`, sitemap, API linkset, and AI catalog are routed by the combined Worker.
-      These resources describe current lookup capability only; payment offers and direct agent
-      payment are not implemented.
+      These resources describe lookup capability, and the offer and area tools that are implemented
+      but currently disabled: the machine-readable terms carry no price for the paid rail until
+      `OFFER_SIGNING_SECRET` and the x402 configuration are set.
+
+## Zone TLS posture (checked 2026-10-17)
+
+The custom domain sits in a zone shared with other projects, so these are zone-wide changes and are
+deliberately **not** made unilaterally. The Worker-side redirect below covers CanCoder meanwhile.
+
+- [x] **HTTP→HTTPS redirect**: implemented in the Worker (`src/force-https.ts`), applied to every
+      request before routing. It answers a plain-HTTP request with a `308` to the same URL over HTTPS,
+      which also stops canonical `Link` headers going out as `http://`. It covers the `workers.dev`
+      hostname, which no zone setting reaches, and it leaves loopback hosts alone so local development
+      still works.
+- [ ] **Zone `always_use_https` is `off`.** Turning it on is cheaper than the Worker redirect (it
+      happens at the edge, before the Worker runs) and covers every hostname in the zone — which is
+      exactly why it needs a decision: it would force HTTPS on the other projects sharing
+      `chesterhillsolutions.ca`.
+- [ ] **Zone `ssl` is `flexible`** — Cloudflare would connect to an origin over plain HTTP. This
+      Worker has no origin, so it is not exploitable here, but any origin-backed hostname in the zone
+      would be. `full` (strict) is the correct posture.
+- [ ] **Zone `min_tls_version` is `1.0`** — should be `1.2` or higher.
 
 ## Stripe
 
