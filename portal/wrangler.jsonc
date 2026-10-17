@@ -87,12 +87,6 @@
       {
         "name": "API_KEY_USAGE",
         "class_name": "ApiKeyUsageDO"
-      },
-      // Per-payer daily spend counter for the x402 rail. Same reason as above, opposite failure
-      // direction: an unavailable counter refuses the sale rather than spending blind.
-      {
-        "name": "X402_SPEND",
-        "class_name": "X402SpendDO"
       }
     ]
   },
@@ -109,10 +103,6 @@
     {
       "tag": "v3",
       "new_sqlite_classes": ["ApiKeyUsageDO"]
-    },
-    {
-      "tag": "v4",
-      "new_sqlite_classes": ["X402SpendDO"]
     }
   ],
 
@@ -251,8 +241,7 @@
         "bindings": [
           { "name": "QUEUE_MANAGER", "class_name": "QueueManagerDO" },
           { "name": "CIRCUIT_BREAKER_DO", "class_name": "CircuitBreakerDO" },
-          { "name": "API_KEY_USAGE", "class_name": "ApiKeyUsageDO" },
-          { "name": "X402_SPEND", "class_name": "X402SpendDO" }
+          { "name": "API_KEY_USAGE", "class_name": "ApiKeyUsageDO" }
         ]
       },
       // Same as top-level: cache warm + webhook drain every 6h (not billing).

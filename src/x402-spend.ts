@@ -5,17 +5,19 @@
  * This reserves spend against a per-payer daily cap *before* settlement, so a payer over its cap is
  * refused without any money moving.
  *
+ * The counter lives in the existing `ApiKeyUsageDO` rather than a new Durable Object, because a new
+ * DO class needs a migration and this Worker is deployed through Cloudflare's versioned pipeline,
+ * which cannot apply one (`10211`). The DO is a per-entity daily counter, which is exactly the shape
+ * needed; only the units differ. The *failure direction* differs by caller and stays here: the key
+ * quota fails open, this fails closed.
+ *
  * **What this bounds, and what it does not.** It bounds a runaway agent: one wallet in a retry loop
  * stops at the cap. It does not bound a determined actor, who can generate wallets freely — the cap
  * is a safety rail, not an identity control. That limitation is the honest reason the rail still
  * needs a treasury policy before it is enabled.
- *
- * Fail-closed: if the counter cannot be reached, the sale is refused. See `x402-spend-do.ts` for why
- * this differs from the per-key quota, which fails open.
  */
 
 import { utcDay } from './time';
-import { fromMicroUsd, toMicroUsd } from './x402-spend-do';
 import type { Env } from './types';
 
 /**
@@ -23,6 +25,17 @@ import type { Env } from './types';
  * it with `X402_PAYER_DAILY_CAP_USD` once there is a treasury policy to size it against.
  */
 export const DEFAULT_X402_PAYER_DAILY_CAP_USD = 25;
+
+/** Micro-USD, the unit the counter stores. Half a cent is 5000, which cents could not express. */
+const MICRO_USD = 1_000_000;
+
+export function toMicroUsd(usd: number): number {
+  return Math.round(usd * MICRO_USD);
+}
+
+export function fromMicroUsd(micro: number): number {
+  return micro / MICRO_USD;
+}
 
 /** The cap in USD. `0` disables the control (the rail then relies on the offer ceiling alone). */
 export function payerDailyCapUsd(env: Env): number {
@@ -40,8 +53,9 @@ export type SpendReservation =
   | { ok: false; reason: 'cap_exceeded' | 'counter_unavailable'; spentUsd: number; capUsd: number };
 
 function stubFor(env: Env, payer: string) {
-  // Lower-cased: one address must not get two counters because of checksum casing.
-  return env.X402_SPEND!.get(env.X402_SPEND!.idFromName(`payer:${payer.toLowerCase()}`));
+  // Lower-cased: one address must not get two counters because of checksum casing. The `payer:`
+  // prefix keeps a wallet address from ever colliding with an API key id in the same DO.
+  return env.API_KEY_USAGE!.get(env.API_KEY_USAGE!.idFromName(`payer:${payer.toLowerCase()}`));
 }
 
 /**
@@ -56,23 +70,20 @@ export async function reservePayerSpend(
 ): Promise<SpendReservation> {
   const capUsd = payerDailyCapUsd(env);
   if (capUsd <= 0) return { ok: true, spentUsd: 0, capUsd };
-  if (!env.X402_SPEND) {
+  if (!env.API_KEY_USAGE) {
     // An unavailable counter must not mean unbounded spend.
     return { ok: false, reason: 'counter_unavailable', spentUsd: 0, capUsd };
   }
 
   try {
     const response = await stubFor(env, payer).fetch(
-      `https://x402-spend/reserve?day=${utcDay(nowMs)}&amount=${toMicroUsd(amountUsd)}&cap=${toMicroUsd(capUsd)}`,
+      `https://usage/spend/reserve?day=${utcDay(nowMs)}&amount=${toMicroUsd(amountUsd)}&cap=${toMicroUsd(capUsd)}`,
       { method: 'POST' }
     );
     const body = (await response.json()) as { allowed: boolean; spent: number; cap: number };
-    return {
-      ok: body.allowed,
-      ...(body.allowed ? {} : { reason: 'cap_exceeded' as const }),
-      spentUsd: fromMicroUsd(body.spent),
-      capUsd: fromMicroUsd(body.cap),
-    } as SpendReservation;
+    return body.allowed
+      ? { ok: true, spentUsd: fromMicroUsd(body.spent), capUsd: fromMicroUsd(body.cap) }
+      : { ok: false, reason: 'cap_exceeded', spentUsd: fromMicroUsd(body.spent), capUsd: fromMicroUsd(body.cap) };
   } catch (error) {
     console.warn(`[X402] spend counter unavailable for ${payer}:`, error);
     return { ok: false, reason: 'counter_unavailable', spentUsd: 0, capUsd };
@@ -90,10 +101,10 @@ export async function releasePayerSpend(
   amountUsd: number,
   nowMs: number = Date.now()
 ): Promise<void> {
-  if (!env.X402_SPEND || amountUsd <= 0) return;
+  if (!env.API_KEY_USAGE || amountUsd <= 0) return;
   try {
     await stubFor(env, payer).fetch(
-      `https://x402-spend/release?day=${utcDay(nowMs)}&amount=${toMicroUsd(amountUsd)}`,
+      `https://usage/spend/release?day=${utcDay(nowMs)}&amount=${toMicroUsd(amountUsd)}`,
       { method: 'POST' }
     );
   } catch (error) {

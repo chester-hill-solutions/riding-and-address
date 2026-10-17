@@ -5,7 +5,7 @@ import { UploadJobs } from './upload-jobs';
 // `utcDay`/`utcMonth` live in `src/time.ts`; import them from there.
 
 /**
- * Per-key daily request counter — the fuse behind the browser API keys.
+ * Per-entity daily counters — the fuse behind the browser API keys, and the x402 spend cap.
  *
  * Canada Post gives you a daily spend limit; Google just makes you "financially responsible for
  * charges caused by abuse of unrestricted API keys". Since a public key leaking is a when, not an
@@ -13,7 +13,13 @@ import { UploadJobs } from './upload-jobs';
  *
  * A Durable Object rather than KV: KV is eventually consistent and rate-limits writes to roughly
  * one per second per key, so a KV counter under real traffic would both undercount and throttle.
- * A DO gives serialized, correct increments, and one instance per key keeps them independent.
+ * A DO gives serialized, correct increments, and one instance per entity keeps them independent.
+ *
+ * Two callers share this class because the shape is identical — a per-entity daily counter — even
+ * though the units are not: the key quota counts requests, the x402 cap counts micro-USD. The
+ * *failure direction* differs by caller, not here: the key quota fails open (a counter outage should
+ * degrade billing accuracy, not break search), the spend cap fails closed (an outage must not mean
+ * spending blind). That lives in the two client functions, deliberately.
  */
 export class ApiKeyUsageDO {
   private state: DurableObjectState;
@@ -36,6 +42,44 @@ export class ApiKeyUsageDO {
       });
     }
     if (url.pathname.startsWith('/uploads/')) return this.uploads.handle(request);
+
+    // The x402 per-payer spend cap. Amounts are micro-USD: the point price is half a cent, so
+    // counting in cents would round it to zero. A transaction, not a bare read-then-write, so two
+    // concurrent accepts by one payer cannot both pass the check.
+    if (url.pathname.startsWith('/spend/') && request.method === 'POST') {
+      const day = url.searchParams.get('day') || utcDay(Date.now());
+      const amount = Math.max(0, parseInt(url.searchParams.get('amount') || '0', 10) || 0);
+      const spendKey = `spend:${day}`;
+
+      if (url.pathname === '/spend/reserve') {
+        const cap = Math.max(0, parseInt(url.searchParams.get('cap') || '0', 10) || 0);
+        const result = await this.state.storage.transaction(async txn => {
+          const spent = (await txn.get<number>(spendKey)) || 0;
+          if (cap > 0 && spent + amount > cap) {
+            // Refuse without incrementing: a blocked request must not inflate the counter.
+            return { allowed: false, spent, cap, day };
+          }
+          const next = spent + amount;
+          await txn.put(spendKey, next);
+          return { allowed: true, spent: next, cap, day };
+        });
+        if (result.allowed) await this.pruneOldSpend(day);
+        return json(result);
+      }
+
+      if (url.pathname === '/spend/release') {
+        const spent = await this.state.storage.transaction(async txn => {
+          const current = (await txn.get<number>(spendKey)) || 0;
+          const next = Math.max(0, current - amount);
+          await txn.put(spendKey, next);
+          return next;
+        });
+        return json({ allowed: true, spent, cap: 0, day });
+      }
+
+      return new Response('Not found', { status: 404 });
+    }
+
     const period =
       url.searchParams.get('month') ||
       url.searchParams.get('day') ||
@@ -77,6 +121,20 @@ export class ApiKeyUsageDO {
   }
 
   async alarm(): Promise<void> { await this.uploads.alarm(); }
+
+  /** Keep a short window for spend; without this the object accretes a row per payer-day forever. */
+  private async pruneOldSpend(currentDay: string): Promise<void> {
+    if (Math.random() > 0.01) return;
+    try {
+      const entries = await this.state.storage.list<number>({ prefix: 'spend:' });
+      const cutoff = utcDay(Date.parse(`${currentDay}T00:00:00Z`) - 7 * 86_400_000);
+      for (const key of entries.keys()) {
+        if (key.slice('spend:'.length) < cutoff) await this.state.storage.delete(key);
+      }
+    } catch (error) {
+      console.warn('[ApiKeyUsageDO] spend prune failed:', error);
+    }
+  }
 
   /** Keep only a short window; without this every key accretes a row per day forever. */
   private async pruneOldDays(currentDay: string): Promise<void> {

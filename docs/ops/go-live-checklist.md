@@ -46,9 +46,9 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `
         before the security review and the stablecoin treasury policy in ADR 0007
   - [ ] `X402_RPC_URL` — EVM JSON-RPC endpoint used by `POST /api/x402/reconcile` to confirm
         settlements on chain; that route fails closed (`503 RECONCILE_UNAVAILABLE`) without it
-  - [ ] **`X402_SPEND` Durable Object binding** — the per-payer daily spend cap (security review
-        item 4). Declared in `portal/wrangler.jsonc` with migration `v4`; required whenever the rail
-        is enabled, because `reservePayerSpend` fails **closed** without it. Tune the cap with
+  - [ ] **Per-payer spend cap** — `reservePayerSpend` counts spend in the existing `API_KEY_USAGE`
+        Durable Object (no new binding; see the migration note below) and fails **closed** if it is
+        unavailable, so the rail cannot take money it cannot cap. Tune with
         `X402_PAYER_DAILY_CAP_USD` (default `$25` per payer per UTC day; `0` disables the control).
   - [x] `PAID_RATE_LIMIT` — the paid rail's own throttle bucket (`100`/min in both environments),
         separate from `DEMO_RATE_LIMIT` so a paying caller on a shared egress IP is not throttled by
@@ -68,6 +68,11 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `
 - **Setting a secret needs the latest version deployed.** The secrets API refuses with error `10215`
   while a newer version exists that has not been deployed, which is the normal state for a minute or
   two after a Workers Build. Wait for the deployment to land (or deploy the version first).
+- **A new Durable Object class cannot ship through the normal pipeline.** Cloudflare rejects a
+  versioned upload that carries a DO migration with error `10211` — "migrations must be fully applied
+  via a non-versioned deployment" — and Workers Builds deploys by version. Adding a DO class needs a
+  one-time non-versioned `wrangler deploy` from a machine with valid wrangler credentials first. This
+  is why the x402 spend cap reuses `ApiKeyUsageDO` rather than adding a class of its own.
 - [x] **Production hosts**: the combined Worker serves the custom domain
       `https://cancoder.chesterhillsolutions.ca` and the `workers.dev` host
       `https://riding-lookup.chester-hill-solutions.workers.dev`. The host-aware public resource

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { handleAcceptRequest, handleQuoteRequest } from '../src/offers';
 import { createRouteContext, type RouteContext } from '../src/route-context';
 import { createLookupTestEnv, TORONTO_LAT, TORONTO_LON } from './helpers/lookup-test-env';
-import { fakeSpendNamespace } from './helpers/fake-spend-do';
+import { fakeUsageNamespace } from './helpers/fake-usage-do';
 import { PAYMENT_REQUIRED_HEADER, PAYMENT_RESPONSE_HEADER, PAYMENT_SIGNATURE_HEADER } from '../src/x402';
 import type { Env } from '../src/types';
 
@@ -59,7 +59,7 @@ function baseEnv(overrides: Partial<Env> = {}): Env {
     ...X402_ENV,
     X402_RECEIPTS: fakeKv(),
     // The spend cap fails closed, so the paid path needs this binding to reach settlement at all.
-    X402_SPEND: fakeSpendNamespace(),
+    API_KEY_USAGE: fakeUsageNamespace(),
     ...overrides,
   } as unknown as Env;
 }
@@ -173,7 +173,7 @@ describe('POST /api/quote/accept', () => {
   });
 
   it('refuses rather than spending blind when the spend counter is unbound', async () => {
-    const env = baseEnv({ X402_SPEND: undefined });
+    const env = baseEnv({ API_KEY_USAGE: undefined });
     const spy = stubFacilitator();
 
     const response = await handleAcceptRequest(

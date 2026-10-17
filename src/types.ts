@@ -75,11 +75,6 @@ export interface Env {
    */
   X402_RECEIPTS?: KVNamespace;
   /**
-   * Per-payer daily spend counter (security review item 4). Required whenever the rail is enabled:
-   * `reservePayerSpend` fails closed without it, so the rail cannot take money it cannot cap.
-   */
-  X402_SPEND?: DurableObjectNamespace;
-  /**
    * Per-payer daily spend cap in USD. Conservative default; `0` disables the control.
    */
   X402_PAYER_DAILY_CAP_USD?: string;

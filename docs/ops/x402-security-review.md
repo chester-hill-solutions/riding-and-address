@@ -46,12 +46,15 @@ Object ledger (ADR 0002) are out of scope and unchanged.
    follow the v2 contract but have never been exercised against a real facilitator. A mis-shape fails
    closed (no charge) but also means the rail simply does not work. **Confirm against the chosen
    facilitator before enabling.**
-4. **Per-payer spend cap — addressed 2026-10-17.** `X402SpendDO` (`src/x402-spend-do.ts`) counts
-   spend per payer per UTC day, and `reservePayerSpend` refuses past the cap **before** settlement, so
-   a capped payer is refused without money moving. The reservation is released only when we know no
-   money moved (a failed or errored settlement); a **pending** settlement keeps it, because the money
-   may still confirm — over-counting caps a payer early, never overspends. Fails **closed** when the
-   counter is unreachable, unlike the per-key quota DO, which fails open.
+4. **Per-payer spend cap — addressed 2026-10-17.** `reservePayerSpend` (`src/x402-spend.ts`) counts
+   spend per payer per UTC day and refuses past the cap **before** settlement, so a capped payer is
+   refused without money moving. The counter lives in the existing `ApiKeyUsageDO` (`/spend/reserve`,
+   `/spend/release`), because a new DO class needs a migration that the versioned deploy pipeline
+   cannot apply (`10211`); the DO is already a per-entity daily counter, and the differing *failure
+   direction* lives in the clients — the key quota fails open, this fails closed. The reservation is
+   released only when we know no money moved (a failed or errored settlement); a **pending**
+   settlement keeps it, because the money may still confirm — over-counting caps a payer early, never
+   overspends. Fails **closed** when the counter is unreachable.
    **What it does not do:** it bounds a runaway agent — one wallet in a retry loop — not a determined
    actor, who can generate wallets freely. That is why a treasury policy remains a prerequisite
    rather than a substitute. Default `$25`/day per payer, tunable with `X402_PAYER_DAILY_CAP_USD`;

@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { fromMicroUsd, toMicroUsd } from '../src/x402-spend-do';
 import {
   DEFAULT_X402_PAYER_DAILY_CAP_USD,
   payerDailyCapUsd,
   releasePayerSpend,
   reservePayerSpend,
 } from '../src/x402-spend';
-import { fakeSpendNamespace, newSpendDO } from './helpers/fake-spend-do';
+import { fromMicroUsd, toMicroUsd } from '../src/x402-spend';
+import { fakeUsageNamespace, newUsageDO } from './helpers/fake-usage-do';
 import { createLookupTestEnv } from './helpers/lookup-test-env';
 import type { Env } from '../src/types';
 
@@ -21,7 +21,7 @@ const PAYER = '0xAbC0000000000000000000000000000000000001';
 const envWith = (overrides: Partial<Env> = {}): Env =>
   ({
     ...createLookupTestEnv(),
-    X402_SPEND: fakeSpendNamespace(),
+    API_KEY_USAGE: fakeUsageNamespace(),
     X402_PAYER_DAILY_CAP_USD: '0.01',
     ...overrides,
   }) as unknown as Env;
@@ -76,13 +76,13 @@ describe('reservePayerSpend', () => {
   });
 
   it('refuses when the counter is unbound, rather than spending blind', async () => {
-    const result = await reservePayerSpend(envWith({ X402_SPEND: undefined }), PAYER, 0.005);
+    const result = await reservePayerSpend(envWith({ API_KEY_USAGE: undefined }), PAYER, 0.005);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe('counter_unavailable');
   });
 
   it('skips the control entirely when the cap is 0', async () => {
-    const env = envWith({ X402_PAYER_DAILY_CAP_USD: '0', X402_SPEND: undefined });
+    const env = envWith({ X402_PAYER_DAILY_CAP_USD: '0', API_KEY_USAGE: undefined });
     expect((await reservePayerSpend(env, PAYER, 999)).ok).toBe(true);
   });
 });
@@ -104,14 +104,14 @@ describe('releasePayerSpend', () => {
   });
 
   it('is a no-op without a binding, so it cannot fail the request that called it', async () => {
-    await expect(releasePayerSpend(envWith({ X402_SPEND: undefined }), PAYER, 0.005)).resolves.toBeUndefined();
+    await expect(releasePayerSpend(envWith({ API_KEY_USAGE: undefined }), PAYER, 0.005)).resolves.toBeUndefined();
   });
 });
 
-describe('X402SpendDO', () => {
+describe('the spend counter in ApiKeyUsageDO', () => {
   it('does not increment a refused reservation', async () => {
-    const instance = newSpendDO();
-    const call = (path: string) => instance.fetch(new Request(`https://x402-spend${path}`, { method: 'POST' }));
+    const instance = newUsageDO();
+    const call = (path: string) => instance.fetch(new Request(`https://usage/spend${path}`, { method: 'POST' }));
 
     await call('/reserve?day=2026-10-17&amount=5000&cap=10000');
     await call('/reserve?day=2026-10-17&amount=5000&cap=10000');
@@ -124,8 +124,8 @@ describe('X402SpendDO', () => {
   });
 
   it('counts each UTC day separately', async () => {
-    const instance = newSpendDO();
-    const call = (path: string) => instance.fetch(new Request(`https://x402-spend${path}`, { method: 'POST' }));
+    const instance = newUsageDO();
+    const call = (path: string) => instance.fetch(new Request(`https://usage/spend${path}`, { method: 'POST' }));
     await call('/reserve?day=2026-10-17&amount=10000&cap=10000');
     expect((await (await call('/reserve?day=2026-10-18&amount=10000&cap=10000')).json() as { allowed: boolean }).allowed).toBe(true);
   });
