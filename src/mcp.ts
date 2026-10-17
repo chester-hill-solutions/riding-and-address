@@ -315,17 +315,75 @@ by Canada Post. The tool returns a structured result with an \`ok\` flag. When \
 or coordinates; \`INVALID_ARGUMENT\` means fix the tool call; any other code is the API's own error
 (for example \`DATASET_UNAVAILABLE\` or \`RATE_LIMIT_EXCEEDED\`).
 
-## Machine-readable terms
+## Discover first
 
-Capabilities, price, free tier, data coverage, auth, and error codes are published as JSON at
-\`${publicOrigin}/.well-known/cancoder.json\`, and the OpenAPI description is at
-\`${publicOrigin}/api/docs\`.
+Everything an agent needs is published, so nothing has to be scraped:
 
-## Quoting before paying
+- \`${publicOrigin}/.well-known/cancoder.json\` — capabilities, price, free tier, coverage, auth, errors
+- \`${publicOrigin}/llms.txt\` — a short index of the resources below
+- \`${publicOrigin}/.well-known/ai-catalog.json\` — ARD manifest: this API and the MCP server
+- \`${publicOrigin}/.well-known/mcp/server-card.json\` — the MCP server's tools
+- \`${publicOrigin}/auth.md\` — how credentials work, and how to get one
+- \`${publicOrigin}/api/docs\` — the OpenAPI description
 
-\`GET ${publicOrigin}/api/quote\` returns a free, expiring offer bound to your inputs, the boundary
-dataset vintage and a maximum price. Requesting a quote consumes no billable usage and needs no key.
-Pass \`dataset\` to quote a provincial or combined lookup (federal by default). The MCP server exposes
-the same thing as the \`quote_lookup\` tool.
+## End-to-end: a free lookup
+
+\`\`\`bash
+curl "${publicOrigin}/api/federal?postal=K1A0A6"
+\`\`\`
+
+No key, rate limited per IP, not billable. Over MCP, call \`lookup_riding\`.
+
+## End-to-end: quote, pay, retrieve
+
+A priced call is quoted first, and payment is account-free — no signup, no key.
+
+1. **Quote.** Free, expiring, and bound to your inputs and a maximum price.
+
+\`\`\`bash
+curl "${publicOrigin}/api/quote?postal=K1A0A6"
+\`\`\`
+
+2. **Accept.** Unpaid, this answers \`402\` with the requirements in the \`PAYMENT-REQUIRED\` header.
+   Retry with a signed payment payload:
+
+\`\`\`bash
+curl -X POST "${publicOrigin}/api/quote/accept?offer=<offerId>" \\
+  -H "PAYMENT-SIGNATURE: <base64 payment payload>"
+\`\`\`
+
+3. **Retrieve.** A settled call returns the quoted result and a receipt, with the settlement echoed
+   in \`PAYMENT-RESPONSE\`. A retry never charges twice.
+
+## End-to-end: an area search
+
+1. **Quote a riding** — priced in 250-record units, up to 1,000 records per offer:
+
+\`\`\`bash
+curl "${publicOrigin}/api/quote?operation=area.search&dataset=on&riding=Ottawa%20Centre&maximum_results=500"
+\`\`\`
+
+   For a caller-supplied shape, POST the boundary (a WGS84 Polygon or MultiPolygon). Polygon queries
+   are province-scoped:
+
+\`\`\`bash
+curl -X POST "${publicOrigin}/api/quote" -H "content-type: application/json" \\
+  -d '{"operation":"area.search","province":"ON","maximum_results":500,"boundary":{"type":"Polygon","coordinates":[[[-79.4,43.6],[-79.3,43.6],[-79.3,43.7],[-79.4,43.7],[-79.4,43.6]]]}}'
+\`\`\`
+
+2. **Accept** it as above, resending the boundary when you quoted a shape. Page one comes back with
+   a \`page.cursor\`.
+
+3. **Page** until \`page.hasMore\` is false. One accepted offer covers every page — pages are
+   delivery, not charges.
+
+\`\`\`bash
+curl "${publicOrigin}/api/area?cursor=<cursor>"                              # riding-bounded
+curl -X POST "${publicOrigin}/api/area" -H "content-type: application/json" \\
+  -d '{"cursor":"<cursor>","boundary":{...}}'                                # caller-supplied shape
+\`\`\`
+
+If a response is marked \`page.truncated\`, the result reached the ceiling you paid for: request a
+larger offer rather than expecting more pages.
 `;
 }
