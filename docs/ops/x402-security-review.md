@@ -59,6 +59,10 @@ Object ledger (ADR 0002) are out of scope and unchanged.
    **Confirmed 2026-10-17:** a real testnet payment settled through `/settle` against the live staging
    rail, and the receipt was read back from the store — offer, settlement transaction, amount, scope,
    payer and `delivered: false`. See item 5 for the replay result.
+   **What this does *not* establish, and was over-claimed:** the **delivery leg was never exercised**.
+   That payment settled and then failed delivery, so verify and settle are proven and delivery is not.
+   Nor does it establish direct-CDP authentication, which is a separate gap
+   ([#176](https://github.com/chester-hill-solutions/riding-and-address/issues/176)).
    Runbook and known-good list: `docs/ops/x402-facilitator-verification.md`.
 
 4. **Per-payer spend cap — addressed 2026-10-17, with three correctness fixes on review.** The

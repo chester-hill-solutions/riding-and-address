@@ -56,7 +56,15 @@ one URL, so switching later is a config change.
 **Recommended:** CDP (or another managed facilitator) for production; the public one for the testnet
 run.
 
-**Answer:** **A managed production facilitator — agreed 2026-10-17.** Coinbase CDP is the default choice; its API key drops into `X402_FACILITATOR_TOKEN`, which the rail already supports. Not the public testnet one, which x402's own docs say is not for production.
+**Answer:** **A managed production facilitator — agreed 2026-10-17, with an implementation gap.**
+Coinbase CDP is the default choice, but **a CDP API key cannot simply be pasted into
+`X402_FACILITATOR_TOKEN`**: direct CDP x402 endpoints require signed, short-lived, request-specific
+JWTs (key id and secret, bound to HTTP method, host and path, ~120s expiry), and a generated JWT is
+not ongoing authentication either. That is
+[#176](https://github.com/chester-hill-solutions/riding-and-address/issues/176), and it must be built
+before CDP can be used. Static-Bearer facilitators (which need no account) are a separate, valid mode
+and need no such work — but choosing one is a decision, not a default. Not the public testnet one,
+which x402's own docs say is not for production.
 
 ## 4. Who reconciles, and how often?
 
