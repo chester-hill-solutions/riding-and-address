@@ -53,7 +53,9 @@ Object ledger (ADR 0002) are out of scope and unchanged.
    the field the facilitator uses. **Still to confirm:** a signed payload through `/settle` and a
    real Worker. Two findings from the check: the v2 payload must echo `accepted`, and facilitators do
    not necessarily advertise the token in `/supported`. Runbook and known-good list:
-   `docs/ops/x402-facilitator-verification.md`.
+   `docs/ops/x402-facilitator-verification.md`. That runbook also records how Cloudflare's own
+   guidance compares: their recommended flow matches this one step for step, and the facilitator
+   verified here is the one they recommend.
 4. **Per-payer spend cap — addressed 2026-10-17, with three correctness fixes on review.** The
    initial implementation (#154) had three defects, all filed and fixed:
    - **#158 — it failed open.** The cap was skipped entirely when the payload named no payer, so it
