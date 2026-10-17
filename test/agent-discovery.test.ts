@@ -59,6 +59,7 @@ describe('MCP Server Card', () => {
     expect(toolNames).toContain('lookup_riding');
     expect(toolNames).toContain('quote_lookup');
     expect(toolNames).toContain('quote_area');
+    expect(toolNames).toContain('purchase');
   });
 });
 

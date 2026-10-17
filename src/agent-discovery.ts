@@ -74,6 +74,11 @@ export function createMcpServerCard(origin: string): unknown {
           description:
             'Request a free, expiring offer for an address search within a riding or a caller-supplied shape, priced in 250-record units.',
         },
+        {
+          name: 'purchase',
+          description:
+            'Hand a payment-setup step to the person using the client, then report their account state. Charges nothing itself.',
+        },
       ],
       resources: [],
       prompts: [],

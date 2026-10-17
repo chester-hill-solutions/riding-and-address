@@ -1,5 +1,13 @@
-import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
+import { createMcpHandler, McpServer, inputRequired } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import {
+  PURCHASE_INPUT_KEY,
+  accountSummary,
+  createPurchaseCodec,
+  purchaseMessage,
+  purchaseUrl,
+  type PurchaseRequestState,
+} from './mcp-purchase';
 import { handleLookupRequest } from './lookup-handler';
 import { AREA_MAX_RESULTS, AREA_UNIT_RECORDS, handleQuoteRequest } from './offers';
 import { type LookupRidingFn } from './lookup-expansion';
@@ -140,6 +148,16 @@ function areaQuoteRequestFor(
     .optional(),
 });
 
+/** The purchase tool's result: the account state, read from the server, never from the client. */
+const PURCHASE_OUTPUT_SCHEMA = z.object({
+  ok: z.boolean(),
+  summary: z.string(),
+  account: z.object({ authenticated: z.boolean() }).optional(),
+  error: z
+    .object({ code: z.string(), message: z.string(), correlationId: z.string().optional() })
+    .optional(),
+});
+
 export interface CanCoderMcpOptions {
   request: Request;
   routeContext: RouteContext;
@@ -189,7 +207,19 @@ function toolError(code: string, message: string, correlationId?: string) {
 }
 
 /** A failed quote call, in the quote tool's shape. */
-function quoteToolError(code: string, message: string, correlationId?: string) {
+function quoteToolError(code: string, message: string, correlationId?: string) {  const output = {
+    ok: false,
+    error: { code, message, ...(correlationId ? { correlationId } : {}) },
+  };
+  return {
+    isError: true,
+    content: [{ type: 'text' as const, text: responseText(output) }],
+    structuredContent: output,
+  };
+}
+
+/** A failed purchase call, in the purchase tool's shape. */
+function purchaseToolError(code: string, message: string, correlationId?: string) {
   const output = {
     ok: false,
     error: { code, message, ...(correlationId ? { correlationId } : {}) },
@@ -222,13 +252,21 @@ function unresolvedLocation(summary: string, result: Record<string, unknown>) {
 /** Build the same lookup capability for both modern and legacy MCP clients. */
 export function createCanCoderMcpHandler(options: CanCoderMcpOptions) {
   return createMcpHandler(() => {
+    // The purchase hand-off's `requestState` codec, or null when the deployment cannot sign one. A
+    // misconfigured secret must not be able to take down the free lookup tools.
+    const purchaseCodec = createPurchaseCodec(options.routeContext.env.OFFER_SIGNING_SECRET);
+
     const server = new McpServer(
       { name: 'CanCoder', version: '1.0.0' },
       {
         instructions:
           'Resolve Canadian addresses or coordinates to current federal, provincial, or combined electoral district data. ' +
           `The result includes the dataset vintage. Demo calls without a Server API key are limited to ${DEFAULT_DEMO_RATE_LIMIT} requests per minute per IP. ` +
-          'Do not treat an address match as Canada Post-certified.',
+          'Do not treat an address match as Canada Post-certified. ' +
+          'Paid work is quoted first with quote_lookup or quote_area; use purchase when a person needs to set up payment.',
+        // `requestState` round-trips through the client and is attacker-controlled on re-entry, so
+        // the seam verifies it before the handler runs (spec revision 2026-07-28).
+        ...(purchaseCodec ? { requestState: { verify: purchaseCodec.verify } } : {}),
       }
     );
 
@@ -385,6 +423,62 @@ export function createCanCoderMcpHandler(options: CanCoderMcpOptions) {
           content: [{ type: 'text' as const, text: responseText(output) }],
           structuredContent: output,
         };
+      }
+    );
+
+    server.registerTool(
+      'purchase',
+      {
+        title: 'Set up payment with a person',
+        description:
+          'Hand a payment-setup step to the person using this client, then report their account state. ' +
+          'Call it when paid work is blocked and no payment method is available: the client opens a ' +
+          'CanCoder page where the human creates an account or adds a payment method, and the call is ' +
+          'retried afterwards. It charges nothing itself, and an agent that can pay with x402 does not ' +
+          'need it. The response reports what the account actually is, not what the client said happened.',
+        inputSchema: z.object({}),
+        outputSchema: PURCHASE_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: true },
+      },
+      async (_args, ctx) => {
+        const account = accountSummary(options.auth);
+
+        if (!purchaseCodec) {
+          return purchaseToolError(
+            'PURCHASE_UNAVAILABLE',
+            'Payment setup is not available on this deployment.'
+          );
+        }
+
+        // Re-entry: the client has been round the elicitation. The seam has already verified the
+        // `requestState` (an unverifiable one never reaches here), but the response itself only says a
+        // page was shown — so what we report is read from the account, never from the response.
+        const echoed = ctx.mcpReq.inputResponses;
+        if (echoed && PURCHASE_INPUT_KEY in echoed) {
+          const output = {
+            ok: true,
+            summary: account.summary,
+            account: { authenticated: account.authenticated },
+          };
+          return {
+            content: [{ type: 'text' as const, text: responseText(output) }],
+            structuredContent: output,
+          };
+        }
+
+        const origin = new URL(options.request.url).origin;
+        return inputRequired({
+          inputRequests: {
+            [PURCHASE_INPUT_KEY]: inputRequired.elicitUrl({
+              message: purchaseMessage(account.authenticated),
+              url: purchaseUrl(origin, account.authenticated),
+            }),
+          },
+          requestState: await purchaseCodec.mint(
+            { correlationId: options.routeContext.correlationId } satisfies PurchaseRequestState,
+            ctx
+          ),
+        });
       }
     );
 
