@@ -61,6 +61,7 @@ import { checkRateLimit, getClientId, rateLimitExceededResponse, DEFAULT_RATE_LI
 import { getAgentQuickstart, createCanCoderMcpHandler } from './mcp';
 import { createUcpProfile } from './ucp-profile';
 import { createServiceTerms } from './service-terms';
+import { EvmRpcChainClient, reconcileReceipts } from './x402-reconcile';
 import { createLlmsTxt, createLlmsFullTxt } from './llms-txt';
 import {
   createAgentSkillsIndex,
@@ -101,6 +102,20 @@ async function handleScheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionC
     console.log('[Cron] Webhook cleanup completed successfully');
   } catch (error) {
     console.error('[Cron] Webhook cleanup failed:', error);
+  }
+
+  // Confirm stored x402 settlements against the chain. Only runs when the rail is configured, so it
+  // is a no-op until someone enables payments.
+  if (env.X402_RPC_URL && env.X402_RECEIPTS) {
+    try {
+      const report = await reconcileReceipts(env, new EvmRpcChainClient(env.X402_RPC_URL));
+      console.log(
+        `[Cron] x402 reconciliation: checked ${report.checked}, confirmed ${report.confirmed}, ` +
+          `failed ${report.failed}, unknown ${report.unknown}, undelivered ${report.deliveryFailed}`
+      );
+    } catch (error) {
+      console.error('[Cron] x402 reconciliation failed:', error);
+    }
   }
 }
 
