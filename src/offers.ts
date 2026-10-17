@@ -990,14 +990,6 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
     return paymentRequired(ctx, offer, config, settlement.errorReason || 'Settlement failed');
   }
 
-  // Settled. Deliver exactly what was quoted.
-  const delivery =
-    offer.operation === 'lookup.point'
-      ? { response: await deliverOffer(ctx, offer), resultCount: offer.estimate.resultCount }
-      : await deliverAreaOffer(ctx, offer, offerId, secret, boundary);
-  const delivered = delivery.response;
-  const result = await delivered.json();
-
   // A riding offer records the dataset vintage; a polygon offer records the shape hash, since there
   // is no boundary dataset to name.
   let receiptScope: Record<string, unknown>;
@@ -1010,6 +1002,10 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
     receiptScope = { datasetId: offer.scope.datasetId, datasetYear: offer.scope.datasetYear };
   }
 
+  // Record the obligation *before* delivering (#129). A delivery that throws, or a body that cannot
+  // be decoded, must not be able to lose a payment that has already moved — which is exactly what
+  // happened when delivery was awaited first. `delivered` starts false and is corrected once the
+  // result is in hand; `recordedAt` is kept stable so the correction overwrites this same key.
   const receipt: X402Receipt = {
     offerId,
     operation: offer.operation,
@@ -1019,18 +1015,44 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
     },
     amount: { currency: offer.price.currency, value: offer.price.maximum },
     scope: receiptScope,
-    resultCount: delivery.resultCount,
-    delivered: delivered.ok,
+    resultCount: 0,
+    delivered: false,
     /** Where a refund would go if this was settled but not delivered. */
     payer: payer ?? undefined,
     correlationId,
     recordedAt: new Date().toISOString(),
   };
-  await recordReceipt(env, receipt);
+  let persisted = await recordReceipt(env, receipt);
+
+  // Deliver exactly what was quoted.
+  let delivered: Response;
+  let result: unknown;
+  let resultCount = 0;
+  try {
+    const delivery =
+      offer.operation === 'lookup.point'
+        ? { response: await deliverOffer(ctx, offer), resultCount: offer.estimate.resultCount }
+        : await deliverAreaOffer(ctx, offer, offerId, secret, boundary);
+    delivered = delivery.response;
+    resultCount = delivery.resultCount;
+    result = await delivered.json();
+  } catch (error) {
+    // Charged, not delivered, and already recorded as such above — the case reconciliation credits.
+    // A retry must never re-charge. A durable credit/refund path is the follow-up named in ADR 0007.
+    console.error(
+      `[X402] settled but delivery threw for offer ${offerId} (transaction ${settlement.transaction ?? 'unknown'}):`,
+      error
+    );
+    return badRequest(
+      'Payment settled but delivery failed; contact support with this correlation id',
+      502,
+      'SETTLEMENT_DELIVERY_FAILED',
+      correlationId
+    );
+  }
 
   if (!delivered.ok) {
-    // Charged but not delivered: the receipt records it so reconciliation can credit it, and a
-    // retry must never re-charge. A durable credit/refund path is the follow-up named in ADR 0007.
+    // Also already recorded as an undelivered obligation.
     console.error(
       `[X402] settled but delivery failed (${delivered.status}) for offer ${offerId}: ${settlement.transaction ?? 'no-tx'}`
     );
@@ -1042,7 +1064,22 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
     );
   }
 
-  return new Response(JSON.stringify({ receipt, result }), {
+  // Delivered: correct the record. If this write fails the receipt stays `delivered: false`, which
+  // reads as an obligation to review — the safe direction, since no money is lost and the second
+  // attempt may well succeed where the first did not.
+  const confirmed: X402Receipt = { ...receipt, resultCount, delivered: true };
+  persisted = (await recordReceipt(env, confirmed)) || persisted;
+
+  if (!persisted) {
+    // The money moved and there is no durable record of it. Not reported as success, and the whole
+    // receipt goes to Workers Logs as one structured line so the settlement can be recovered from
+    // the transaction hash. See docs/ops/x402-receipts-durability.md for the residual gap.
+    console.error(
+      `[X402] RECEIPT NOT PERSISTED after settlement — recover from this line: ${JSON.stringify(confirmed)}`
+    );
+  }
+
+  return new Response(JSON.stringify({ receipt: confirmed, result, receiptPersisted: persisted }), {
     headers: {
       'content-type': 'application/json; charset=UTF-8',
       'cache-control': 'no-store',
@@ -1051,3 +1088,4 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
     },
   });
 }
+

@@ -41,7 +41,9 @@ Object ledger (ADR 0002) are out of scope and unchanged.
    A business decision, and a prerequisite.
 2. **The refund path is manual.** A settled-but-undelivered result is *recorded* (`delivered: false`,
    `payer`), and an operator can send an on-chain refund — but there is no automated credit/refund.
-   Until there is, an undelivered result is a support ticket.
+   Until there is, an undelivered result is a support ticket. The record is now written **before**
+   delivery is attempted, so a delivery failure cannot lose it; what happens when the receipt store
+   itself is down is named in `docs/ops/x402-receipts-durability.md`.
 3. **The facilitator envelope is unverified — tooling ready, verification outstanding.** The `/verify`
    and `/settle` request and response shapes follow the v2 contract but have never been exercised
    against a real facilitator. A mis-shape fails closed (no charge) but also means the rail simply

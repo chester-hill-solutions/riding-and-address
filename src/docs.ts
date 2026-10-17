@@ -447,7 +447,10 @@ export function createOpenAPISpec(baseUrl: string) {
             },
           ],
           responses: {
-            "200": { description: "Payment settled: the quoted lookup plus a machine-readable receipt" },
+            "200": {
+              description:
+                "Payment settled: the quoted lookup plus a machine-readable receipt. The body carries `receiptPersisted` — false means the receipt could not be stored durably, so keep the copy you were sent",
+            },
             "400": { description: "OFFER_REQUIRED, PAYMENT_MALFORMED, or INVALID_QUERY" },
             "402": {
               description:
