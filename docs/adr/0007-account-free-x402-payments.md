@@ -51,6 +51,9 @@ never reported as success, and the response carries `receiptPersisted` so a call
 residual gap — a receipt-store outage during a settlement — is named in
 `docs/ops/x402-receipts-durability.md` rather than papered over.
 
+The treasury, custody and tax decision this ADR requires is set out as a form with options and
+recommendations in `docs/ops/x402-treasury-decision.md`.
+
 **Ledger semantics.** An x402 receipt is a **separate record** from the Customer Durable Object
 ledger, which stays canonical for workspace billing only (ADR 0002). A direct payment creates no
 Customer, increments no Billable unit, and must never be counted against a Stripe meter or a
