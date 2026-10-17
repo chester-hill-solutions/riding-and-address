@@ -16,6 +16,7 @@
 import { readFileSync } from 'node:fs';
 import {
   probeSupported,
+  unsignedProbePayload,
   probeVerify,
   summariseSupported,
   type ProbeTarget,
@@ -87,29 +88,6 @@ function requirementsFor(config: Config): PaymentRequirements {
   };
 }
 
-/**
- * A structurally valid, unsigned payload in the EIP-3009 shape the `exact` scheme uses. Every field a
- * facilitator validates is present; only the signature is absent, which is the point.
- */
-function unsignedPayload(config: Config, requirements: PaymentRequirements) {
-  return {
-    x402Version: 2,
-    scheme: 'exact',
-    network: config.network,
-    payload: {
-      signature: '0x',
-      authorization: {
-        from: '0x0000000000000000000000000000000000000000',
-        to: config.payTo,
-        value: requirements.amount,
-        validAfter: '0',
-        validBefore: String(Math.floor(Date.now() / 1000) + config.maxTimeoutSeconds),
-        nonce: `0x${'0'.repeat(64)}`,
-      },
-    },
-  };
-}
-
 const results: Array<{ check: string; outcome: 'pass' | 'fail' | 'warn' | 'skip'; detail: string }> = [];
 
 function record(check: string, outcome: 'pass' | 'fail' | 'warn' | 'skip', detail: string) {
@@ -134,12 +112,19 @@ async function main() {
     record('configured network is supported', 'fail', `${config.network} is not in the advertised list`);
   } else if (supported.listsAsset === false) {
     record('configured asset is supported', 'fail', `${config.asset} is not in the advertised list`);
+  } else if (supported.listsAsset === null) {
+    // The common case: schemes and networks are listed, the token is not. Nothing to assert.
+    record(
+      'configured network is supported',
+      'pass',
+      `${config.network} is advertised (the token is not listed per scheme, so it cannot be checked here)`
+    );
   } else {
-    record('configured network and asset are advertised', 'pass', 'listed, or the shape was not parseable');
+    record('configured network and asset are advertised', 'pass', 'both listed');
   }
 
   // 2. The envelope. This is the check that item 3 is actually about.
-  const verdict = await probeVerify(target, unsignedPayload(config, requirements), requirements);
+  const verdict = await probeVerify(target, unsignedProbePayload(config, requirements), requirements);
   switch (verdict.shape) {
     case 'envelope-accepted':
       record('our /verify envelope is understood', 'pass', `rejected the payment, not the request: ${verdict.detail}`);

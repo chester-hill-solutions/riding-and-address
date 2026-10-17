@@ -104,7 +104,6 @@ export function summariseSupported(
   if (body === null || body === undefined) {
     return { reachable: false, raw: null, listsNetwork: null, listsAsset: null };
   }
-  const text = textOf(body);
   const kinds = (body as { kinds?: unknown }).kinds;
   const rows = Array.isArray(kinds) ? kinds : [];
   const networks = rows
@@ -117,10 +116,11 @@ export function summariseSupported(
   return {
     reachable: true,
     raw: body,
-    // Fall back to a substring test when the shape is not the one expected: an unparsed list should
-    // read as "cannot tell", never as "not supported".
     listsNetwork: networks.length ? networks.includes(config.network) : null,
-    listsAsset: assets.length ? assets.includes(config.asset) : text.includes(config.asset),
+    // Only an *advertised* asset list can say an asset is unsupported. Facilitators commonly list
+    // schemes and networks without naming the token, so an absent asset field means "cannot tell" —
+    // reporting false there is a false negative that sends someone chasing a non-problem.
+    listsAsset: assets.length ? assets.includes(config.asset) : null,
   };
 }
 
@@ -172,4 +172,37 @@ export async function probeSupported(target: ProbeTarget): Promise<unknown> {
   } catch {
     return null;
   }
+}
+
+/**
+ * A structurally valid, unsigned payload in the `exact` scheme's v2 shape. Every field a facilitator
+ * validates is present; only the signature is absent, which is the point.
+ *
+ * `accepted` echoes the requirement being paid, and that is load-bearing rather than decorative:
+ * checked against the live x402.org facilitator, omitting it returns a 500 — `Cannot read properties
+ * of undefined (reading 'scheme')` — while including it returns the semantic rejection this check
+ * looks for, `invalid_exact_evm_signature`, with the payer read from `payload.authorization.from`.
+ */
+export function unsignedProbePayload(
+  config: { network: string; payTo: string; maxTimeoutSeconds: number },
+  requirements: PaymentRequirements,
+  nowMs: number = Date.now()
+) {
+  return {
+    x402Version: 2,
+    scheme: 'exact',
+    network: config.network,
+    accepted: requirements,
+    payload: {
+      signature: '0x',
+      authorization: {
+        from: '0x0000000000000000000000000000000000000000',
+        to: config.payTo,
+        value: requirements.amount,
+        validAfter: '0',
+        validBefore: String(Math.floor(nowMs / 1000) + config.maxTimeoutSeconds),
+        nonce: `0x${'0'.repeat(64)}`,
+      },
+    },
+  };
 }

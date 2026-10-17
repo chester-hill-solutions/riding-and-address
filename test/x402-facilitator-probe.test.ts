@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { classifyVerifyProbe, summariseSupported } from '../scripts/lib/x402-facilitator-probe';
+import {
+  classifyVerifyProbe,
+  summariseSupported,
+  unsignedProbePayload,
+} from '../scripts/lib/x402-facilitator-probe';
 
 /**
  * The facilitator probe closes security review item 3, so its own judgement has to be trustworthy:
@@ -48,6 +52,37 @@ describe('classifyVerifyProbe', () => {
   });
 });
 
+describe('unsignedProbePayload', () => {
+  const requirements = {
+    scheme: 'exact' as const,
+    network: 'eip155:84532',
+    amount: '5000',
+    asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+    payTo: '0x209693Bc6afc0C5328bA36FaF03C514EF312287C',
+    maxTimeoutSeconds: 60,
+    extra: { name: 'USDC', version: '2' },
+  };
+  const config = { network: 'eip155:84532', payTo: requirements.payTo, maxTimeoutSeconds: 60 };
+
+  it('echoes the accepted requirement, which the live facilitators require', () => {
+    // Verified against x402.org: without this the facilitator 500s on `undefined.scheme`, and with it
+    // returns invalid_exact_evm_signature — the semantic rejection the probe is looking for.
+    const payload = unsignedProbePayload(config, requirements);
+    expect(payload.accepted).toEqual(requirements);
+  });
+
+  it('is unsigned but otherwise complete', () => {
+    const payload = unsignedProbePayload(config, requirements, Date.parse('2026-10-17T00:00:00Z'));
+    expect(payload.payload.signature).toBe('0x');
+    expect(payload.payload.authorization.from).toMatch(/^0x0{40}$/);
+    expect(payload.payload.authorization.to).toBe(requirements.payTo);
+    expect(payload.payload.authorization.value).toBe(requirements.amount);
+    // A nonce that is present and zeroed, so a facilitator validating the field finds it.
+    expect(payload.payload.authorization.nonce).toMatch(/^0x0{64}$/);
+    expect(Number(payload.payload.authorization.validBefore)).toBeGreaterThan(0);
+  });
+});
+
 describe('summariseSupported', () => {
   const config = { network: 'eip155:84532', asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' };
 
@@ -70,6 +105,17 @@ describe('summariseSupported', () => {
     // A false negative here would send someone chasing a non-problem.
     const summary = summariseSupported({ something: 'else' }, config);
     expect(summary.listsNetwork).toBeNull();
+  });
+
+  it('does not call an asset unsupported just because the facilitator omits it', () => {
+    // Real facilitators list schemes and networks without naming the token (checked against
+    // facilitator.x402.rs and x402.org). Reporting false here produced a misleading FAIL.
+    const summary = summariseSupported(
+      { kinds: [{ x402Version: 2, scheme: 'exact', network: config.network }] },
+      config
+    );
+    expect(summary.listsNetwork).toBe(true);
+    expect(summary.listsAsset).toBeNull();
   });
 
   it('reports an absent /supported without claiming anything about support', () => {
