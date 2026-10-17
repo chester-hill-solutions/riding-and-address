@@ -48,6 +48,8 @@ function envWithAddresses(rows: OdaMemoryAddressRow[], overrides: Partial<Env> =
 
 const CURSOR: AreaPageCursor = {
   id: 0,
+  // The allowance travels in the cursor: it is what bounds a continuation read (#142).
+  remaining: 250,
   scope: { riding: 'Spadina—Harbourfront', datasetId: 'federalridings-2024.geojson', datasetYear: 2024 },
   offerId: 'offer-1',
   expiresAt: new Date(Date.now() + 60_000).toISOString(),
