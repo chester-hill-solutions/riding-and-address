@@ -91,6 +91,53 @@ any real client must send it — this is a property of the v2 payload, and the h
 neither facilitator named the asset. The check now reports "cannot tell" rather than "unsupported" in
 that case — an earlier version reported a failure that was not real.
 
+## How Cloudflare recommends doing this
+
+Cloudflare documents x402 for Workers and the Agents SDK at
+`developers.cloudflare.com/agents/tools/payments/x402` (checked 2026-10-17). Their recommended flow
+is the one implemented here, step for step:
+
+| Cloudflare | This repo |
+|---|---|
+| `402` + Base64 `PAYMENT-REQUIRED` with price, token, network, merchant address | `buildPaymentRequired` (`src/x402.ts`) |
+| Client retries with `PAYMENT-SIGNATURE` | `PAYMENT_SIGNATURE_HEADER` |
+| Server verifies and settles — "directly or by calling a facilitator" | `HttpFacilitator` (`/verify`, `/settle`) |
+| `PAYMENT-RESPONSE` carries settlement confirmation | `PAYMENT_RESPONSE_HEADER` |
+
+**Their recommended facilitator is `https://x402.org/facilitator`**, "operated by Coinbase and used in
+all Cloudflare examples" — and it is the facilitator this repo's envelope was verified against
+(above). Their testnet guidance is the same as ours: `base-sepolia` with test USDC from the Circle
+faucet.
+
+### Where this repo deliberately differs
+
+**They use the SDKs; this repo hand-rolls the facilitator client.** Cloudflare points at
+`x402-hono` (Hono middleware), `@x402/evm` and `agents/x402`. This Worker is not a Hono app — it has
+its own route table — and `HttpFacilitator` is about forty lines against the documented contract. The
+trade-off is real in both directions: the SDK is less code to own, and a hand-rolled client is a
+dependency we do not have and an envelope we had to verify ourselves (which is why the harness above
+exists).
+
+**Their MCP story is `paidTool`; this product needs an offer.** `paidTool` in the Agents SDK attaches
+a **flat price per tool call**, which is a clean fit for a fixed-price tool and cannot express this
+product's pricing: an area search costs one 250-record unit per 250 records, so 300 records is $4 and
+1,000 is $8 — a function of the *inputs*. That is why the flow is quote → accept → deliver, with a
+signed offer carrying the ceiling, rather than a price on the tool.
+
+**But their MCP answer settles an open question here.** `withX402` + `paidTool` means an **MCP client
+can pay**: the 402 challenge is issued at the MCP server's HTTP transport, and the client side
+(`agents/x402`, `withX402Client`) pays and retries. So "can MCP carry a payment signature?" is
+answered — yes, at the transport, not inside a tool result. That is the shape to follow if this
+product ever offers a paid MCP tool rather than MCP-for-quoting plus HTTP-to-accept.
+
+### The managed path, and when it is real
+
+Cloudflare's **Monetization Gateway** is the edge-level version — pricing rules, x402 handshake and
+settlement at the edge, "you will not have to build the payment machinery yourself". It is in
+**closed beta, US sellers and buyers**, so it is a watch item rather than a plan. If it opens up, the
+interesting question is whether it can express input-dependent pricing like an area unit, or only
+flat per-request prices.
+
 ## Step 2 — the full journey
 
 This needs a signed payment payload. **The harness does not sign one**, on purpose: signing needs a
