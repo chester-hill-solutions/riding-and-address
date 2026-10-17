@@ -71,24 +71,33 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `
       search, which is quoted but not purchasable while the rail is off. The machine-readable terms
       still carry no price for the paid rail.
 
-## Zone TLS posture (checked 2026-10-17)
+## Zone TLS posture (applied 2026-10-17)
 
-The custom domain sits in a zone shared with other projects, so these are zone-wide changes and are
-deliberately **not** made unilaterally. The Worker-side redirect below covers CanCoder meanwhile.
+The custom domain sits in a zone shared with other projects, so these were applied as a deliberate
+pass and verified hostname by hostname. All three are now in place.
 
-- [x] **HTTP→HTTPS redirect**: implemented in the Worker (`src/force-https.ts`), applied to every
-      request before routing. It answers a plain-HTTP request with a `308` to the same URL over HTTPS,
-      which also stops canonical `Link` headers going out as `http://`. It covers the `workers.dev`
-      hostname, which no zone setting reaches, and it leaves loopback hosts alone so local development
-      still works.
-- [ ] **Zone `always_use_https` is `off`.** Turning it on is cheaper than the Worker redirect (it
-      happens at the edge, before the Worker runs) and covers every hostname in the zone — which is
-      exactly why it needs a decision: it would force HTTPS on the other projects sharing
-      `chesterhillsolutions.ca`.
-- [ ] **Zone `ssl` is `flexible`** — Cloudflare would connect to an origin over plain HTTP. This
-      Worker has no origin, so it is not exploitable here, but any origin-backed hostname in the zone
-      would be. `full` (strict) is the correct posture.
-- [ ] **Zone `min_tls_version` is `1.0`** — should be `1.2` or higher.
+- [x] **`always_use_https` = `on`.** Plain HTTP is redirected at the edge for every hostname in the
+      zone, before any Worker runs. Verified: `http://` → `301` on `chesterhillsolutions.ca`,
+      `cancoder.chesterhillsolutions.ca`, and `stow.chesterhillsolutions.ca`.
+- [x] **`ssl` = `full`.** Cloudflare now connects to origins over HTTPS. `full` rather than
+      `strict`: `strict` requires a valid, publicly trusted certificate at *every* origin in the
+      zone, and the origin-backed hostnames (Cloudflare Tunnel, Pages, a wildcard) have not been
+      verified individually. `full` encrypts without cert validation, so it cannot introduce `526`s.
+      **Raising it to `strict` is a follow-up once each origin's certificate is confirmed.**
+- [x] **`min_tls_version` = `1.2`.** Verified: TLS 1.1 is refused, TLS 1.2 and 1.3 succeed.
+
+Verified after the change, with no regressions: `chesterhillsolutions.ca` / `www` (Pages) `301`,
+`ssh` (Cloudflare Tunnel) `200`, `cancoder` / `dedupe` / `stow` (Workers) `200`.
+
+Two hostnames were **already failing before** this change and were not caused by it — worth a
+separate look:
+
+- `oc.chesterhillsolutions.ca` → `502` (tunnel not answering).
+- `*.chesterhillsolutions.ca` (wildcard → a parking service) → `530` (origin DNS error).
+
+The Worker-side redirect in `src/force-https.ts` is still in place. With `always_use_https` on it no
+longer fires for the custom domain — the edge answers first — but it remains the only cover for the
+`workers.dev` hostname, which no zone setting reaches.
 
 ## Stripe
 
