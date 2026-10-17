@@ -44,14 +44,16 @@ Object ledger (ADR 0002) are out of scope and unchanged.
    Until there is, an undelivered result is a support ticket. The record is now written **before**
    delivery is attempted, so a delivery failure cannot lose it; what happens when the receipt store
    itself is down is named in `docs/ops/x402-receipts-durability.md`.
-3. **The facilitator envelope is unverified — tooling ready, verification outstanding.** The `/verify`
-   and `/settle` request and response shapes follow the v2 contract but have never been exercised
-   against a real facilitator. A mis-shape fails closed (no charge) but also means the rail simply
-   does not work. `scripts/verify-x402-facilitator.ts` (`bun run verify:x402`) now checks it: it sends
-   a structurally valid but **unsigned** payload and confirms the facilitator rejects the *payment*
-   rather than the *request*, which distinguishes a wrong envelope from an unverifiable signature
-   without needing a wallet. **Run it against the chosen facilitator, then the full journey with a
-   signed payload, before enabling.** Runbook: `docs/ops/x402-facilitator-verification.md`.
+3. **The facilitator envelope — verified against a live testnet facilitator; settlement still to
+   confirm.** `/verify` and `/settle` follow the v2 contract, and on 2026-10-17 the envelope was
+   checked against two live testnet facilitators (`x402.org`, `facilitator.x402.rs`): both advertise
+   `exact` on Base Sepolia, and both parse our request and reject the *payment* rather than the
+   request. x402.org answers `invalid_exact_evm_signature` with the payer read from
+   `payload.authorization.from` — which is also a live confirmation that our payer extraction reads
+   the field the facilitator uses. **Still to confirm:** a signed payload through `/settle` and a
+   real Worker. Two findings from the check: the v2 payload must echo `accepted`, and facilitators do
+   not necessarily advertise the token in `/supported`. Runbook and known-good list:
+   `docs/ops/x402-facilitator-verification.md`.
 4. **Per-payer spend cap — addressed 2026-10-17, with three correctness fixes on review.** The
    initial implementation (#154) had three defects, all filed and fixed:
    - **#158 — it failed open.** The cap was skipped entirely when the payload named no payer, so it

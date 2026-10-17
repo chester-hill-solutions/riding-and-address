@@ -30,7 +30,8 @@ The harness classifies the response and is deliberately conservative: an unclear
 
 ## Step 1 — the envelope check
 
-No wallet, no funds, no Worker needed.
+No wallet, no funds, no Worker needed. **Done against a live testnet facilitator on 2026-10-17** — see
+[Known-good facilitators](#known-good-testnet-facilitators).
 
 ```bash
 export X402_FACILITATOR_URL=https://your-facilitator.example
@@ -63,6 +64,32 @@ Interpretation:
 | `FAIL … no /verify at that URL` | wrong base URL | `X402_FACILITATOR_URL` should be the base; `/verify` is appended |
 | `FAIL … could not reach` | network or DNS | check connectivity |
 | `WARN … inconclusive` | the answer did not match either pattern | **read the raw body** and decide by hand |
+
+## Known-good testnet facilitators
+
+Checked live on 2026-10-17 against `exact` on Base Sepolia (`eip155:84532`). Both are free, need no
+signup, and are **testnet only** — the x402 documentation is explicit that the public facilitator is
+not the production path.
+
+| Facilitator | `/supported` | Envelope | Notes |
+|---|---|---|---|
+| `https://x402.org/facilitator` | `exact` on `eip155:84532` ✅ | **confirmed** — `invalid_exact_evm_signature` | needs `accepted` in the payload (below) |
+| `https://facilitator.x402.rs` | `exact` on `eip155:84532` ✅ | **confirmed** | returns `unsupported_scheme` for a payload without a real signature — semantic, not structural |
+
+For production mainnet the options are a managed facilitator (Coinbase CDP, thirdweb, xpay and others
+are listed in the x402 ecosystem directory) or self-hosting `x402-rs`
+(`ghcr.io/x402-rs/x402-facilitator`). That choice belongs with the treasury decision.
+
+### Two things the live check taught us
+
+**The probe payload must echo `accepted`.** Sending only `{x402Version, scheme, network, payload}`
+makes x402.org return `500 Cannot read properties of undefined (reading 'scheme')`. Adding
+`accepted: <the requirement being paid>` produces the semantic rejection instead. Both the probe and
+any real client must send it — this is a property of the v2 payload, and the harness now pins it.
+
+**Facilitators do not necessarily advertise the token.** `/supported` lists schemes and networks;
+neither facilitator named the asset. The check now reports "cannot tell" rather than "unsupported" in
+that case — an earlier version reported a failure that was not real.
 
 ## Step 2 — the full journey
 
