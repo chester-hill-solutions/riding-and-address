@@ -40,7 +40,13 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `
         lookup and for an area search). Acceptance still fails closed with `503
         PAYMENTS_UNAVAILABLE` while the rail is off, so nothing charges. Rotating it invalidates
         every outstanding offer and page cursor.
-  - [ ] **The x402 rail is configured in production but NOT enabled** (`X402_ENABLED=false`).
+  - [x] **The x402 rail is ENABLED in production (2026-10-17).** `X402_ENABLED=true`; verified live:
+        a quote returns 200 and accepting it returns **402** carrying `exact` on `eip155:8453` for
+        $0.005 to the owner's wallet in Base USDC. The facilitator is a **static-key** one
+        (`facilitator.payai.network`), verified on Base mainnet for both `/verify` and `/settle` —
+        **direct Coinbase CDP is not in use**, because its request-specific JWT auth is not built
+        ([#176](https://github.com/chester-hill-solutions/riding-address/issues/176)). The per-payer
+        cap is at its $25/day default, receipts are bound, and every failure path is fail-closed.
         `X402_PAY_TO` (the owner's Base wallet, a secret so the address stays out of the repo),
         `X402_NETWORK=eip155:8453` (Base mainnet), `X402_ASSET` (Base USDC, verified on chain: symbol
         `USDC`, 6 decimals) and `X402_FACILITATOR_URL` are all set. Verified live with it briefly
