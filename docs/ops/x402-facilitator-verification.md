@@ -138,6 +138,37 @@ settlement at the edge, "you will not have to build the payment machinery yourse
 interesting question is whether it can express input-dependent pricing like an area unit, or only
 flat per-request prices.
 
+## Step 2a — producing a signed payload
+
+The harness consumes a signed payload; it does not create one, because signing needs a private key and
+an EVM library, and the payer's wallet is the right place for both.
+
+**Use the official client.** Its quickstart is `docs.x402.org/getting-started/quickstart-for-buyers`.
+The shape is a wallet-backed signer wrapped into a payment-aware `fetch`:
+
+```ts
+import { x402Client, wrapFetchWithPayment } from '@x402/fetch';
+import { registerExactEvmScheme } from '@x402/evm/exact/client';
+import { privateKeyToAccount } from 'viem/accounts';
+
+const account = privateKeyToAccount(process.env.EVM_PRIVATE_KEY as `0x${string}`);
+const client = new x402Client();
+registerExactEvmScheme(client, { signer: account });
+const fetchWithPay = wrapFetchWithPayment(fetch, client);
+
+const response = await fetchWithPay('https://your-target/api/quote/accept?offer=…');
+```
+
+Two notes, because the SDK is young and the imports have moved once already:
+
+- An earlier form used `createSigner(network, privateKey)` from `x402-fetch`. If the imports above do
+  not resolve, check the current quickstart rather than trusting this transcription.
+- **Run this against a target, not by hand.** `wrapFetchWithPayment` handles the whole
+  `402 → sign → retry` round itself, so it is a complete end-to-end test on its own — it does not need
+  the harness. Use the harness (`--payload`) when you want to inspect one payload repeatedly.
+
+**Do not commit a private key.** Pass it in the environment, and use a throwaway testnet wallet.
+
 ## Step 2 — the full journey
 
 This needs a signed payment payload. **The harness does not sign one**, on purpose: signing needs a

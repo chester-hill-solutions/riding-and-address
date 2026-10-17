@@ -46,6 +46,14 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `
         before the security review and the stablecoin treasury policy in ADR 0007
   - [ ] `X402_RPC_URL` — EVM JSON-RPC endpoint used by `POST /api/x402/reconcile` to confirm
         settlements on chain; that route fails closed (`503 RECONCILE_UNAVAILABLE`) without it
+  - [x] **Staging rail config set 2026-10-17** — `X402_ENABLED=true`, `X402_PAY_TO` (the receiving
+        wallet), `X402_NETWORK=eip155:84532`, `X402_ASSET` (Base Sepolia USDC),
+        `X402_FACILITATOR_URL=https://x402.org/facilitator`, as Worker secrets on
+        `riding-lookup-staging`. Set as secrets rather than committed vars, which is what this
+        checklist prescribes, so the receiving address is not published in the repo.
+        **Staging is running stale code** (its discovery routes 404 and `/api/quote` still demands a
+        key), so the rail is configured but not yet reachable there until staging is deployed.
+  - [ ] `X402_RPC_URL` on staging, for `POST /api/x402/reconcile` to confirm the settlement on chain
   - [ ] **Per-payer spend cap** — `reservePayerSpend` counts spend in the existing `API_KEY_USAGE`
         Durable Object (no new binding; see the migration note below) and fails **closed** if it is
         unavailable, so the rail cannot take money it cannot cap. Tune with
