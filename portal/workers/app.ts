@@ -2,6 +2,7 @@ import { createRequestHandler, RouterContextProvider } from 'react-router';
 import apiWorker, { ApiKeyUsageDO, CircuitBreakerDO, QueueManagerDO } from '../../src/worker';
 import { ownerOf } from '../../src/routes';
 import { securityHeaders } from '../../src/http-headers';
+import { forceHttpsRedirect } from '../../src/force-https';
 import { negotiateMarkdown } from '../../src/markdown-for-agents';
 import type { CloudflareEnv } from '~/lib/cloudflare-env';
 import { isSignupRequest } from '../../src/free-access-policy';
@@ -38,6 +39,12 @@ async function handlePortalRequest(
 
 export default {
   async fetch(request: Request, env: CloudflareEnv, ctx: ExecutionContext): Promise<Response> {
+    // First, before routing or auth: a plain-HTTP request is answered with a permanent redirect to
+    // the same URL over HTTPS. Nothing below should ever see an `http:` request, because everything
+    // below derives canonical URLs from `request.url`.
+    const insecure = forceHttpsRedirect(request);
+    if (insecure) return insecure;
+
     const pathname = new URL(request.url).pathname;
 
     // The route table (src/routes.ts) is the single source of truth. Any path it classifies as

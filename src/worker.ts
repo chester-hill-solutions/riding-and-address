@@ -17,6 +17,7 @@ import {
   badRequest,
   internalErrorResponse,
   getCorrelationId,
+  isLoopbackHost,
 } from './utils';
 import { getAllR2Keys } from './datasets';
 import { handleLookupRequest } from './lookup-handler';
@@ -530,7 +531,7 @@ function configuredPublicOrigins(env: Env): string[] {
 function discoveryOrigin(request: Request, env: Env): string {
   const url = new URL(request.url);
   const origin = url.origin.toLowerCase();
-  const local = ['localhost', '127.0.0.1'].includes(url.hostname) || url.hostname.endsWith('.localhost');
+  const local = isLoopbackHost(url.hostname);
   return local || configuredPublicOrigins(env).includes(origin)
     ? url.origin
     : configuredPublicOrigins(env)[0] || 'https://riding-lookup.chester-hill-solutions.workers.dev';
