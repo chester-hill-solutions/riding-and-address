@@ -1,0 +1,110 @@
+# Verifying the x402 facilitator
+
+Closes `docs/ops/x402-security-review.md` **item 3**: the `/verify` and `/settle` envelopes follow the
+x402 v2 contract but have never been exercised against a real facilitator. A mis-shape fails closed —
+nothing is charged — but it also means the rail silently does not work, and nothing in the code can
+tell the difference. This is the last technical unknown before the rail can be enabled.
+
+The harness is `scripts/verify-x402-facilitator.ts` (`bun run verify:x402`).
+
+## What it proves, and what it does not
+
+| Step | Proves | Needs |
+|---|---|---|
+| `/supported` check | the facilitator advertises the configured network and asset | a facilitator URL |
+| **Envelope check** | our `/verify` request shape is understood | a facilitator URL |
+| Full journey | settlement and delivery actually work | a signed payload, a funded testnet wallet, a Worker with the rail enabled |
+
+Only the full journey proves the rail works. The envelope check proves the *request shape* is right,
+which is the part this repo controls — the signature is the payer's, not ours.
+
+### Why an unsigned payload is enough for the envelope check
+
+Send a structurally valid but **unsigned** payload: every field a facilitator validates is present,
+only the signature is absent. A facilitator that understands our envelope parses it and rejects the
+*payment* (`invalid signature`). A facilitator that does not understand our envelope rejects the
+*request* (`field required`). Those are different answers, and the difference is the whole check.
+
+The harness classifies the response and is deliberately conservative: an unclear answer is reported
+**inconclusive**, never a pass. Read the raw body when that happens.
+
+## Step 1 — the envelope check
+
+No wallet, no funds, no Worker needed.
+
+```bash
+export X402_FACILITATOR_URL=https://your-facilitator.example
+export X402_NETWORK=eip155:84532              # testnet chain id
+export X402_ASSET=0x…                          # the stablecoin contract
+export X402_PAY_TO=0x…                         # the receiving wallet
+# Optional:
+export X402_FACILITATOR_TOKEN=…                # if the facilitator requires one
+export X402_ASSET_DECIMALS=6                   # default 6
+export X402_ASSET_NAME=USDC                    # default USDC
+export X402_ASSET_VERSION=2                    # default 2
+export X402_MAX_TIMEOUT_SECONDS=60             # default 60
+
+bun run verify:x402 --dry-run
+```
+
+Expected on success:
+
+```
+  PASS  our /verify envelope is understood
+        rejected the payment, not the request: invalid_signature
+```
+
+Interpretation:
+
+| Result | Meaning | What to do |
+|---|---|---|
+| `PASS` | the facilitator parsed our fields and judged the payment | continue to step 2 |
+| `FAIL … rejected the request shape` | our envelope is wrong | fix `HttpFacilitator` in `src/x402.ts` to match, then re-run |
+| `FAIL … no /verify at that URL` | wrong base URL | `X402_FACILITATOR_URL` should be the base; `/verify` is appended |
+| `FAIL … could not reach` | network or DNS | check connectivity |
+| `WARN … inconclusive` | the answer did not match either pattern | **read the raw body** and decide by hand |
+
+## Step 2 — the full journey
+
+This needs a signed payment payload. **The harness does not sign one**, on purpose: signing needs a
+private key and an EVM library, and the payer's wallet is the right place for both. Produce a payload
+with the official x402 client, or any signer, and save it as JSON.
+
+Then point the harness at a Worker with the rail enabled — staging, or `wrangler dev` with
+`X402_ENABLED=true` and the rest of the rail configured:
+
+```bash
+bun run verify:x402 --target https://riding-lookup-staging.chester-hill-solutions.workers.dev \
+  --payload ./signed-payload.json
+```
+
+It requests a quote, accepts it with the payload, and reports whether the Worker returned `200` with a
+receipt. A `402` means verification or settlement was rejected — the body names the reason, and it is
+the facilitator's own answer.
+
+Then confirm the money actually moved:
+
+- the receipt is readable at `GET /api/x402/receipts` (admin), with `delivered: true`;
+- the settlement transaction confirms on the testnet explorer;
+- `POST /api/x402/reconcile` (admin) agrees, once `X402_RPC_URL` is set.
+
+## Step 3 — record the outcome
+
+Update `docs/ops/x402-security-review.md` item 3 with what was run, against which facilitator, on
+which date, and the result. If the envelope needed changing, say what changed.
+
+## Still outstanding after this
+
+- **Treasury, receipt and tax policy** (item 1) — a business decision, and the other gate on enabling.
+- **Settlement replay** (item 5) — demonstrate that a second settlement of the same payload is
+  rejected. The harness does not cover it: submit the same payload twice in step 2 and confirm the
+  second does not move money.
+- **Refunds** (item 2) — still manual.
+
+## Caveats
+
+- The classification is a heuristic over status codes and message text. It reports what it saw; it
+  never upgrades an unclear answer to a pass.
+- The probe payload's amount is the point-lookup ceiling. A facilitator that validates the amount
+  against the requirements will see them agree.
+- Nothing here enables the rail. It is a check you run before enabling it.

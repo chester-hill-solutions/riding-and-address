@@ -42,10 +42,14 @@ Object ledger (ADR 0002) are out of scope and unchanged.
 2. **The refund path is manual.** A settled-but-undelivered result is *recorded* (`delivered: false`,
    `payer`), and an operator can send an on-chain refund — but there is no automated credit/refund.
    Until there is, an undelivered result is a support ticket.
-3. **The facilitator envelope is unverified.** The `/verify` and `/settle` request and response shapes
-   follow the v2 contract but have never been exercised against a real facilitator. A mis-shape fails
-   closed (no charge) but also means the rail simply does not work. **Confirm against the chosen
-   facilitator before enabling.**
+3. **The facilitator envelope is unverified — tooling ready, verification outstanding.** The `/verify`
+   and `/settle` request and response shapes follow the v2 contract but have never been exercised
+   against a real facilitator. A mis-shape fails closed (no charge) but also means the rail simply
+   does not work. `scripts/verify-x402-facilitator.ts` (`bun run verify:x402`) now checks it: it sends
+   a structurally valid but **unsigned** payload and confirms the facilitator rejects the *payment*
+   rather than the *request*, which distinguishes a wrong envelope from an unverifiable signature
+   without needing a wallet. **Run it against the chosen facilitator, then the full journey with a
+   signed payload, before enabling.** Runbook: `docs/ops/x402-facilitator-verification.md`.
 4. **Per-payer spend cap — addressed 2026-10-17.** `reservePayerSpend` (`src/x402-spend.ts`) counts
    spend per payer per UTC day and refuses past the cap **before** settlement, so a capped payer is
    refused without money moving. The counter lives in the existing `ApiKeyUsageDO` (`/spend/reserve`,

@@ -44,6 +44,7 @@
     "test:oda": "vitest run test/oda-normalize.test.ts test/oda-geocoding.test.ts test/oda-fixture-cases.test.ts test/oda-config.test.ts test/canada-post-format.test.ts",
     "test:oda:live": "ODA_LIVE=1 vitest run test/oda-geocoding-live.test.ts",
     "benchmark:lookup": "tsx scripts/benchmark-lookup.ts",
+    "verify:x402": "tsx scripts/verify-x402-facilitator.ts",
     "compare:opennorth": "tsx scripts/compare-opennorth.ts",
     "compare:report": "tsx scripts/generate-comparison-report.ts",
     "upload:r2-datasets": "tsx scripts/upload-r2-datasets.ts",
