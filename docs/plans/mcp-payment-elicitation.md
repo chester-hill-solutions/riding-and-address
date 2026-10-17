@@ -117,6 +117,7 @@ payment behind the offer boundary, as the product plan required.
 - **A transport-level 402 for MCP tools** (Cloudflare's `paidTool` shape), so an MCP-only client with
   an x402 HTTP layer can pay without leaving MCP. That composes with the x402 work and is a separate
   decision: it needs the rail enabled and a dynamic price, since our area price depends on the inputs.
+  **Planned in [`mcp-paid-tools.md`](mcp-paid-tools.md).**
 - **OAuth** — still deliberately unpublished, because there is no authorization server.
 - **MCP Apps, Tasks and Enterprise Managed Authorization** — adjacent 2026-07-28 extensions, none of
   which this needs.
