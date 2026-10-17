@@ -162,7 +162,13 @@ const client = new x402Client();
 registerExactEvmScheme(client, { signer: account });
 const fetchWithPay = wrapFetchWithPayment(fetch, client);
 
-const response = await fetchWithPay('https://your-target/api/quote/accept?offer=…');
+// The accept route requires POST — `fetchWithPay` does not infer it, so passing no options sends a
+// GET that never reaches the handler.
+const response = await fetchWithPay('https://your-target/api/quote/accept?offer=…', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: '{}',
+});
 ```
 
 Two notes, because the SDK is young and the imports have moved once already:

@@ -40,12 +40,20 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `
         lookup and for an area search). Acceptance still fails closed with `503
         PAYMENTS_UNAVAILABLE` while the rail is off, so nothing charges. Rotating it invalidates
         every outstanding offer and page cursor.
-  - [ ] `X402_ENABLED`, `X402_PAY_TO`, `X402_NETWORK`, `X402_ASSET`, `X402_FACILITATOR_URL`
-        (+ `X402_FACILITATOR_TOKEN`) — the x402 account-free rail. `/api/quote/accept` fails closed
-        (`503 PAYMENTS_UNAVAILABLE`) until the rail is enabled and fully configured. Do not enable
-        before the security review and the stablecoin treasury policy in ADR 0007
-  - [ ] `X402_RPC_URL` — EVM JSON-RPC endpoint used by `POST /api/x402/reconcile` to confirm
-        settlements on chain; that route fails closed (`503 RECONCILE_UNAVAILABLE`) without it
+  - [ ] **The x402 rail is configured in production but NOT enabled** (`X402_ENABLED=false`).
+        `X402_PAY_TO` (the owner's Base wallet, a secret so the address stays out of the repo),
+        `X402_NETWORK=eip155:8453` (Base mainnet), `X402_ASSET` (Base USDC, verified on chain: symbol
+        `USDC`, 6 decimals) and `X402_FACILITATOR_URL` are all set. Verified live with it briefly
+        enabled: a quote returns 200 and accepting it returns **402** carrying `exact` on
+        `eip155:8453` for the right amount and payee.
+        **Two prerequisites stand before enabling it for real**, neither of them tax:
+        direct Coinbase CDP requires short-lived request-specific JWTs the rail does not implement
+        ([#176](https://github.com/chester-hill-solutions/riding-and-address/issues/176)), and the
+        **delivery leg has never been exercised live** — the testnet payment settled and then failed
+        delivery. A trial enablement with a static-Bearer facilitator was reverted the same day
+        because the provider had not been explicitly authorised.
+  - [x] `X402_RPC_URL` — set in production (`https://mainnet.base.org`), so
+        `POST /api/x402/reconcile` can confirm settlements on chain
   - [x] **Staging rail config set 2026-10-17** — `X402_ENABLED=true`, `X402_PAY_TO` (the receiving
         wallet), `X402_NETWORK=eip155:84532`, `X402_ASSET` (Base Sepolia USDC),
         `X402_FACILITATOR_URL=https://x402.org/facilitator`, as Worker secrets on
