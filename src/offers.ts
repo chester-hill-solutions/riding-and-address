@@ -104,9 +104,18 @@ export type Offer = OfferPayload & { offerId: string };
  * charge. A signed cursor minted only by the accept path is that authorization: unforgeable, tied to
  * the offer it belongs to, and expiring with it. Without it there is no way to page without paying;
  * with it there is no way to pay twice for one offer.
+ *
+ * It also carries the **remaining allowance**, which is what makes the paid ceiling hold across
+ * pages. Without it the ceiling was enforced on page one only: the offer bound `maximumResults`, but
+ * nothing in the cursor remembered how much of it was left, so each continuation read its own full
+ * page and a 300-record offer could deliver 250 + 250 + … (#142). The field is inside the signature,
+ * so it cannot be inflated, and it is required, so a cursor without one is refused rather than
+ * treated as unlimited.
  */
 const AreaPageCursorSchema = z.object({
   id: z.number().int().nonnegative(),
+  /** Records still deliverable under the accepted offer. Decremented by what was actually returned. */
+  remaining: z.number().int().nonnegative(),
   /** The scope the pages belong to — the same union the offer bound, so the two cannot drift. */
   scope: AreaScopeSchema,
   offerId: z.string(),
@@ -507,21 +516,28 @@ async function deliverAreaOffer(
     };
   }
 
+  // The allowance is the accepted ceiling, and what is left of it travels in the cursor: the offer
+  // is not consulted again on later pages, so this is the only thing that bounds them.
+  const allowance = offer.limits.maximumResults;
   const page = await readAreaPage({
     store: getAddressStore(env.ODA_DB, () => {}),
     province,
     boundary: geometry,
-    pageSize: Math.min(AREA_PAGE_MAX, offer.limits.maximumResults),
+    pageSize: Math.min(AREA_PAGE_MAX, allowance),
   });
 
-  // Never over-deliver past what was paid for: stop at the ceiling and say so.
-  const truncated = page.records.length >= offer.limits.maximumResults;
-  const nextId = page.hasMore && !truncated ? page.nextId : null;
+  // Never over-deliver past what was paid for: stop at the ceiling and say so. Decrementing by the
+  // records actually returned (not the page size) matters — a scan-budget-limited page returns fewer,
+  // and that unused allowance must carry over rather than be silently spent.
+  const remaining = Math.max(0, allowance - page.records.length);
+  const truncated = page.hasMore && remaining === 0;
+  const nextId = page.hasMore && remaining > 0 ? page.nextId : null;
   const cursor =
     nextId === null
       ? null
       : await signAreaPageCursor(secret, {
           id: nextId,
+          remaining,
           scope,
           offerId,
           expiresAt: offer.limits.expiresAt,
@@ -766,16 +782,44 @@ export async function handleAreaRequest(ctx: RouteContext): Promise<Response> {
     return badRequest('Address data is unavailable', 503, 'DATASET_UNAVAILABLE', correlationId);
   }
 
+  // The cursor carries the allowance the offer granted, so a continuation read is bounded by what is
+  // left of it rather than by a fresh full page. This is what holds the paid ceiling across pages.
+  if (cursor.remaining <= 0) {
+    // Not reachable from our own cursors (we stop minting at zero), but a zero allowance must never
+    // be read as "one more record" — `clampPageSize` would round it up to one.
+    const envelope = buildAreaEnvelope({
+      ref,
+      boundary: 'riding' in scope ? undefined : scope,
+      query: 'riding' in scope
+        ? { dataset: scope.datasetId, riding: scope.riding }
+        : { geometryHash: scope.geometryHash, province: scope.province },
+      records: [],
+      page: { cursor: null, hasMore: false, truncated: true },
+      total: null,
+      attribution: AREA_ATTRIBUTION,
+    });
+    return new Response(JSON.stringify(envelope), {
+      headers: {
+        'content-type': 'application/json; charset=UTF-8',
+        'cache-control': 'no-store',
+        ...corsHeaders(request.headers.get('Origin')),
+      },
+    });
+  }
+
   const page = await readAreaPage({
     store: getAddressStore(env.ODA_DB, () => {}),
     province,
     boundary: geometry,
     afterId: cursor.id,
-    pageSize: AREA_PAGE_MAX,
+    pageSize: Math.min(AREA_PAGE_MAX, cursor.remaining),
   });
 
-  const nextId = page.hasMore ? page.nextId : null;
-  const nextCursor = nextId === null ? null : await signAreaPageCursor(secret, { ...cursor, id: nextId });
+  const remaining = Math.max(0, cursor.remaining - page.records.length);
+  const truncated = page.hasMore && remaining === 0;
+  const nextId = page.hasMore && remaining > 0 ? page.nextId : null;
+  const nextCursor =
+    nextId === null ? null : await signAreaPageCursor(secret, { ...cursor, id: nextId, remaining });
 
   const envelope = buildAreaEnvelope({
     ref,
@@ -784,7 +828,7 @@ export async function handleAreaRequest(ctx: RouteContext): Promise<Response> {
       ? { dataset: scope.datasetId, riding: scope.riding }
       : { geometryHash: scope.geometryHash, province: scope.province },
     records: page.records,
-    page: { cursor: nextCursor, hasMore: nextId !== null, truncated: false },
+    page: { cursor: nextCursor, hasMore: nextId !== null, truncated },
     total: null,
     attribution: AREA_ATTRIBUTION,
   });

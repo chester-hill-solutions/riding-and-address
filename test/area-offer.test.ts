@@ -32,6 +32,8 @@ const env = (overrides: Partial<Env> = {}): Env =>
 
 const CURSOR: AreaPageCursor = {
   id: 42,
+  // The allowance travels in the cursor: it is what bounds a continuation read (#142).
+  remaining: 250,
   scope: { riding: RIDING, datasetId: 'federalridings-2024.geojson', datasetYear: 2024 },
   offerId: 'offer-1',
   expiresAt: new Date(Date.now() + 60_000).toISOString(),
