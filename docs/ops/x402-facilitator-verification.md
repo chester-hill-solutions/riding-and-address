@@ -88,6 +88,11 @@ Then confirm the money actually moved:
 - the settlement transaction confirms on the testnet explorer;
 - `POST /api/x402/reconcile` (admin) agrees, once `X402_RPC_URL` is set.
 
+The harness also asserts the receipt names its payer. With the spend cap enabled an unnameable
+payment is **refused**, so a successful accept must carry one — if that check fails, the
+facilitator's payload shape is not one `payerFromPaymentPayload` recognises and the extractor needs
+aligning with it before the rail is enabled (see #158).
+
 ## Step 3 — record the outcome
 
 Update `docs/ops/x402-security-review.md` item 3 with what was run, against which facilitator, on

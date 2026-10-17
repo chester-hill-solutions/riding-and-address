@@ -38,7 +38,7 @@ import {
 import type { GeoJSONGeometry, QueryParams } from './types';
 import type { RouteContext } from './route-context';
 import { receiptsBound, recordReceipt, type X402Receipt } from './x402-receipts';
-import { payerDailyCapUsd, releasePayerSpend, reservePayerSpend } from './x402-spend';
+import { releasePayerSpend, reservePayerSpend } from './x402-spend';
 
 /** How long a quote is valid. Short: it bounds how stale a price or vintage can be when accepted. */
 export const OFFER_TTL_MS = 10 * 60 * 1000;
@@ -887,33 +887,48 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
 
   // The payer is only trustworthy once the payload has verified, so the cap is charged here — after
   // verification, before settlement, so a payer over its cap is refused without money moving.
-  const payer = payerFromPaymentPayload(paymentPayload) ?? undefined;
-  let reservedUsd = 0;
-  if (payer && payerDailyCapUsd(env) > 0) {
-    const reservation = await reservePayerSpend(env, payer, offer.price.maximum);
-    if (!reservation.ok) {
-      return reservation.reason === 'cap_exceeded'
-        ? badRequest(
-            `This payer has reached its daily spend cap of ${reservation.capUsd} ${offer.price.currency}`,
-            402,
-            'PAYER_CAP_EXCEEDED',
-            correlationId
-          )
-        : badRequest('Spend control is unavailable', 503, 'PAYER_CAP_UNAVAILABLE', correlationId);
+  //
+  // A payload that names no payer is refused too, while the cap is enabled: an unattributable
+  // payment cannot be metered, and skipping the reservation would leave the cap unenforced for
+  // exactly the payload shapes our extractor does not recognise (#158). `X402_PAYER_DAILY_CAP_USD=0`
+  // is the explicit, documented way to run without the control.
+  const payer = payerFromPaymentPayload(paymentPayload);
+  const reservation = await reservePayerSpend(env, payer, offer.price.maximum);
+  if (!reservation.ok) {
+    switch (reservation.reason) {
+      case 'payer_unidentified':
+        return badRequest(
+          'The payment payload does not name its payer, so the spend cap cannot apply',
+          402,
+          'PAYER_UNIDENTIFIED',
+          correlationId
+        );
+      case 'cap_exceeded':
+        return badRequest(
+          `This payer has reached its daily spend cap of ${reservation.capUsd} ${offer.price.currency}`,
+          402,
+          'PAYER_CAP_EXCEEDED',
+          correlationId
+        );
+      case 'counter_unavailable':
+        return badRequest('Spend control is unavailable', 503, 'PAYER_CAP_UNAVAILABLE', correlationId);
     }
-    reservedUsd = offer.price.maximum;
   }
-  /** Give the reservation back only when we know no money moved. */
-  const unreserve = async () => {
-    if (payer && reservedUsd > 0) await releasePayerSpend(env, payer, reservedUsd);
-  };
 
   let settlement;
   try {
     settlement = await settleWithRetry(facilitator, paymentPayload, requirements);
   } catch {
-    await unreserve();
-    return badRequest('Settlement failed', 502, 'SETTLEMENT_FAILED', correlationId);
+    // Ambiguous, not a failure. The throw may have happened *after* the transaction was broadcast —
+    // a response that could not be read is indistinguishable from one that never arrived — so this
+    // is not evidence that no money moved. The reservation is kept, and the caller is told to
+    // reconcile rather than retry, so a payment that does settle cannot go uncounted (#156).
+    return badRequest(
+      'Settlement outcome is unknown; reconcile before retrying',
+      502,
+      'SETTLEMENT_UNKNOWN',
+      correlationId
+    );
   }
   if (settlement.pending) {
     // Non-terminal: the transaction may still confirm, so the reservation is kept. Over-counting
@@ -926,7 +941,8 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
     );
   }
   if (!settlement.success) {
-    await unreserve();
+    // The only positive, terminal evidence of non-payment: the facilitator states it did not settle.
+    await releasePayerSpend(env, reservation.handle);
     return paymentRequired(ctx, offer, config, settlement.errorReason || 'Settlement failed');
   }
 
@@ -962,7 +978,7 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
     resultCount: delivery.resultCount,
     delivered: delivered.ok,
     /** Where a refund would go if this was settled but not delivered. */
-    payer,
+    payer: payer ?? undefined,
     correlationId,
     recordedAt: new Date().toISOString(),
   };

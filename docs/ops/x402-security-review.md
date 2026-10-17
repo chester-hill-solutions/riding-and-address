@@ -50,21 +50,31 @@ Object ledger (ADR 0002) are out of scope and unchanged.
    rather than the *request*, which distinguishes a wrong envelope from an unverifiable signature
    without needing a wallet. **Run it against the chosen facilitator, then the full journey with a
    signed payload, before enabling.** Runbook: `docs/ops/x402-facilitator-verification.md`.
-4. **Per-payer spend cap — addressed 2026-10-17.** `reservePayerSpend` (`src/x402-spend.ts`) counts
-   spend per payer per UTC day and refuses past the cap **before** settlement, so a capped payer is
-   refused without money moving. The counter lives in the existing `ApiKeyUsageDO` (`/spend/reserve`,
-   `/spend/release`), because a new DO class needs a migration that the versioned deploy pipeline
-   cannot apply (`10211`); the DO is already a per-entity daily counter, and the differing *failure
-   direction* lives in the clients — the key quota fails open, this fails closed. The reservation is
-   released only when we know no money moved (a failed or errored settlement); a **pending**
-   settlement keeps it, because the money may still confirm — over-counting caps a payer early, never
-   overspends. Fails **closed** when the counter is unreachable.
+4. **Per-payer spend cap — addressed 2026-10-17, with three correctness fixes on review.** The
+   initial implementation (#154) had three defects, all filed and fixed:
+   - **#158 — it failed open.** The cap was skipped entirely when the payload named no payer, so it
+     was unenforced for exactly the payload shapes `payerFromPaymentPayload` does not recognise. Now,
+     while the cap is enabled, an unnameable payer is **refused** (`402 PAYER_UNIDENTIFIED`) without
+     settling. `X402_PAYER_DAILY_CAP_USD=0` is the explicit, documented cap-disabled mode.
+   - **#156 — it released on ambiguous errors.** Any `settle` exception released the reservation,
+     including one thrown *after* broadcast. Now only a positive terminal non-payment
+     (`success: false`) releases; an ambiguous error keeps the reservation and returns
+     `502 SETTLEMENT_UNKNOWN` for reconciliation.
+   - **#157 — release could target the wrong day.** A reservation made before UTC midnight and
+     released after it subtracted from the new day. `releasePayerSpend` now takes a handle carrying
+     the reservation's own day and amount.
+   `reservePayerSpend` counts spend per payer per UTC day and refuses past the cap **before**
+   settlement, so a capped payer is refused without money moving. The counter lives in the existing
+   `ApiKeyUsageDO` (`/spend/reserve`, `/spend/release`), because a new DO class needs a migration the
+   versioned deploy pipeline cannot apply (`10211`). The differing *failure direction* lives in the
+   clients: the key quota fails open, this fails closed. Default `$25`/day per payer, tunable with
+   `X402_PAYER_DAILY_CAP_USD`; `0` disables it.
    **What it does not do:** it bounds a runaway agent — one wallet in a retry loop — not a determined
    actor, who can generate wallets freely. That is why a treasury policy remains a prerequisite
-   rather than a substitute. Default `$25`/day per payer, tunable with `X402_PAYER_DAILY_CAP_USD`;
-   `0` disables it. Evidence: `test/x402-spend.test.ts` (cap, independence, casing, release,
-   fail-closed) and the end-to-end refusal in `test/x402-accept.test.ts`, which asserts the refused
-   accept never reached `/settle`.
+   rather than a substitute. Evidence: `test/x402-spend.test.ts` (cap, independence, casing,
+   cross-midnight release, unidentified payer, fail-closed) and `test/x402-accept.test.ts`, which
+   asserts the refused accept never reached `/settle` and that an ambiguous settlement keeps its
+   reservation.
 5. **Settlement replay is argued, not tested.** The claim rests on the facilitator/chain rejecting a
    second settlement of the same payload. There is no test for it here because it is not our code —
    but it is the control that prevents double charging, so it should be demonstrated, not assumed.

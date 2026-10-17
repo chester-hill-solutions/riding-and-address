@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { geometryHash } from '../src/area-geometry';
 import { createD1Shim, createOdaSqlite, seedOdaRows } from './helpers/oda-sqlite';
+import { fakeUsageNamespace } from './helpers/fake-usage-do';
 import { createLookupTestEnv, fetchLookup } from './helpers/lookup-test-env';
 import type { OdaMemoryAddressRow } from './helpers/oda-memory-db';
 import { PAYMENT_SIGNATURE_HEADER } from '../src/x402';
@@ -99,11 +100,22 @@ function envWithRows(count = 260): Env {
     X402_ASSET: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
     X402_FACILITATOR_URL: 'https://facilitator.test',
     X402_RECEIPTS: fakeKv(),
+    // The spend cap fails closed, so the paid path needs the counter bound.
+    API_KEY_USAGE: fakeUsageNamespace(),
   } as unknown as Env;
 }
 
+// Names its payer: with the spend cap enabled an unnameable payment is refused before settlement.
 const paymentSignature = () =>
-  btoa(JSON.stringify({ x402Version: 2, payload: { signature: '0xdeadbeef' } }));
+  btoa(
+    JSON.stringify({
+      x402Version: 2,
+      payload: {
+        signature: '0xdeadbeef',
+        authorization: { from: '0x857b06519E91e3A54538791bDbb0E22373e36b66' },
+      },
+    })
+  );
 
 const originalFetch = globalThis.fetch;
 afterEach(() => {

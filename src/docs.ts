@@ -451,15 +451,15 @@ export function createOpenAPISpec(baseUrl: string) {
             "400": { description: "OFFER_REQUIRED, PAYMENT_MALFORMED, or INVALID_QUERY" },
             "402": {
               description:
-                "Payment required or not valid; requirements are carried in the PAYMENT-REQUIRED header",
+                "Payment required, not valid, or refused before settling. Requirements are carried in the PAYMENT-REQUIRED header; PAYER_UNIDENTIFIED and PAYER_CAP_EXCEEDED mean the spend cap refused it",
             },
             "410": { description: "OFFER_INVALID — the offer is invalid, tampered with, or expired" },
             "429": { description: "Rate limit exceeded (per client IP)" },
             "502": {
               description:
-                "PAYMENT_VERIFY_FAILED, SETTLEMENT_FAILED, SETTLEMENT_PENDING, or SETTLEMENT_DELIVERY_FAILED",
+                "PAYMENT_VERIFY_FAILED, SETTLEMENT_UNKNOWN, SETTLEMENT_PENDING, or SETTLEMENT_DELIVERY_FAILED. SETTLEMENT_UNKNOWN and SETTLEMENT_PENDING are ambiguous — the money may have moved, so reconcile before retrying",
             },
-            "503": { description: "QUOTES_UNAVAILABLE or PAYMENTS_UNAVAILABLE" },
+            "503": { description: "QUOTES_UNAVAILABLE, PAYMENTS_UNAVAILABLE, or PAYER_CAP_UNAVAILABLE" },
           },
         },
       },
