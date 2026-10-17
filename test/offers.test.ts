@@ -93,8 +93,8 @@ describe('createOffer', () => {
     expect(offer.operation).toBe('lookup.point');
     const lookup = offer as LookupOfferPayload;
     expect(lookup.scope.inputs).toEqual({ postal: 'M5V 2T6' });
-    expect(offer.scope.datasetId).toBe('ontarioridings-2022.geojson');
-    expect(offer.scope.datasetYear).toBe(2022);
+    expect(lookup.scope.datasetId).toBe('ontarioridings-2022.geojson');
+    expect(lookup.scope.datasetYear).toBe(2022);
     expect(offer.price.maximum).toBe(UPLOAD_ROW_PRICE_USD);
     expect(Date.parse(offer.limits.expiresAt)).toBe(now + OFFER_TTL_MS);
     // No payment method is advertised until W6 can honour one.
@@ -108,7 +108,7 @@ describe('GET /api/quote', () => {
     const response = await handleQuoteRequest(quoteContext('/api/quote?postal=K1A0A6'));
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as OfferPayload & { offerId: string };
+    const body = (await response.json()) as LookupOfferPayload & { offerId: string };
     expect(body.price.maximum).toBe(UPLOAD_ROW_PRICE_USD);
     expect(body.scope.datasetYear).toBe(2024);
     expect(body.offerId).toBeTruthy();

@@ -98,8 +98,12 @@ export const AREA_ATTRIBUTION = [
   'Adapted from Statistics Canada, National Address Register, 2026-06-26. This does not constitute an endorsement by Statistics Canada of this product.',
 ];
 
-export interface AreaEnvelopeInput {  ref: RidingRef;
-  query: { dataset: string; riding: string };
+export interface AreaEnvelopeInput {
+  /** Present for a riding-bounded query; absent when the caller supplied the boundary. */
+  ref?: RidingRef;
+  /** Present for a caller-supplied boundary: the shape's hash and the province searched. */
+  boundary?: { geometryHash: string; province: string };
+  query: Record<string, unknown>;
   records: AddressRecord[];
   page: { cursor: string | null; hasMore: boolean; truncated: boolean };
   /** Total matching records, or null when no exact count was affordable. */
@@ -109,12 +113,15 @@ export interface AreaEnvelopeInput {  ref: RidingRef;
 
 /**
  * The response body, per contract §5. `count.total` is labelled exact or estimated — never an
- * estimate presented as exact.
+ * estimate presented as exact. A riding-bounded result names the riding and its dataset vintage; a
+ * caller-supplied boundary reports the shape's hash and the province searched instead, since there is
+ * no boundary dataset to name.
  */
 export function buildAreaEnvelope(input: AreaEnvelopeInput): Record<string, unknown> {
   return {
     query: input.query,
-    riding: input.ref,
+    ...(input.ref ? { riding: input.ref } : {}),
+    ...(input.boundary ? { boundary: input.boundary } : {}),
     count: {
       returned: input.records.length,
       total: input.total,
@@ -132,11 +139,10 @@ export function buildAreaEnvelope(input: AreaEnvelopeInput): Record<string, unkn
       postalCode: record.postal_code,
       lat: record.lat,
       lon: record.lon,
-      riding: input.ref,
+      ...(input.ref ? { riding: input.ref } : {}),
     })),
     page: input.page,
     attribution: input.attribution,
-    datasetId: input.ref.datasetId,
-    datasetYear: input.ref.datasetYear,
+    ...(input.ref ? { datasetId: input.ref.datasetId, datasetYear: input.ref.datasetYear } : {}),
   };
 }

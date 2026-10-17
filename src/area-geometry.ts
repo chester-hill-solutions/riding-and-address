@@ -68,8 +68,33 @@ function validateRing(ring: unknown, label: string): string | null {
   return null;
 }
 
-/** Validate a caller-supplied boundary, or say precisely why it is unusable. */
-export function validateAreaGeometry(value: unknown): AreaGeometryValidation {
+/** Stable JSON: keys sorted at every level, so a hash does not depend on serialisation order. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/**
+ * The identity of a boundary: `sha256:<hex>` over its canonical JSON.
+ *
+ * This is what the offer and the page cursor bind to, because the shape itself cannot travel in a
+ * token — a boundary at the vertex cap is tens of kilobytes. The client resends the boundary on each
+ * page and the server checks it hashes to what was agreed, so a page can be authorized without
+ * trusting a re-sent shape.
+ */
+export async function geometryHash(geometry: unknown): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalJson(geometry)));
+  const hex = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `sha256:${hex}`;
+}
+
+/** Validate a caller-supplied boundary, or say precisely why it is unusable. */export function validateAreaGeometry(value: unknown): AreaGeometryValidation {
   if (typeof value !== 'object' || value === null) {
     return { ok: false, reason: 'geometry must be an object' };
   }

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   AREA_MAX_SPAN_DEGREES,
   AREA_MAX_VERTICES,
+  geometryHash,
   validateAreaGeometry,
 } from '../src/area-geometry';
 
@@ -22,6 +23,21 @@ const SQUARE = {
     ],
   ],
 };
+
+describe('geometryHash', () => {
+  it('is stable and independent of key order', async () => {
+    const a = { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] };
+    const reordered = { coordinates: a.coordinates, type: 'Polygon' };
+    expect(await geometryHash(a)).toBe(await geometryHash(reordered));
+    expect(await geometryHash(a)).toMatch(/^sha256:[0-9a-f]{64}$/);
+  });
+
+  it('changes when the shape changes', async () => {
+    const a = { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] };
+    const b = { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 2], [0, 0]]] };
+    expect(await geometryHash(a)).not.toBe(await geometryHash(b));
+  });
+});
 
 describe('validateAreaGeometry', () => {
   it('accepts a well-formed Polygon', () => {

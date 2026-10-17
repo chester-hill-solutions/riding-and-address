@@ -34,7 +34,13 @@ export const X402ReceiptSchema = z.object({
     network: z.string(),
   }),
   amount: z.object({ currency: z.string(), value: z.number() }),
-  scope: z.object({ datasetId: z.string(), datasetYear: z.number() }),
+  /** Riding-bounded receipts carry the dataset vintage; polygon receipts carry the shape hash. */
+  scope: z.object({
+    datasetId: z.string().optional(),
+    datasetYear: z.number().optional(),
+    geometryHash: z.string().optional(),
+    province: z.string().optional(),
+  }),
   resultCount: z.number(),
   /** False means settled but not delivered — the case an operator must credit or retry. */
   delivered: z.boolean(),
