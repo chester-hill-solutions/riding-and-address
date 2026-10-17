@@ -27,6 +27,22 @@ had already moved.
 A rejected write is never reported as success. `recordReceipt` returns whether the write happened and
 retries once, and the response carries `receiptPersisted` so a caller can tell without guessing.
 
+## What the first live payment found
+
+On 2026-10-17 a real testnet payment settled against a real facilitator, and the receipt **was not
+written** — for a reason nothing had caught: the receipt key used the offer id whole, and an offer id
+is a signed token of roughly 512 characters, so the key was **549 bytes** against Cloudflare KV's
+**512-byte** limit. Every write failed. Fixed in #172.
+
+Two things about that are worth keeping:
+
+- **The fake KV in the tests does not enforce the limit**, so it could not catch it. The guard is now
+  a unit test on the key's length, not the end-to-end fixtures — they happen to produce offer ids
+  short enough to stay under 512. Said out loud because "the tests pass" was true and meant nothing.
+- **It was the residual gap happening for real.** The obligation survived only as a log line, exactly
+  as this document predicted, and the settlement hash was in it. That is the argument for the second
+  durable sink below.
+
 ## The residual gap, stated plainly
 
 **If the receipt store is unavailable for a settlement, the only durable record is the log line.**
