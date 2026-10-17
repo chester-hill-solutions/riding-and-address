@@ -194,6 +194,53 @@ describe('POST /api/quote/accept', () => {
     expect(settleCalls(spy)).toBe(0);
   });
 
+  it('sends x402Version in the facilitator body — without it the facilitator refuses', async () => {
+    // Found against a live facilitator: omitting this makes /verify answer `unsupported_scheme`, which
+    // reached the caller as a bare 502. The body shape is the contract, so it is pinned here.
+    const env = baseEnv();
+    const spy = stubFacilitator();
+    const offerId = await quote(env);
+
+    await handleAcceptRequest(
+      context(`/api/quote/accept?offer=${offerId}`, env, {
+        [PAYMENT_SIGNATURE_HEADER]: paymentSignatureFrom(PAYER_ADDRESS),
+      })
+    );
+
+    const verifyCall = spy.mock.calls.find((call) => String(call[0]).endsWith('/verify'));
+    expect(verifyCall).toBeTruthy();
+    const body = JSON.parse(String((verifyCall![1] as RequestInit).body)) as {
+      x402Version: number;
+      paymentRequirements: { scheme: string };
+    };
+    expect(body.x402Version).toBe(2);
+    expect(body.paymentRequirements.scheme).toBe('exact');
+  });
+
+  it('surfaces what the facilitator said when it refuses, rather than a bare status', async () => {
+    // A generic "returned 400" is what hid the missing x402Version; the body has to come through.
+    const env = baseEnv();
+    globalThis.fetch = vi.fn(async (url: string | URL) => {
+      const target = String(url);
+      if (target.endsWith('/verify')) {
+        return new Response(JSON.stringify({ isValid: false, invalidReason: 'unsupported_scheme' }), {
+          status: 400,
+        });
+      }
+      throw new Error(`unexpected: ${target}`);
+    }) as typeof fetch;
+
+    const offerId = await quote(env);
+    const response = await handleAcceptRequest(
+      context(`/api/quote/accept?offer=${offerId}`, env, {
+        [PAYMENT_SIGNATURE_HEADER]: paymentSignatureFrom(PAYER_ADDRESS),
+      })
+    );
+    expect(response.status).toBe(502);
+    // The rail still fails closed; the operator just gets something diagnosable in the logs.
+    expect(((await response.json()) as { code?: string }).code).toBe('PAYMENT_VERIFY_FAILED');
+  });
+
   it('settles and delivers the quoted lookup with a receipt', async () => {
     const env = baseEnv();
     stubFacilitator();

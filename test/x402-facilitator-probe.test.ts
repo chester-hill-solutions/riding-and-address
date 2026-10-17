@@ -30,6 +30,28 @@ describe('classifyVerifyProbe', () => {
     expect(verdict.shape).toBe('envelope-accepted');
   });
 
+  it('does not call an unsupported scheme an accepted envelope', () => {
+    // The blind spot that let a real bug pass: a facilitator says `unsupported_scheme` when it cannot
+    // resolve the request at all — which is what a missing x402Version looks like. A body field named
+    // `payer` made this read as a semantic rejection, because the classifier matched the whole text.
+    const verdict = classifyVerifyProbe(400, {
+      isValid: false,
+      invalidReason: 'unsupported_scheme',
+      invalidReasonDetails: 'Unsupported scheme',
+      payer: '',
+    });
+    expect(verdict.shape).toBe('inconclusive');
+  });
+
+  it('still reads a genuine semantic rejection as accepted', () => {
+    const verdict = classifyVerifyProbe(400, {
+      isValid: false,
+      invalidReason: 'invalid_exact_evm_signature',
+      payer: '0xabc',
+    });
+    expect(verdict.shape).toBe('envelope-accepted');
+  });
+
   it('never calls an unclear answer accepted', () => {
     expect(classifyVerifyProbe(500, 'internal error').shape).toBe('inconclusive');
     expect(classifyVerifyProbe(200, { unexpected: true }).shape).toBe('inconclusive');

@@ -136,10 +136,10 @@ export interface PaymentFacilitator {
 /**
  * Facilitator over HTTP: `/verify` then `/settle`, per the x402 facilitator contract.
  *
- * NOTE: the request envelope (`paymentPayload` + `paymentRequirements`) and the response field names
- * follow the v2 facilitator contract; confirm them against the specific facilitator chosen for
- * production before enabling the rail. A mis-shaped call fails closed here (verify returns invalid),
- * so it cannot mis-charge — but it also will not work.
+ * Verified against live testnet facilitators (see `docs/ops/x402-facilitator-verification.md`), which
+ * is how the body's top-level `x402Version` was found to be required: without it a facilitator answers
+ * `unsupported_scheme` and this class throws, surfacing as a bare 502. The response field names match
+ * the v2 contract, including `invalidReason` and `payer`.
  */
 export class HttpFacilitator implements PaymentFacilitator {
   constructor(private config: X402Config) {}
@@ -155,7 +155,13 @@ export class HttpFacilitator implements PaymentFacilitator {
       body: JSON.stringify(body),
     });
     if (!response.ok) {
-      throw new Error(`Facilitator ${path} returned ${response.status}`);
+      // Include what the facilitator said. Without it a 400 is indistinguishable from any other
+      // failure in the logs, which is exactly how the missing `x402Version` below stayed hidden:
+      // the facilitator answered `unsupported_scheme`, and that reached the caller as a bare 502.
+      const detail = await response.text().catch(() => '');
+      throw new Error(
+        `Facilitator ${path} returned ${response.status}${detail ? `: ${detail.slice(0, 300)}` : ''}`
+      );
     }
     return (await response.json()) as Record<string, unknown>;
   }
@@ -164,7 +170,11 @@ export class HttpFacilitator implements PaymentFacilitator {
     paymentPayload: unknown,
     paymentRequirements: PaymentRequirements
   ): Promise<VerificationResult> {
-    const body = await this.post('/verify', { paymentPayload, paymentRequirements });
+    const body = await this.post('/verify', {
+      x402Version: X402_VERSION,
+      paymentPayload,
+      paymentRequirements,
+    });
     return {
       isValid: body.isValid === true,
       invalidReason: typeof body.invalidReason === 'string' ? body.invalidReason : undefined,
@@ -175,7 +185,11 @@ export class HttpFacilitator implements PaymentFacilitator {
     paymentPayload: unknown,
     paymentRequirements: PaymentRequirements
   ): Promise<SettlementResponse> {
-    const body = await this.post('/settle', { paymentPayload, paymentRequirements });
+    const body = await this.post('/settle', {
+      x402Version: X402_VERSION,
+      paymentPayload,
+      paymentRequirements,
+    });
     return {
       success: body.success === true,
       transaction: typeof body.transaction === 'string' ? body.transaction : undefined,
