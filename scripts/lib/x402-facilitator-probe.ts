@@ -15,7 +15,7 @@
  * and never claims more than that. The runbook says to read the raw body when it is inconclusive.
  */
 
-import type { PaymentRequirements } from '../../src/x402';
+import { X402_VERSION, type PaymentRequirements } from '../../src/x402';
 
 export interface ProbeTarget {
   facilitatorUrl: string;
@@ -31,10 +31,18 @@ export type EnvelopeVerdict =
 
 /** A rejection of the payment itself — the request was understood. */
 const SEMANTIC_REJECTION =
-  /signature|authoriz|insufficient|balance|expired|nonce|allowance|payer|validbefore|validafter/i;
+  /signature|authoriz|insufficient|balance|expired|nonce|allowance|validbefore|validafter/i;
 /** A rejection of the request's shape — our envelope is wrong. */
 const SCHEMA_REJECTION =
   /required|missing|unexpected|unknown (field|property)|must be|invalid body|schema|malformed|not supported|unsupported/i;
+/**
+ * Reasons a facilitator gives when the *request* is at fault rather than the payment.
+ *
+ * `unsupported_scheme` is the one that matters: it is what a facilitator says when it cannot resolve
+ * the scheme from the request at all — which is what a missing `x402Version` looks like. Treating it
+ * as a semantic rejection is how the probe passed while the rail was broken.
+ */
+const REQUEST_FAULT = /unsupported_(scheme|network)|invalid_request|malformed/i;
 
 function textOf(body: unknown): string {
   if (typeof body === 'string') return body;
@@ -57,18 +65,22 @@ export function classifyVerifyProbe(status: number, body: unknown): EnvelopeVerd
     return { shape: 'endpoint-missing', status, detail: text };
   }
 
-  if (status === 200) {
-    const parsed = body as { isValid?: unknown; invalidReason?: unknown } | null;
-    if (parsed && typeof parsed === 'object' && parsed.isValid === false) {
+  // Prefer the facilitator's own `invalidReason` over the raw text: matching the whole body is how a
+  // response field named `payer` once made an unsupported scheme read as a semantic rejection.
+  const parsed = body as { isValid?: unknown; invalidReason?: unknown } | null;
+  if (parsed && typeof parsed === 'object' && parsed.isValid === false) {
+    const reason = typeof parsed.invalidReason === 'string' ? parsed.invalidReason : '';
+    if (REQUEST_FAULT.test(reason)) {
       return {
-        shape: 'envelope-accepted',
+        shape: 'inconclusive',
         status,
-        detail:
-          typeof parsed.invalidReason === 'string'
-            ? parsed.invalidReason
-            : 'isValid false with no reason',
+        detail: `${reason} — the facilitator could not resolve the request, which may be our shape rather than a bad payment`,
       };
     }
+    if (reason) return { shape: 'envelope-accepted', status, detail: reason };
+  }
+
+  if (status === 200) {
     if (parsed && typeof parsed === 'object' && parsed.isValid === true) {
       // The payload verified too. Still an envelope confirmation; it says nothing about settlement.
       return { shape: 'envelope-accepted', status, detail: 'isValid true' };
@@ -152,7 +164,13 @@ export async function probeVerify(
   paymentRequirements: PaymentRequirements
 ): Promise<EnvelopeVerdict> {
   try {
-    const { status, body } = await post(target, '/verify', { paymentPayload, paymentRequirements });
+    // `x402Version` on the body is load-bearing, not decoration: without it a facilitator answers
+    // `unsupported_scheme`, which is what the rail did until this was fixed.
+    const { status, body } = await post(target, '/verify', {
+      x402Version: X402_VERSION,
+      paymentPayload,
+      paymentRequirements,
+    });
     return classifyVerifyProbe(status, body);
   } catch (error) {
     return { shape: 'unreachable', status: 0, detail: String(error) };
