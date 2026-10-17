@@ -12,13 +12,16 @@
  *   - coverage                ← src/datasets.ts
  *   - auth errors             ← src/api-keys.ts
  *
- * Payment options are deliberately absent: no account-free rail ships until W6, and the plan's
- * discovery decision is to publish only capabilities CanCoder implements.
+ * Payment options are deliberately absent: the x402 rail is implemented but disabled
+ * (`X402_ENABLED` unset), and the plan's discovery decision is to publish only capabilities that are
+ * live. Quoting is live and free, so the area product and its price are published here — but the
+ * ability to *accept* an offer is not, and is not claimed.
  */
 
 import { KEY_DENIAL_REASONS, httpStatusForKeyDenial, type KeyDenialReason } from './api-keys';
 import { DEFAULT_FREE_MONTHLY_ALLOWANCE } from './customer';
 import { FEDERAL_DATASET, getAllProvincialPaths, getAllProvincialDatasets } from './datasets';
+import { AREA_MAX_RESULTS, AREA_UNIT_PRICE_USD, AREA_UNIT_RECORDS } from './offers';
 import { UPLOAD_ROW_PRICE_USD } from './upload-sheet';
 import { DEFAULT_DEMO_RATE_LIMIT, DEFAULT_RATE_LIMIT } from './utils';
 
@@ -47,6 +50,18 @@ export interface ServiceTerms {
     unitPrice: number;
     uploadRowPrice: number;
     uploadMinimumCharge: number;
+    /**
+     * The area product's own unit. Deliberately separate from `unitPrice`: a point lookup and a
+     * 250-record area unit are different things, and inferring one from the other would misprice
+     * the large query (W0 §7).
+     */
+    area: {
+      unit: string;
+      unitRecords: number;
+      unitPrice: number;
+      maxRecordsPerOffer: number;
+      note: string;
+    };
   };
   freeTier: {
     allowance: number;
@@ -102,8 +117,15 @@ export function createServiceTerms(origin: string): ServiceTerms {
         id: 'quote',
         transport: 'http',
         description:
-          'Request a free, expiring offer for a lookup, bound to the request inputs, dataset vintage and a maximum price. Quoting consumes no billable usage.',
+          'Request a free, expiring offer for a point lookup or an area search, bound to the request inputs, dataset vintage and a maximum price. Quoting consumes no billable usage.',
         endpoints: [`${origin}/api/quote`],
+      },
+      {
+        id: 'area',
+        transport: 'http',
+        description:
+          'Search civic address records inside an electoral riding, or inside a caller-supplied WGS84 Polygon or MultiPolygon. Priced in 250-record units; retrieved page by page from a signed cursor, so one accepted offer covers every page. Polygon queries are province-scoped in v1.',
+        endpoints: [`${origin}/api/quote?operation=area.search`, `${origin}/api/area`],
       },
       {
         id: 'mcp',
@@ -130,6 +152,16 @@ export function createServiceTerms(origin: string): ServiceTerms {
       unitPrice: UPLOAD_ROW_PRICE_USD,
       uploadRowPrice: UPLOAD_ROW_PRICE_USD,
       uploadMinimumCharge: UPLOAD_MINIMUM_CHARGE_USD,
+      area: {
+        unit: `one area unit of ${AREA_UNIT_RECORDS} address records`,
+        unitRecords: AREA_UNIT_RECORDS,
+        unitPrice: AREA_UNIT_PRICE_USD,
+        maxRecordsPerOffer: AREA_MAX_RESULTS,
+        note:
+          `Priced in whole ${AREA_UNIT_RECORDS}-record units, up to ${AREA_MAX_RESULTS} records per ` +
+          'offer. The accepted ceiling is charged, not the number of pages read. Quoting is live; ' +
+          'accepting an offer is not yet enabled.',
+      },
     },
     freeTier: {
       allowance: DEFAULT_FREE_MONTHLY_ALLOWANCE,
