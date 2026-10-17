@@ -41,10 +41,11 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `
         before the security review and the stablecoin treasury policy in ADR 0007
   - [ ] `X402_RPC_URL` — EVM JSON-RPC endpoint used by `POST /api/x402/reconcile` to confirm
         settlements on chain; that route fails closed (`503 RECONCILE_UNAVAILABLE`) without it
-  - [ ] **`X402_RECEIPTS` KV namespace** — the receipt store. Required before enabling the rail:
-        without it `/api/quote/accept` fails closed, because a settled payment would leave no
-        reconciliation trace. Create with `wrangler kv namespace create X402_RECEIPTS`, bind it in
-        `wrangler.jsonc`, then read `GET /api/x402/receipts` (admin) to reconcile
+  - [x] **`X402_RECEIPTS` KV namespace** — created and bound for prod
+        (`8dba512f75124b348cd6790a7f59b663`) and staging (`bf549c66a0dc435c9d86ba18cd7db82f`).
+        Required whenever the rail is enabled: without it `/api/quote/accept` fails closed, because a
+        settled payment would leave no reconciliation trace. Read `GET /api/x402/receipts` (admin) to
+        reconcile
   - [ ] Staging: copy the same secrets with `wrangler secret put … --env staging`
   - `MAPBOX_TOKEN` — only if the Mapbox fallback is used
 - [x] **Production hosts**: the combined Worker serves the custom domain

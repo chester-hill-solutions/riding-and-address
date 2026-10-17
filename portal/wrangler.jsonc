@@ -42,14 +42,13 @@
     {
       "binding": "API_KEYS",
       "id": "2d0152b0958c48fab4a98b3046e0c08e"
+    },
+    // x402 receipt store (ADR 0007). The rail is closed unless this is bound: without it a settled
+    // payment leaves no reconciliation trace, so /api/quote/accept fails closed.
+    {
+      "binding": "X402_RECEIPTS",
+      "id": "8dba512f75124b348cd6790a7f59b663"
     }
-    // x402 receipt store (ADR 0007). Required whenever X402_ENABLED is set: without it a settled
-    // payment leaves no reconciliation trace, so /api/quote/accept fails closed. Create it with
-    // `wrangler kv namespace create X402_RECEIPTS` and uncomment this before enabling the rail.
-    // {
-    //   "binding": "X402_RECEIPTS",
-    //   "id": "<paste-namespace-id>"
-    // }
   ],
 
   "d1_databases": [
@@ -213,7 +212,8 @@
           "binding": "WEBHOOKS",
           "id": "1e6ef0958b124067a0f453ea451c8667"
         },
-        { "binding": "API_KEYS", "id": "363048976bc74248b091f69510a1b759" }
+        { "binding": "API_KEYS", "id": "363048976bc74248b091f69510a1b759" },
+        { "binding": "X402_RECEIPTS", "id": "bf549c66a0dc435c9d86ba18cd7db82f" }
       ],
       "d1_databases": [
         {
