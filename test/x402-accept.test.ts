@@ -61,8 +61,13 @@ function baseEnv(overrides: Partial<Env> = {}): Env {
   } as unknown as Env;
 }
 
-function context(path: string, env: Env, headers: Record<string, string> = {}): RouteContext {
-  const request = new Request(`https://lookup.test${path}`, { method: 'POST', headers });
+function context(
+  path: string,
+  env: Env,
+  headers: Record<string, string> = {},
+  method = 'POST'
+): RouteContext {
+  const request = new Request(`https://lookup.test${path}`, { method, headers });
   return createRouteContext({
     request,
     env,
@@ -93,10 +98,11 @@ function stubFacilitator(options: { verify?: boolean; settle?: Record<string, un
   }) as typeof fetch;
 }
 
-/** Get a real offer for a point inside the Toronto fixture. */
+/** Get a real offer for a point inside the Toronto fixture. The quote side is a GET; POST is the
+ * polygon form. */
 async function quote(env: Env): Promise<string> {
   const response = await handleQuoteRequest(
-    context(`/api/quote?lat=${TORONTO_LAT}&lon=${TORONTO_LON}`, env)
+    context(`/api/quote?lat=${TORONTO_LAT}&lon=${TORONTO_LON}`, env, {}, 'GET')
   );
   const body = (await response.json()) as { offerId: string };
   return body.offerId;

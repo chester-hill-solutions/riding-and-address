@@ -48,9 +48,7 @@ function envWithAddresses(rows: OdaMemoryAddressRow[], overrides: Partial<Env> =
 
 const CURSOR: AreaPageCursor = {
   id: 0,
-  riding: 'Spadina—Harbourfront',
-  datasetId: 'federalridings-2024.geojson',
-  datasetYear: 2024,
+  scope: { riding: 'Spadina—Harbourfront', datasetId: 'federalridings-2024.geojson', datasetYear: 2024 },
   offerId: 'offer-1',
   expiresAt: new Date(Date.now() + 60_000).toISOString(),
 };
@@ -64,7 +62,14 @@ describe('GET /api/area', () => {
 
   it('refuses an unsigned cursor, so an unpaid caller reads nothing', async () => {
     // ASCII-only payload: btoa cannot encode the em-dash in the real riding name.
-    const unsigned = btoa(JSON.stringify({ ...CURSOR, riding: 'Spadina-Harbourfront' }));
+    const unsigned = btoa(
+      JSON.stringify({
+        id: 0,
+        scope: { riding: 'Spadina-Harbourfront', datasetId: 'federalridings-2024.geojson', datasetYear: 2024 },
+        offerId: 'offer-1',
+        expiresAt: CURSOR.expiresAt,
+      })
+    );
     const response = await fetchLookup(
       envWithAddresses([row(1, TORONTO_LON, TORONTO_LAT)]),
       `/api/area?cursor=${encodeURIComponent(unsigned)}`

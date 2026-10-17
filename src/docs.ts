@@ -413,6 +413,23 @@ export function createOpenAPISpec(baseUrl: string) {
             "503": { description: "QUOTES_UNAVAILABLE — quoting is not configured" },
           },
         },
+        post: {
+          summary: "Quote a caller-supplied boundary",
+          description:
+            "Quotes an area search over an arbitrary WGS84 Polygon or MultiPolygon. The shape is validated (ring closure, WGS84 range, vertex and span caps) and reduced to a hash before an offer exists, so an unusable shape never reaches a query. Province-scoped in v1: the address store is queried per province.",
+          tags: ["Offers"],
+          requestBody: {
+            required: true,
+            content: { "application/json": { schema: { type: "object" } } },
+          },
+          responses: {
+            "200": { description: "A signed offer whose scope carries the boundary hash and province" },
+            "400": { description: "INVALID_QUERY, INVALID_SHAPE, or LIMIT_EXCEEDED" },
+            "404": { description: "NO_ADDRESS_COVERAGE — the province has no imported addresses" },
+            "429": { description: "Rate limit exceeded (per client IP)" },
+            "503": { description: "QUOTES_UNAVAILABLE" },
+          },
+        },
       },
       "/api/quote/accept": {
         post: {
@@ -467,6 +484,24 @@ export function createOpenAPISpec(baseUrl: string) {
             "404": { description: "RIDING_NOT_FOUND, DATASET_UNAVAILABLE, or NO_ADDRESS_COVERAGE" },
             "410": { description: "CURSOR_INVALID — the cursor is invalid, tampered with, or expired" },
             "422": { description: "PROVINCE_UNKNOWN — the riding carries no province code" },
+            "429": { description: "Rate limit exceeded (per client IP)" },
+            "503": { description: "QUOTES_UNAVAILABLE" },
+          },
+        },
+        post: {
+          summary: "Read the pages after the first of a caller-supplied boundary",
+          description:
+            "The POST form of /api/area, for shapes that cannot travel in a URL. Send the signed cursor from accepting an area offer together with the same boundary, which is checked against the hash the cursor recorded. One cursor authorizes every page of one accepted offer.",
+          tags: ["Offers"],
+          requestBody: {
+            required: true,
+            content: { "application/json": { schema: { type: "object" } } },
+          },
+          responses: {
+            "200": { description: "A page of address records with the next page cursor" },
+            "400": { description: "INVALID_QUERY or INVALID_SHAPE" },
+            "404": { description: "NO_ADDRESS_COVERAGE" },
+            "410": { description: "CURSOR_INVALID — the cursor is invalid, tampered with, or expired" },
             "429": { description: "Rate limit exceeded (per client IP)" },
             "503": { description: "QUOTES_UNAVAILABLE" },
           },

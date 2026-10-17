@@ -17,7 +17,8 @@ import { handleLookupRequest } from './lookup-handler';
 import { r2DatasetSource } from './dataset-source';
 import { getAddressStore } from './address-store';
 import { AREA_PAGE_MAX, readAreaPage } from './area-query';
-import { AREA_ATTRIBUTION, buildAreaEnvelope, hasAddressCoverage, resolveRiding } from './area-request';
+import { AREA_ATTRIBUTION, buildAreaEnvelope, hasAddressCoverage, resolveRiding, type RidingRef } from './area-request';
+import { geometryHash, validateAreaGeometry } from './area-geometry';
 import { UPLOAD_ROW_PRICE_USD } from './upload-sheet';
 import { badRequest, parseQuery, timingSafeEqual } from './utils';
 import {
@@ -33,7 +34,7 @@ import {
   type PaymentRequirements,
   type X402Config,
 } from './x402';
-import type { QueryParams } from './types';
+import type { GeoJSONGeometry, QueryParams } from './types';
 import type { RouteContext } from './route-context';
 import { receiptsBound, recordReceipt, type X402Receipt } from './x402-receipts';
 
@@ -65,15 +66,21 @@ const LookupOfferSchema = z.object({
   paymentMethods: z.array(z.string()),
 });
 
-/** An area search offers up to `maximumResults` records within a riding, in 250-record units. */
+/**
+ * What an area query is bounded to. A riding is named; a caller-supplied shape is identified by its
+ * hash, because a boundary at the vertex cap is tens of kilobytes and cannot live in an offer or a
+ * cursor. A polygon query is province-scoped in v1 — the address store is queried per province, and
+ * a shape spanning provinces needs a province-overlap lookup that does not exist yet.
+ */
+const AreaScopeSchema = z.union([
+  z.object({ riding: z.string(), datasetId: z.string(), datasetYear: z.number() }),
+  z.object({ geometryHash: z.string(), province: z.string() }),
+]);
+
+/** An area search offers up to `maximumResults` records within a boundary, in 250-record units. */
 const AreaOfferSchema = z.object({
   operation: z.literal('area.search'),
-  scope: z.object({
-    /** The riding the query is bounded to, as the caller named it. */
-    riding: z.string(),
-    datasetId: z.string(),
-    datasetYear: z.number(),
-  }),
+  scope: AreaScopeSchema,
   estimate: z.object({ resultCount: z.number().nullable(), exact: z.boolean() }),
   price: z.object({ currency: z.literal('USD'), maximum: z.number() }),
   limits: z.object({ maximumResults: z.number(), expiresAt: z.string() }),
@@ -98,9 +105,8 @@ export type Offer = OfferPayload & { offerId: string };
  */
 const AreaPageCursorSchema = z.object({
   id: z.number().int().nonnegative(),
-  riding: z.string(),
-  datasetId: z.string(),
-  datasetYear: z.number(),
+  /** The scope the pages belong to — the same union the offer bound, so the two cannot drift. */
+  scope: AreaScopeSchema,
   offerId: z.string(),
   expiresAt: z.string(),
 });
@@ -253,8 +259,40 @@ export async function createAreaOffer(
   return { offerId: await signOffer(secret, payload), ...payload };
 }
 
-/** Mint the cursor that authorizes the pages after the first. Only the accept path calls this. */
-export async function signAreaPageCursor(secret: string, cursor: AreaPageCursor): Promise<string> {
+/**
+ * An area offer over a caller-supplied shape. The scope carries the shape's hash and the province,
+ * not the shape: the boundary is resent with each page and checked against the hash, so the offer and
+ * its cursor stay small and the agreed shape cannot change after acceptance.
+ */
+export async function createPolygonAreaOffer(
+  secret: string,
+  options: {
+    geometryHash: string;
+    province: string;
+    maximumResults: number;
+    total?: number | null;
+    nowMs?: number;
+  }
+): Promise<Offer> {
+  const now = options.nowMs ?? Date.now();
+  const payload: AreaOfferPayload = {
+    operation: 'area.search',
+    scope: { geometryHash: options.geometryHash, province: options.province.toUpperCase() },
+    estimate: {
+      resultCount: options.total ?? null,
+      exact: options.total !== undefined && options.total !== null,
+    },
+    price: { currency: 'USD', maximum: areaPriceUsd(options.maximumResults) },
+    limits: {
+      maximumResults: options.maximumResults,
+      expiresAt: new Date(now + OFFER_TTL_MS).toISOString(),
+    },
+    paymentMethods: [],
+  };
+  return { offerId: await signOffer(secret, payload), ...payload };
+}
+
+/** Mint the cursor that authorizes the pages after the first. Only the accept path calls this. */export async function signAreaPageCursor(secret: string, cursor: AreaPageCursor): Promise<string> {
   const body = JSON.stringify(cursor);
   return `${toBase64Url(new TextEncoder().encode(body))}.${await hmacSha256(secret, body)}`;
 }
@@ -301,11 +339,15 @@ export async function handleQuoteRequest(ctx: RouteContext): Promise<Response> {
     return badRequest('Quoting is not configured', 503, 'QUOTES_UNAVAILABLE', correlationId);
   }
 
+  // A caller-supplied boundary cannot travel in a URL, so polygon quotes arrive as a POST body.
+  if (request.method === 'POST') {
+    return handlePolygonAreaQuote(ctx, secret);
+  }
+
   const operation = ctx.url.searchParams.get('operation') || 'lookup.point';
   if (operation === 'area.search') {
     return handleAreaQuote(ctx, secret);
-  }
-  if (operation !== 'lookup.point') {
+  }  if (operation !== 'lookup.point') {
     return badRequest(`Unknown operation '${operation}'`, 400, 'INVALID_QUERY', correlationId);
   }
 
@@ -402,32 +444,57 @@ async function deliverAreaOffer(
   ctx: RouteContext,
   offer: AreaOfferPayload,
   offerId: string,
-  secret: string
+  secret: string,
+  boundary?: GeoJSONGeometry
 ): Promise<{ response: Response; resultCount: number }> {
   const { env, correlationId } = ctx;
+  const scope = offer.scope;
 
-  const resolved = await resolveRiding(r2DatasetSource(env), {
-    r2Key: offer.scope.datasetId,
-    datasetId: offer.scope.datasetId,
-    datasetYear: offer.scope.datasetYear,
-    riding: offer.scope.riding,
-  });
-  if (!resolved.ok) {
-    const status = resolved.code === 'RIDING_NOT_FOUND' ? 404 : 422;
-    return {
-      response: badRequest('The riding could not be resolved', status, resolved.code, correlationId),
-      resultCount: 0,
-    };
+  // A named riding is looked up; a caller-supplied shape is checked against the hash the offer bound,
+  // so the agreed shape cannot change between the quote and the delivery.
+  let geometry: GeoJSONGeometry;
+  let province: string;
+  let ref: RidingRef | undefined;
+
+  if ('riding' in scope) {
+    const resolved = await resolveRiding(r2DatasetSource(env), {
+      r2Key: scope.datasetId,
+      datasetId: scope.datasetId,
+      datasetYear: scope.datasetYear,
+      riding: scope.riding,
+    });
+    if (!resolved.ok) {
+      const status = resolved.code === 'RIDING_NOT_FOUND' ? 404 : 422;
+      return {
+        response: badRequest('The riding could not be resolved', status, resolved.code, correlationId),
+        resultCount: 0,
+      };
+    }
+    geometry = resolved.geometry;
+    province = resolved.province;
+    ref = resolved.ref;
+  } else {
+    if (!boundary) {
+      return {
+        response: badRequest('Provide the boundary this offer was quoted for', 400, 'INVALID_SHAPE', correlationId),
+        resultCount: 0,
+      };
+    }
+    if ((await geometryHash(boundary)) !== scope.geometryHash) {
+      return {
+        response: badRequest('The boundary does not match the offer', 400, 'INVALID_SHAPE', correlationId),
+        resultCount: 0,
+      };
+    }
+    geometry = boundary;
+    province = scope.province;
+    ref = undefined;
   }
-  if (!hasAddressCoverage(env, resolved.province)) {
+
+  if (!hasAddressCoverage(env, province)) {
     // Never an empty page: that reads as "no addresses here" rather than "not imported".
     return {
-      response: badRequest(
-        `No address coverage for ${resolved.province}`,
-        404,
-        'NO_ADDRESS_COVERAGE',
-        correlationId
-      ),
+      response: badRequest(`No address coverage for ${province}`, 404, 'NO_ADDRESS_COVERAGE', correlationId),
       resultCount: 0,
     };
   }
@@ -440,8 +507,8 @@ async function deliverAreaOffer(
 
   const page = await readAreaPage({
     store: getAddressStore(env.ODA_DB, () => {}),
-    province: resolved.province,
-    boundary: resolved.geometry,
+    province,
+    boundary: geometry,
     pageSize: Math.min(AREA_PAGE_MAX, offer.limits.maximumResults),
   });
 
@@ -453,16 +520,17 @@ async function deliverAreaOffer(
       ? null
       : await signAreaPageCursor(secret, {
           id: nextId,
-          riding: offer.scope.riding,
-          datasetId: offer.scope.datasetId,
-          datasetYear: offer.scope.datasetYear,
+          scope,
           offerId,
           expiresAt: offer.limits.expiresAt,
         });
 
   const envelope = buildAreaEnvelope({
-    ref: resolved.ref,
-    query: { dataset: offer.scope.datasetId, riding: offer.scope.riding },
+    ref,
+    boundary: 'riding' in scope ? undefined : scope,
+    query: 'riding' in scope
+      ? { dataset: scope.datasetId, riding: scope.riding }
+      : { geometryHash: scope.geometryHash, province: scope.province },
     records: page.records,
     page: { cursor, hasMore: nextId !== null, truncated },
     total: offer.estimate.resultCount,
@@ -479,6 +547,73 @@ async function deliverAreaOffer(
     }),
     resultCount: page.records.length,
   };
+}
+
+/**
+ * `POST /api/quote` — quote a caller-supplied boundary.
+ *
+ * The shape is validated (closure, WGS84 range, vertex and span caps) and reduced to its hash before
+ * an offer exists, so an unusable or oversized shape never reaches a query. Province-scoped in v1:
+ * the address store is queried per province, and a shape spanning provinces needs a province-overlap
+ * lookup that does not exist yet.
+ */
+async function handlePolygonAreaQuote(ctx: RouteContext, secret: string): Promise<Response> {
+  const { env, request, correlationId, corsHeaders } = ctx;
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return badRequest('Send a JSON body', 400, 'INVALID_QUERY', correlationId);
+  }
+
+  if (body.operation !== 'area.search') {
+    return badRequest('POST /api/quote supports operation "area.search"', 400, 'INVALID_QUERY', correlationId);
+  }
+
+  const province = typeof body.province === 'string' ? body.province.trim().toUpperCase() : '';
+  if (province.length !== 2) {
+    return badRequest(
+      'Provide a two-letter province; polygon queries are province-scoped in v1',
+      400,
+      'INVALID_QUERY',
+      correlationId
+    );
+  }
+  if (!hasAddressCoverage(env, province)) {
+    return badRequest(`No address coverage for ${province}`, 404, 'NO_ADDRESS_COVERAGE', correlationId);
+  }
+
+  const validated = validateAreaGeometry(body.boundary);
+  if (!validated.ok) {
+    return badRequest(validated.reason, 400, 'INVALID_SHAPE', correlationId);
+  }
+
+  const requested = Number(body.maximum_results ?? '');
+  const maximumResults =
+    Number.isFinite(requested) && requested > 0 ? Math.trunc(requested) : AREA_UNIT_RECORDS;
+  if (maximumResults > AREA_MAX_RESULTS) {
+    return badRequest(
+      `maximum_results exceeds the ${AREA_MAX_RESULTS}-record limit`,
+      400,
+      'LIMIT_EXCEEDED',
+      correlationId
+    );
+  }
+
+  const offer = await createPolygonAreaOffer(secret, {
+    geometryHash: await geometryHash(validated.geometry),
+    province,
+    maximumResults,
+  });
+
+  return new Response(JSON.stringify(offer), {
+    headers: {
+      'content-type': 'application/json; charset=UTF-8',
+      'cache-control': 'no-store',
+      ...corsHeaders(request.headers.get('Origin')),
+    },
+  });
 }
 
 /** `GET /api/quote?operation=area.search` — the area quote, bounded and priced in 250-record units. */
@@ -548,16 +683,42 @@ async function handleAreaQuote(ctx: RouteContext, secret: string): Promise<Respo
  * path is the whole authorization. An unsigned or foreign cursor is rejected, so this cannot be used
  * to read addresses without paying.
  */
+/**
+ * `GET|POST /api/area` — the pages after the first.
+ *
+ * There is no keyed area route: retrieval is offer-only, and the signed cursor minted by the accept
+ * path is the whole authorization. An unsigned or foreign cursor is rejected, so this cannot be used
+ * to read addresses without paying.
+ *
+ * `GET` carries the cursor in the query string, which is enough for a riding-bounded query — the
+ * boundary is looked up from the dataset. A caller-supplied shape cannot travel in a URL, so it comes
+ * in a `POST` body and is checked against the hash the cursor recorded.
+ */
 export async function handleAreaRequest(ctx: RouteContext): Promise<Response> {
-  const { env, correlationId, corsHeaders } = ctx;
+  const { env, request, correlationId, corsHeaders } = ctx;
   const secret = env.OFFER_SIGNING_SECRET;
   if (!secret) {
     return badRequest('Quoting is not configured', 503, 'QUOTES_UNAVAILABLE', correlationId);
   }
 
-  const token = ctx.url.searchParams.get('cursor');
+  let token: string | null;
+  let boundary: GeoJSONGeometry | undefined;
+
+  if (request.method === 'POST') {
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return badRequest('Send a JSON body', 400, 'INVALID_QUERY', correlationId);
+    }
+    token = typeof body.cursor === 'string' ? body.cursor : null;
+    boundary = body.boundary as GeoJSONGeometry | undefined;
+  } else {
+    token = ctx.url.searchParams.get('cursor');
+  }
+
   if (!token) {
-    return badRequest('Provide ?cursor=<page cursor from an accepted offer>', 400, 'INVALID_QUERY', correlationId);
+    return badRequest('Provide a page cursor from an accepted offer', 400, 'INVALID_QUERY', correlationId);
   }
 
   const cursor = await verifyAreaPageCursor(secret, token);
@@ -565,18 +726,39 @@ export async function handleAreaRequest(ctx: RouteContext): Promise<Response> {
     return badRequest('The page cursor is invalid, tampered with, or expired', 410, 'CURSOR_INVALID', correlationId);
   }
 
-  const resolved = await resolveRiding(r2DatasetSource(env), {
-    r2Key: cursor.datasetId,
-    datasetId: cursor.datasetId,
-    datasetYear: cursor.datasetYear,
-    riding: cursor.riding,
-  });
-  if (!resolved.ok) {
-    const status = resolved.code === 'RIDING_NOT_FOUND' ? 404 : 422;
-    return badRequest('The riding could not be resolved', status, resolved.code, correlationId);
+  const scope = cursor.scope;
+  let geometry: GeoJSONGeometry;
+  let province: string;
+  let ref: RidingRef | undefined;
+
+  if ('riding' in scope) {
+    const resolved = await resolveRiding(r2DatasetSource(env), {
+      r2Key: scope.datasetId,
+      datasetId: scope.datasetId,
+      datasetYear: scope.datasetYear,
+      riding: scope.riding,
+    });
+    if (!resolved.ok) {
+      const status = resolved.code === 'RIDING_NOT_FOUND' ? 404 : 422;
+      return badRequest('The riding could not be resolved', status, resolved.code, correlationId);
+    }
+    geometry = resolved.geometry;
+    province = resolved.province;
+    ref = resolved.ref;
+  } else {
+    if (!boundary) {
+      return badRequest('Provide the boundary this cursor was issued for', 400, 'INVALID_SHAPE', correlationId);
+    }
+    if ((await geometryHash(boundary)) !== scope.geometryHash) {
+      return badRequest('The boundary does not match the cursor', 400, 'INVALID_SHAPE', correlationId);
+    }
+    geometry = boundary;
+    province = scope.province;
+    ref = undefined;
   }
-  if (!hasAddressCoverage(env, resolved.province)) {
-    return badRequest(`No address coverage for ${resolved.province}`, 404, 'NO_ADDRESS_COVERAGE', correlationId);
+
+  if (!hasAddressCoverage(env, province)) {
+    return badRequest(`No address coverage for ${province}`, 404, 'NO_ADDRESS_COVERAGE', correlationId);
   }
   if (!env.ODA_DB) {
     return badRequest('Address data is unavailable', 503, 'DATASET_UNAVAILABLE', correlationId);
@@ -584,21 +766,21 @@ export async function handleAreaRequest(ctx: RouteContext): Promise<Response> {
 
   const page = await readAreaPage({
     store: getAddressStore(env.ODA_DB, () => {}),
-    province: resolved.province,
-    boundary: resolved.geometry,
+    province,
+    boundary: geometry,
     afterId: cursor.id,
     pageSize: AREA_PAGE_MAX,
   });
 
   const nextId = page.hasMore ? page.nextId : null;
-  const nextCursor =
-    nextId === null
-      ? null
-      : await signAreaPageCursor(secret, { ...cursor, id: nextId });
+  const nextCursor = nextId === null ? null : await signAreaPageCursor(secret, { ...cursor, id: nextId });
 
   const envelope = buildAreaEnvelope({
-    ref: resolved.ref,
-    query: { dataset: cursor.datasetId, riding: cursor.riding },
+    ref,
+    boundary: 'riding' in scope ? undefined : scope,
+    query: 'riding' in scope
+      ? { dataset: scope.datasetId, riding: scope.riding }
+      : { geometryHash: scope.geometryHash, province: scope.province },
     records: page.records,
     page: { cursor: nextCursor, hasMore: nextId !== null, truncated: false },
     total: null,
@@ -609,7 +791,7 @@ export async function handleAreaRequest(ctx: RouteContext): Promise<Response> {
     headers: {
       'content-type': 'application/json; charset=UTF-8',
       'cache-control': 'no-store',
-      ...corsHeaders(ctx.request.headers.get('Origin')),
+      ...corsHeaders(request.headers.get('Origin')),
     },
   });
 }
@@ -655,6 +837,24 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
     // A settled payment with nowhere to record its receipt cannot be reconciled, so the rail stays
     // closed rather than taking money it cannot account for.
     return badRequest('Payments are not available', 503, 'PAYMENTS_UNAVAILABLE', correlationId);
+  }
+
+  // A caller-supplied shape cannot travel in the offer, so it is resent and checked here — *before*
+  // any payment step. Checking it after settlement would mean charging for a request we then refuse.
+  let boundary: GeoJSONGeometry | undefined;
+  if (offer.operation === 'area.search' && !('riding' in offer.scope)) {
+    try {
+      const body = (await request.json()) as Record<string, unknown>;
+      boundary = body.boundary as GeoJSONGeometry | undefined;
+    } catch {
+      return badRequest('Send the boundary this offer was quoted for', 400, 'INVALID_SHAPE', correlationId);
+    }
+    if (!boundary) {
+      return badRequest('Send the boundary this offer was quoted for', 400, 'INVALID_SHAPE', correlationId);
+    }
+    if ((await geometryHash(boundary)) !== offer.scope.geometryHash) {
+      return badRequest('The boundary does not match the offer', 400, 'INVALID_SHAPE', correlationId);
+    }
   }
 
   const paymentHeader = request.headers.get(PAYMENT_SIGNATURE_HEADER);
@@ -706,9 +906,21 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
   const delivery =
     offer.operation === 'lookup.point'
       ? { response: await deliverOffer(ctx, offer), resultCount: offer.estimate.resultCount }
-      : await deliverAreaOffer(ctx, offer, offerId, secret);
+      : await deliverAreaOffer(ctx, offer, offerId, secret, boundary);
   const delivered = delivery.response;
   const result = await delivered.json();
+
+  // A riding offer records the dataset vintage; a polygon offer records the shape hash, since there
+  // is no boundary dataset to name.
+  let receiptScope: Record<string, unknown>;
+  if (offer.operation === 'area.search') {
+    receiptScope =
+      'riding' in offer.scope
+        ? { datasetId: offer.scope.datasetId, datasetYear: offer.scope.datasetYear }
+        : { geometryHash: offer.scope.geometryHash, province: offer.scope.province };
+  } else {
+    receiptScope = { datasetId: offer.scope.datasetId, datasetYear: offer.scope.datasetYear };
+  }
 
   const receipt: X402Receipt = {
     offerId,
@@ -718,7 +930,7 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
       network: settlement.network ?? config.network,
     },
     amount: { currency: offer.price.currency, value: offer.price.maximum },
-    scope: { datasetId: offer.scope.datasetId, datasetYear: offer.scope.datasetYear },
+    scope: receiptScope,
     resultCount: delivery.resultCount,
     delivered: delivered.ok,
     correlationId,

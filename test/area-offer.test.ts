@@ -32,9 +32,7 @@ const env = (overrides: Partial<Env> = {}): Env =>
 
 const CURSOR: AreaPageCursor = {
   id: 42,
-  riding: RIDING,
-  datasetId: 'federalridings-2024.geojson',
-  datasetYear: 2024,
+  scope: { riding: RIDING, datasetId: 'federalridings-2024.geojson', datasetYear: 2024 },
   offerId: 'offer-1',
   expiresAt: new Date(Date.now() + 60_000).toISOString(),
 };
@@ -106,7 +104,7 @@ describe('area page cursors', () => {
   it('reject a tampered payload', async () => {
     const token = await signAreaPageCursor(SECRET, CURSOR);
     const [, signature] = token.split('.');
-    const forged = btoa(JSON.stringify({ ...CURSOR, id: 0, riding: 'X' }))
+    const forged = btoa(JSON.stringify({ ...CURSOR, id: 0, scope: { geometryHash: 'sha256:x', province: 'ON' } }))
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=+$/, '');
