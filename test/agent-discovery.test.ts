@@ -58,6 +58,7 @@ describe('MCP Server Card', () => {
     const toolNames = card.capabilities.tools.map((tool) => tool.name);
     expect(toolNames).toContain('lookup_riding');
     expect(toolNames).toContain('quote_lookup');
+    expect(toolNames).toContain('quote_area');
   });
 });
 

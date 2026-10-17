@@ -18,7 +18,8 @@ responses use the hostname from the request, while rejecting unconfigured hosts 
   capabilities or payment handlers)
 - `/.well-known/cancoder.json` (machine-readable terms: capabilities, price, free tier, coverage,
   auth, and error codes — every value read from the constant the Worker and Portal enforce)
-- `/mcp` with a read-only `lookup_riding` tool and public setup notes at `/docs/agents.md`
+- `/mcp` with `lookup_riding` and the `quote_lookup` / `quote_area` offer tools, plus public setup
+  notes at `/docs/agents.md`
 - Homepage `Link` headers for the API docs, OpenAPI description, and API catalog
 
 Deploy the Worker with the normal production deployment so these routes become available. The

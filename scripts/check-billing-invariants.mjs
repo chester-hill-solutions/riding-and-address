@@ -25,6 +25,7 @@ const SKIP_DIRS = new Set([
   '.wrangler',
   'coverage',
   '.claude',
+  '.agent',
   'data',
 ]);
 
