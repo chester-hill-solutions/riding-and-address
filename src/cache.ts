@@ -1,8 +1,36 @@
+import { z } from 'zod';
 import { Env, GeoJSONFeatureCollection, GeoJSONGeometry, SpatialIndex, QueryParams, LookupResult, LookupCacheEntry, Suggestion, SuggestQueryParams } from './types';
 import { readTimestampedEntry, writeTimestampedEntry } from './kv-cache';
 import { TIME_CONSTANTS, TIME_CONSTANTS_SECONDS } from './config';
 import { pickDataset } from './datasets';
 import { normalizeSearchToken } from './oda-normalize';
+
+/**
+ * Shape checks for the timestamped cache entries.
+ *
+ * A cached lookup carries a riding, so believing a corrupted one answers the wrong riding entirely —
+ * it is discarded as a miss rather than cast. `.passthrough()` keeps the optional fields the cache
+ * stores (geocode, point, addressComponents, …), so validation narrows nothing away.
+ */
+const LookupCacheEntrySchema = z
+  .object({
+    properties: z.record(z.string(), z.unknown()).nullable(),
+    dataset: z.string(),
+    timestamp: z.number(),
+  })
+  .passthrough();
+
+/**
+ * The suggestion elements are validated by the suggest contract's own consumer, not deep-checked
+ * here; what this pins is that the entry is an object with the right shape of fields.
+ */
+const SuggestCacheEntrySchema = z
+  .object({
+    suggestions: z.array(z.unknown()),
+    provinces: z.array(z.string()),
+    timestamp: z.number(),
+  })
+  .passthrough() as unknown as z.ZodType<SuggestCacheEntry>;
 
 // Cache configuration
 export const CACHE_CONFIG = {
@@ -263,7 +291,8 @@ export async function getCachedLookupResult(env: Env, cacheKey: string): Promise
     env.LOOKUP_CACHE,
     cacheKey,
     TIME_CONSTANTS.TWENTY_FOUR_HOURS_MS,
-    'lookup result'
+    'lookup result',
+    LookupCacheEntrySchema
   );
 }
 
@@ -342,7 +371,8 @@ export async function getCachedSuggestions(
     env.LOOKUP_CACHE,
     cacheKey,
     ttlSeconds * 1000,
-    'suggestions'
+    'suggestions',
+    SuggestCacheEntrySchema
   );
 }
 

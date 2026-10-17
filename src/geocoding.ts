@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import {
   Env,
   QueryParams,
@@ -70,6 +71,28 @@ interface ReverseGeocodingCacheEntry {
   timestamp: number;
 }
 
+/**
+ * Shape checks for the geocoding caches. A malformed entry is discarded as a miss rather than
+ * trusted: a cached coordinate is what the point-in-polygon runs on, so believing a corrupted one
+ * answers the wrong riding. `.passthrough()` keeps the optional metadata the cache stores.
+ */
+const GeocodingCacheEntrySchema = z
+  .object({
+    lon: z.number(),
+    lat: z.number(),
+    timestamp: z.number(),
+    provider: z.string(),
+  })
+  .passthrough();
+
+const ReverseGeocodingCacheEntrySchema = z
+  .object({
+    formattedAddress: z.string(),
+    components: z.record(z.string(), z.unknown()),
+    timestamp: z.number(),
+  })
+  .passthrough();
+
 // Batch geocoding knobs. GeoGratis-first individual geocoding is the only strategy; the batch
 // API road was dead and has been removed with the Google batch adapter.
 const BATCH_GEOCODING_CONFIG = {
@@ -115,7 +138,8 @@ async function getGeocodingCacheEntry(env: Env, cacheKey: string): Promise<Geoco
     env.GEOCODING_CACHE,
     cacheKey,
     TIME_CONSTANTS.TWENTY_FOUR_HOURS_MS,
-    'geocoding result'
+    'geocoding result',
+    GeocodingCacheEntrySchema
   );
 }
 
@@ -213,7 +237,8 @@ export async function getCachedReverseGeocoding(env: Env, cacheKey: string): Pro
     env.GEOCODING_CACHE,
     cacheKey,
     TIME_CONSTANTS.TWENTY_FOUR_HOURS_MS,
-    'reverse geocoding result'
+    'reverse geocoding result',
+    ReverseGeocodingCacheEntrySchema
   );
   if (!cached) return null;
 
