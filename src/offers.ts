@@ -38,6 +38,7 @@ import {
 import type { GeoJSONGeometry, QueryParams } from './types';
 import type { RouteContext } from './route-context';
 import { receiptsBound, recordReceipt, type X402Receipt } from './x402-receipts';
+import { payerDailyCapUsd, releasePayerSpend, reservePayerSpend } from './x402-spend';
 
 /** How long a quote is valid. Short: it bounds how stale a price or vintage can be when accepted. */
 export const OFFER_TTL_MS = 10 * 60 * 1000;
@@ -884,14 +885,39 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
     return paymentRequired(ctx, offer, config, verification.invalidReason || 'Payment is not valid');
   }
 
+  // The payer is only trustworthy once the payload has verified, so the cap is charged here — after
+  // verification, before settlement, so a payer over its cap is refused without money moving.
+  const payer = payerFromPaymentPayload(paymentPayload) ?? undefined;
+  let reservedUsd = 0;
+  if (payer && payerDailyCapUsd(env) > 0) {
+    const reservation = await reservePayerSpend(env, payer, offer.price.maximum);
+    if (!reservation.ok) {
+      return reservation.reason === 'cap_exceeded'
+        ? badRequest(
+            `This payer has reached its daily spend cap of ${reservation.capUsd} ${offer.price.currency}`,
+            402,
+            'PAYER_CAP_EXCEEDED',
+            correlationId
+          )
+        : badRequest('Spend control is unavailable', 503, 'PAYER_CAP_UNAVAILABLE', correlationId);
+    }
+    reservedUsd = offer.price.maximum;
+  }
+  /** Give the reservation back only when we know no money moved. */
+  const unreserve = async () => {
+    if (payer && reservedUsd > 0) await releasePayerSpend(env, payer, reservedUsd);
+  };
+
   let settlement;
   try {
     settlement = await settleWithRetry(facilitator, paymentPayload, requirements);
   } catch {
+    await unreserve();
     return badRequest('Settlement failed', 502, 'SETTLEMENT_FAILED', correlationId);
   }
   if (settlement.pending) {
-    // Non-terminal: the transaction may still confirm. Never re-charge; reconcile on chain.
+    // Non-terminal: the transaction may still confirm, so the reservation is kept. Over-counting
+    // caps the payer early; releasing here could let a settling payment go uncounted.
     return badRequest(
       'Settlement is pending; reconcile before retrying',
       502,
@@ -900,6 +926,7 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
     );
   }
   if (!settlement.success) {
+    await unreserve();
     return paymentRequired(ctx, offer, config, settlement.errorReason || 'Settlement failed');
   }
 
@@ -935,7 +962,7 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
     resultCount: delivery.resultCount,
     delivered: delivered.ok,
     /** Where a refund would go if this was settled but not delivered. */
-    payer: payerFromPaymentPayload(paymentPayload) ?? undefined,
+    payer,
     correlationId,
     recordedAt: new Date().toISOString(),
   };

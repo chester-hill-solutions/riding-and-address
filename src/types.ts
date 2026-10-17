@@ -36,6 +36,11 @@ export interface Env {
   /** IP rate limit for /api/demo/* (default 30/min). */
   DEMO_RATE_LIMIT?: string;
   /**
+   * IP rate limit for the paid rail (/api/quote, /api/quote/accept, /api/area; default 100/min).
+   * Its own bucket, so a paying caller sharing an egress IP with demo traffic is not throttled by it.
+   */
+  PAID_RATE_LIMIT?: string;
+  /**
    * Public pk_* browser key used by the portal try-it embed. /api/search requests presenting
    * this key are held to DEMO_RATE_LIMIT per IP: the key is shared by every portal visitor,
    * so its daily cap alone would let one abuser exhaust it for everyone.
@@ -69,6 +74,10 @@ export interface Env {
    * reconciliation trace, so `/api/quote/accept` fails closed. Separate from the Customer ledger.
    */
   X402_RECEIPTS?: KVNamespace;
+  /**
+   * Per-payer daily spend cap in USD. Conservative default; `0` disables the control.
+   */
+  X402_PAYER_DAILY_CAP_USD?: string;
   /**
    * EVM JSON-RPC endpoint used by the reconciliation job to confirm settlements on chain. Unset
    * means `POST /api/x402/reconcile` fails closed with RECONCILE_UNAVAILABLE.

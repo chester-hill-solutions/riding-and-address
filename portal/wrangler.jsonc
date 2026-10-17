@@ -137,6 +137,9 @@
     "ODA_SUGGEST_LIMIT": "7",
     "FREE_MONTHLY_ALLOWANCE": "1000",
     "DEMO_RATE_LIMIT": "30",
+    // The paid rail's own bucket (see src/routes.ts). Separate from the demo throttle so a paying
+    // caller on a shared egress IP is not throttled by unrelated demo traffic.
+    "PAID_RATE_LIMIT": "100",
     "ALERTS_ENABLED": "true",
     // Portal (React Router) vars — see portal/.env.example for local dev via .dev.vars.
     // Secrets (AUTH_SECRET, STRIPE_*, RESEND_API_KEY) must be set with `wrangler secret put`.
@@ -180,6 +183,7 @@
         "ODA_SUGGEST_LIMIT": "7",
         "FREE_MONTHLY_ALLOWANCE": "1000",
         "DEMO_RATE_LIMIT": "30",
+        "PAID_RATE_LIMIT": "100",
         "ALERTS_ENABLED": "true",
         "ENVIRONMENT": "staging",
         "STRIPE_METER_EVENT_NAME": "riding_lookup_api_call",

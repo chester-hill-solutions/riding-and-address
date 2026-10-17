@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { handleAcceptRequest, handleQuoteRequest } from '../src/offers';
 import { createRouteContext, type RouteContext } from '../src/route-context';
 import { createLookupTestEnv, TORONTO_LAT, TORONTO_LON } from './helpers/lookup-test-env';
+import { fakeUsageNamespace } from './helpers/fake-usage-do';
 import { PAYMENT_REQUIRED_HEADER, PAYMENT_RESPONSE_HEADER, PAYMENT_SIGNATURE_HEADER } from '../src/x402';
 import type { Env } from '../src/types';
 
@@ -57,6 +58,8 @@ function baseEnv(overrides: Partial<Env> = {}): Env {
     OFFER_SIGNING_SECRET: SECRET,
     ...X402_ENV,
     X402_RECEIPTS: fakeKv(),
+    // The spend cap fails closed, so the paid path needs this binding to reach settlement at all.
+    API_KEY_USAGE: fakeUsageNamespace(),
     ...overrides,
   } as unknown as Env;
 }
@@ -80,11 +83,11 @@ function context(
 const paymentSignature = () =>
   btoa(JSON.stringify({ x402Version: 2, payload: { signature: '0xdeadbeef' } }));
 
-/** Stub the facilitator's /verify and /settle. */
+/** Stub the facilitator's /verify and /settle. Returns the spy so a test can assert what was called. */
 function stubFacilitator(options: { verify?: boolean; settle?: Record<string, unknown>[] } = {}) {
   const settleResponses = options.settle ?? [{ success: true, transaction: '0xabc', network: 'eip155:84532' }];
   let settleCall = 0;
-  globalThis.fetch = vi.fn(async (url: string | URL) => {
+  const spy = vi.fn(async (url: string | URL) => {
     const target = String(url);
     if (target.endsWith('/verify')) {
       return new Response(JSON.stringify({ isValid: options.verify ?? true }), { status: 200 });
@@ -96,7 +99,24 @@ function stubFacilitator(options: { verify?: boolean; settle?: Record<string, un
     }
     throw new Error(`unexpected facilitator call: ${target}`);
   }) as typeof fetch;
+  globalThis.fetch = spy;
+  return spy as unknown as ReturnType<typeof vi.fn>;
 }
+
+/** A payment payload that names its payer, which the spend cap keys on. */
+const paymentSignatureFrom = (address: string) =>
+  btoa(
+    JSON.stringify({
+      x402Version: 2,
+      payload: { signature: '0xdeadbeef', authorization: { from: address } },
+    })
+  );
+
+const PAYER_ADDRESS = '0x857b06519E91e3A54538791bDbb0E22373e36b66';
+
+/** How many times the facilitator was asked to settle — the money-moving call. */
+const settleCalls = (spy: ReturnType<typeof vi.fn>) =>
+  spy.mock.calls.filter((call) => String(call[0]).endsWith('/settle')).length;
 
 /** Get a real offer for a point inside the Toronto fixture. The quote side is a GET; POST is the
  * polygon form. */
@@ -130,6 +150,40 @@ describe('POST /api/quote/accept', () => {
     // The offer's ceiling (0.005 USD) at 6 decimals, never more than the offer itself.
     expect(accepted.amount).toBe('5000');
     expect(accepted.payTo).toBe(X402_ENV.X402_PAY_TO);
+  });
+
+  it('refuses a payer over its daily cap without settling anything', async () => {
+    // A 0.005 cap buys exactly one point lookup, so the second accept must be refused.
+    const env = baseEnv({ X402_PAYER_DAILY_CAP_USD: '0.005' });
+    const spy = stubFacilitator();
+    const header = { [PAYMENT_SIGNATURE_HEADER]: paymentSignatureFrom(PAYER_ADDRESS) };
+
+    const first = await handleAcceptRequest(
+      context(`/api/quote/accept?offer=${await quote(env)}`, env, header)
+    );
+    expect(first.status).toBe(200);
+
+    const second = await handleAcceptRequest(
+      context(`/api/quote/accept?offer=${await quote(env)}`, env, header)
+    );
+    expect(second.status).toBe(402);
+    expect(((await second.json()) as { code?: string }).code).toBe('PAYER_CAP_EXCEEDED');
+    // The refused accept never reached settlement: the cap is checked before any money moves.
+    expect(settleCalls(spy)).toBe(1);
+  });
+
+  it('refuses rather than spending blind when the spend counter is unbound', async () => {
+    const env = baseEnv({ API_KEY_USAGE: undefined });
+    const spy = stubFacilitator();
+
+    const response = await handleAcceptRequest(
+      context(`/api/quote/accept?offer=${await quote(env)}`, env, {
+        [PAYMENT_SIGNATURE_HEADER]: paymentSignatureFrom(PAYER_ADDRESS),
+      })
+    );
+    expect(response.status).toBe(503);
+    expect(((await response.json()) as { code?: string }).code).toBe('PAYER_CAP_UNAVAILABLE');
+    expect(settleCalls(spy)).toBe(0);
   });
 
   it('settles and delivers the quoted lookup with a receipt', async () => {

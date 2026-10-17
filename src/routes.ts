@@ -39,6 +39,7 @@ import {
   checkAdminAuth,
   checkRateLimit,
   DEFAULT_DEMO_RATE_LIMIT,
+  DEFAULT_PAID_RATE_LIMIT,
   getClientId,
   hasValidBasicAuth,
   rateLimitExceededResponse,
@@ -88,6 +89,7 @@ export type RateLimitBucket =
   | 'lookup'
   | 'geocode'
   | 'demo'
+  | 'paid'
   | 'search'
   | 'batch';
 
@@ -153,12 +155,12 @@ export const ROUTES: readonly RouteEntry[] = [
   { path: '/api/demo/*', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'demo', handler: handleDemoRoute },
   // Offers: a free, expiring quote an agent accepts before paying. Keyless and rate-limited like
   // the demo tier, and never billable — requesting a quote does not touch the usage ledger.
-  { path: '/api/quote', methods: ['GET', 'POST'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'demo', handler: handleQuoteRequest },
+  { path: '/api/quote', methods: ['GET', 'POST'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'paid', handler: handleQuoteRequest },
   // Accept an offer through x402: 402 with requirements, then verify → settle → deliver.
-  { path: '/api/quote/accept', methods: ['POST'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'demo', handler: handleAcceptRequest },
+  { path: '/api/quote/accept', methods: ['POST'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'paid', handler: handleAcceptRequest },
   // Area pages after the first. Offer-only: the signed cursor is the authorization, so there is no
   // keyed route that could read addresses without paying.
-  { path: '/api/area', methods: ['GET', 'POST'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'demo', handler: handleAreaRequest },
+  { path: '/api/area', methods: ['GET', 'POST'], owner: 'api', visibility: 'public', auth: 'public', rateLimit: 'paid', handler: handleAreaRequest },
   // Operator reconciliation view for the x402 rail. Internal + admin-gated: never public.
   { path: '/api/x402/receipts', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleReceiptsRequest },
   // Run x402 reconciliation on demand: confirm stored settlements against the chain.
@@ -357,6 +359,7 @@ function billingFromAuth(auth: KeyAuthResult): BillableAuthContext | null {
 function enforceRateLimit(entry: RouteEntry, ctx: RouteContext): Response | null {
   const { request, env, correlationId } = ctx;
   const demoRateEnv = { ...env, RATE_LIMIT: parseInt(env.DEMO_RATE_LIMIT || String(DEFAULT_DEMO_RATE_LIMIT), 10) };
+  const paidRateEnv = { ...env, RATE_LIMIT: parseInt(env.PAID_RATE_LIMIT || String(DEFAULT_PAID_RATE_LIMIT), 10) };
 
   switch (entry.rateLimit) {
     case 'none':
@@ -367,6 +370,13 @@ function enforceRateLimit(entry: RouteEntry, ctx: RouteContext): Response | null
     // so even an operator credential does not skip it.
     case 'demo':
       if (checkRateLimit(demoRateEnv, `demo:${getClientId(request)}`)) return null;
+      return rateLimitExceededResponse(correlationId);
+
+    // The paid rail throttles in its own bucket. Sharing the demo bucket meant a paying caller on a
+    // shared egress IP could be throttled by unrelated demo traffic; the key namespace keeps the two
+    // independent even when the client address is the same.
+    case 'paid':
+      if (checkRateLimit(paidRateEnv, `paid:${getClientId(request)}`)) return null;
       return rateLimitExceededResponse(correlationId);
 
     // A valid operator credential is a server-to-server secret used for bulk work; throttling it
