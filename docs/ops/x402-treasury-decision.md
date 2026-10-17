@@ -1,6 +1,6 @@
 # x402 treasury and custody decision
 
-**Status: answered 2026-10-17, except two items** — the tax treatment (with the accountant) and the production facilitator (recommendation below, awaiting a yes).
+**Status: answered 2026-10-17. One item outstanding** — the tax treatment, which the owner confirms is in hand with their accountant. That is the only thing gating production.
 
 `docs/adr/0007-account-free-x402-payments.md` records that the rail must not be enabled until
 stablecoin receipt, treasury and tax policy are resolved. This is that decision, as a form: each
@@ -56,7 +56,7 @@ one URL, so switching later is a config change.
 **Recommended:** CDP (or another managed facilitator) for production; the public one for the testnet
 run.
 
-**Answer:** *Open — recommended:* a managed production facilitator (Coinbase CDP is the natural default, and its API key drops straight into `X402_FACILITATOR_TOKEN`, which the rail already supports). Not the public testnet one, which x402's own docs say is not for production.
+**Answer:** **A managed production facilitator — agreed 2026-10-17.** Coinbase CDP is the default choice; its API key drops into `X402_FACILITATOR_TOKEN`, which the rail already supports. Not the public testnet one, which x402's own docs say is not for production.
 
 ## 4. Who reconciles, and how often?
 
@@ -81,7 +81,7 @@ This is the one question that probably needs your accountant rather than you.
 **Recommended:** ask your accountant before enabling. The receipts give them the data — amount,
 currency, timestamp, transaction hash — but the treatment is theirs to state.
 
-**Answer:** *Open —* the owner will ask their accountant. **This is the item ADR 0007 names as gating**, so it is the last thing between this document and enabling the rail in production.
+**Answer:** **In hand** — the owner confirms this will be handled with their accountant. Recorded as outstanding until it lands, because ADR 0007 names it as the gate: it is the only thing between this document and enabling the rail in production. The receipts give the accountant what they need — amount, currency, timestamp, and the transaction hash.
 
 ## 6. Refund policy
 
