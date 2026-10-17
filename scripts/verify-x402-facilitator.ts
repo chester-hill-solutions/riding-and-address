@@ -174,11 +174,26 @@ async function main() {
         method: 'POST',
         headers: { [PAYMENT_SIGNATURE_HEADER]: btoa(JSON.stringify(paymentPayload)) },
       });
-      const body = (await accept.text()).slice(0, 400);
-      if (accept.ok) {
-        record('settlement end to end', 'pass', `HTTP ${accept.status}: ${body}`);
+      const text = await accept.text();
+      if (!accept.ok) {
+        record('settlement end to end', 'fail', `HTTP ${accept.status}: ${text.slice(0, 400)}`);
       } else {
-        record('settlement end to end', 'fail', `HTTP ${accept.status}: ${body}`);
+        record('settlement end to end', 'pass', `HTTP ${accept.status}, receipt recorded`);
+        // The operational half of the payer-identity requirement: with the cap enabled a successful
+        // accept must name its payer, because an unnameable payment is refused rather than settled.
+        // If this fails, the facilitator's payload shape is not one the extractor recognises.
+        let payer: string | undefined;
+        try {
+          payer = (JSON.parse(text) as { receipt?: { payer?: string } }).receipt?.payer;
+        } catch {
+          /* reported below */
+        }
+        record(
+          'the receipt names its payer',
+          payer ? 'pass' : 'fail',
+          payer ??
+            'no receipt.payer — the facilitator’s payload shape is not one payerFromPaymentPayload recognises'
+        );
       }
     }
   }

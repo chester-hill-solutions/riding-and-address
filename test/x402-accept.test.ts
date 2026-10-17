@@ -84,7 +84,14 @@ const paymentSignature = () =>
   btoa(JSON.stringify({ x402Version: 2, payload: { signature: '0xdeadbeef' } }));
 
 /** Stub the facilitator's /verify and /settle. Returns the spy so a test can assert what was called. */
-function stubFacilitator(options: { verify?: boolean; settle?: Record<string, unknown>[] } = {}) {
+function stubFacilitator(
+  options: {
+    verify?: boolean;
+    settle?: Record<string, unknown>[];
+    /** Throw from /settle — the ambiguous case, where the request may have been broadcast first. */
+    settleThrows?: boolean;
+  } = {}
+) {
   const settleResponses = options.settle ?? [{ success: true, transaction: '0xabc', network: 'eip155:84532' }];
   let settleCall = 0;
   const spy = vi.fn(async (url: string | URL) => {
@@ -93,6 +100,7 @@ function stubFacilitator(options: { verify?: boolean; settle?: Record<string, un
       return new Response(JSON.stringify({ isValid: options.verify ?? true }), { status: 200 });
     }
     if (target.endsWith('/settle')) {
+      if (options.settleThrows) throw new Error('connection reset after broadcast');
       const body = settleResponses[Math.min(settleCall, settleResponses.length - 1)];
       settleCall += 1;
       return new Response(JSON.stringify(body), { status: 200 });
@@ -193,7 +201,7 @@ describe('POST /api/quote/accept', () => {
 
     const response = await handleAcceptRequest(
       context(`/api/quote/accept?offer=${offerId}`, env, {
-        [PAYMENT_SIGNATURE_HEADER]: paymentSignature(),
+        [PAYMENT_SIGNATURE_HEADER]: paymentSignatureFrom(PAYER_ADDRESS),
       })
     );
 
@@ -229,8 +237,28 @@ describe('POST /api/quote/accept', () => {
     expect(body.receipt.payer).toBe('0x857b06519E91e3A54538791bDbb0E22373e36b66');
   });
 
-  it('records no payer when the payload does not name one, rather than guessing', async () => {
+  it('refuses a payload that names no payer while the cap is enabled (#158)', async () => {
+    // A cap that cannot name the payer is not a cap: skipping the reservation here would leave it
+    // unenforced for exactly the payload shapes our extractor does not recognise.
     const env = baseEnv();
+    const spy = stubFacilitator();
+
+    const response = await handleAcceptRequest(
+      context(`/api/quote/accept?offer=${await quote(env)}`, env, {
+        [PAYMENT_SIGNATURE_HEADER]: paymentSignature(),
+      })
+    );
+
+    expect(response.status).toBe(402);
+    expect(((await response.json()) as { code?: string }).code).toBe('PAYER_UNIDENTIFIED');
+    // An unattributable payment must not settle.
+    expect(settleCalls(spy)).toBe(0);
+  });
+
+  it('records no payer when the payload does not name one, in the explicit cap-disabled mode', async () => {
+    // X402_PAYER_DAILY_CAP_USD=0 is the only way to run without the cap, and only then can an
+    // unattributable payment settle.
+    const env = baseEnv({ X402_PAYER_DAILY_CAP_USD: '0' });
     stubFacilitator();
     const offerId = await quote(env);
 
@@ -239,6 +267,7 @@ describe('POST /api/quote/accept', () => {
         [PAYMENT_SIGNATURE_HEADER]: paymentSignature(),
       })
     );
+    expect(response.status).toBe(200);
     const body = (await response.json()) as { receipt: { payer?: string } };
     expect(body.receipt.payer).toBeUndefined();
   });
@@ -270,7 +299,7 @@ describe('POST /api/quote/accept', () => {
 
     const response = await handleAcceptRequest(
       context(`/api/quote/accept?offer=${offerId}`, env, {
-        [PAYMENT_SIGNATURE_HEADER]: paymentSignature(),
+        [PAYMENT_SIGNATURE_HEADER]: paymentSignatureFrom(PAYER_ADDRESS),
       })
     );
 
@@ -278,18 +307,48 @@ describe('POST /api/quote/accept', () => {
     expect(((await response.json()) as { code?: string }).code).toBe('SETTLEMENT_PENDING');
   });
 
-  it('re-challenges with 402 when settlement fails', async () => {
-    const env = baseEnv();
+  it('releases the reservation on a definite settlement failure, so no allowance is lost', async () => {
+    // A 0.005 cap buys exactly one lookup.
+    const env = baseEnv({ X402_PAYER_DAILY_CAP_USD: '0.005' });
     stubFacilitator({ settle: [{ success: false, errorReason: 'insufficient_funds' }] });
-    const offerId = await quote(env);
+    const header = { [PAYMENT_SIGNATURE_HEADER]: paymentSignatureFrom(PAYER_ADDRESS) };
+
+    const refused = await handleAcceptRequest(
+      context(`/api/quote/accept?offer=${await quote(env)}`, env, header)
+    );
+    expect(refused.status).toBe(402);
+
+    // The facilitator positively stated it did not settle, so the allowance is given back and the
+    // payer is not capped out by a payment that never happened.
+    stubFacilitator();
+    const retried = await handleAcceptRequest(
+      context(`/api/quote/accept?offer=${await quote(env)}`, env, header)
+    );
+    expect(retried.status).toBe(200);
+  });
+
+  it('keeps the reservation when the settlement outcome is unknown (#156)', async () => {
+    // The settle call threw, which may have happened *after* the transaction was broadcast — a
+    // response that could not be read is indistinguishable from one that never arrived. Releasing
+    // here could let a payment that does settle go uncounted.
+    const env = baseEnv({ X402_PAYER_DAILY_CAP_USD: '0.005' });
+    const spy = stubFacilitator({ settleThrows: true });
+    const header = { [PAYMENT_SIGNATURE_HEADER]: paymentSignatureFrom(PAYER_ADDRESS) };
 
     const response = await handleAcceptRequest(
-      context(`/api/quote/accept?offer=${offerId}`, env, {
-        [PAYMENT_SIGNATURE_HEADER]: paymentSignature(),
-      })
+      context(`/api/quote/accept?offer=${await quote(env)}`, env, header)
     );
+    expect(response.status).toBe(502);
+    expect(((await response.json()) as { code?: string }).code).toBe('SETTLEMENT_UNKNOWN');
 
-    expect(response.status).toBe(402);
+    // The reservation stands, so a following acceptance cannot consume the same allowance — and it
+    // is refused before reaching settlement, so it cannot charge twice either.
+    const next = await handleAcceptRequest(
+      context(`/api/quote/accept?offer=${await quote(env)}`, env, header)
+    );
+    expect(next.status).toBe(402);
+    expect(((await next.json()) as { code?: string }).code).toBe('PAYER_CAP_EXCEEDED');
+    expect(settleCalls(spy)).toBe(1);
   });
 
   it('fails closed when the rail is not configured', async () => {

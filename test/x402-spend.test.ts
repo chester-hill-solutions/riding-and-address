@@ -85,26 +85,67 @@ describe('reservePayerSpend', () => {
     const env = envWith({ X402_PAYER_DAILY_CAP_USD: '0', API_KEY_USAGE: undefined });
     expect((await reservePayerSpend(env, PAYER, 999)).ok).toBe(true);
   });
+
+  it('refuses an unidentified payer while the cap is enabled (#158)', async () => {
+    // A cap that cannot name the payer is not a cap. Skipping the reservation here would leave the
+    // cap unenforced for exactly the payload shapes the extractor does not recognise.
+    for (const payer of [null, undefined, '']) {
+      const result = await reservePayerSpend(envWith(), payer, 0.005);
+      expect(result.ok, String(payer)).toBe(false);
+      if (!result.ok) expect(result.reason).toBe('payer_unidentified');
+    }
+  });
+
+  it('does not require a payer when the cap is explicitly disabled', async () => {
+    const env = envWith({ X402_PAYER_DAILY_CAP_USD: '0' });
+    expect((await reservePayerSpend(env, null, 0.005)).ok).toBe(true);
+  });
 });
 
 describe('releasePayerSpend', () => {
   it('gives a reservation back when no money moved', async () => {
     const env = envWith();
     await reservePayerSpend(env, PAYER, 0.005);
-    await reservePayerSpend(env, PAYER, 0.005);
-    await releasePayerSpend(env, PAYER, 0.005);
+    const second = await reservePayerSpend(env, PAYER, 0.005);
+    if (!second.ok) throw new Error('expected a reservation');
+    await releasePayerSpend(env, second.handle);
     // One unit is free again.
     expect((await reservePayerSpend(env, PAYER, 0.005)).ok).toBe(true);
   });
 
+  it("releases against the reservation's own day, not today (#157)", async () => {
+    const env = envWith({ X402_PAYER_DAILY_CAP_USD: '0.005' });
+    const beforeMidnight = Date.parse('2026-10-17T23:59:00Z');
+    const afterMidnight = Date.parse('2026-10-18T00:01:00Z');
+
+    const old = await reservePayerSpend(env, PAYER, 0.005, beforeMidnight);
+    if (!old.ok) throw new Error('expected a reservation');
+    // A same-payer payment succeeds on the new day.
+    expect((await reservePayerSpend(env, PAYER, 0.005, afterMidnight)).ok).toBe(true);
+
+    // Releasing the old reservation must not touch the new day's spending. Recomputing "today" here
+    // would subtract from the 18th and let the payer overspend it.
+    await releasePayerSpend(env, old.handle);
+
+    expect((await reservePayerSpend(env, PAYER, 0.005, afterMidnight)).ok).toBe(false);
+  });
+
   it('never goes negative', async () => {
     const env = envWith();
-    await releasePayerSpend(env, PAYER, 0.005);
+    const reservation = await reservePayerSpend(env, PAYER, 0.005);
+    if (!reservation.ok) throw new Error('expected a reservation');
+    await releasePayerSpend(env, reservation.handle);
+    await releasePayerSpend(env, reservation.handle);
     expect((await reservePayerSpend(env, PAYER, 0.01)).ok).toBe(true);
   });
 
   it('is a no-op without a binding, so it cannot fail the request that called it', async () => {
-    await expect(releasePayerSpend(envWith({ API_KEY_USAGE: undefined }), PAYER, 0.005)).resolves.toBeUndefined();
+    const env = envWith();
+    const reservation = await reservePayerSpend(env, PAYER, 0.005);
+    if (!reservation.ok) throw new Error('expected a reservation');
+    await expect(
+      releasePayerSpend(envWith({ API_KEY_USAGE: undefined }), reservation.handle)
+    ).resolves.toBeUndefined();
   });
 });
 

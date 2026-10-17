@@ -11,6 +11,15 @@
  * needed; only the units differ. The *failure direction* differs by caller and stays here: the key
  * quota fails open, this fails closed.
  *
+ * Three properties this module is careful about, each of which was a defect when it was missing:
+ *
+ *   1. **A cap that cannot name the payer is not a cap.** When the cap is enabled and the payload
+ *      names no payer this refuses, rather than settling unmetered (#158).
+ *   2. **Release targets the reservation's own UTC day.** A reservation made before midnight and
+ *      released after it must not subtract from the new day's spending (#157).
+ *   3. **Only positive terminal evidence of non-payment releases.** An ambiguous settlement error
+ *      keeps the reservation, because the money may have moved (#156).
+ *
  * **What this bounds, and what it does not.** It bounds a runaway agent: one wallet in a retry loop
  * stops at the cap. It does not bound a determined actor, who can generate wallets freely — the cap
  * is a safety rail, not an identity control. That limitation is the honest reason the rail still
@@ -37,6 +46,26 @@ export function fromMicroUsd(micro: number): number {
   return micro / MICRO_USD;
 }
 
+/**
+ * What a reservation gives back, so a release cannot go to the wrong bucket or the wrong payer.
+ * Carrying the day is the point: recomputing "today" at release time is wrong across midnight.
+ */
+export interface SpendReservationHandle {
+  payer: string;
+  /** The UTC day the reservation was made in. Release must target this bucket. */
+  day: string;
+  amountUsd: number;
+}
+
+export type SpendReservation =
+  | { ok: true; spentUsd: number; capUsd: number; handle: SpendReservationHandle }
+  | {
+      ok: false;
+      reason: 'cap_exceeded' | 'counter_unavailable' | 'payer_unidentified';
+      spentUsd: number;
+      capUsd: number;
+    };
+
 /** The cap in USD. `0` disables the control (the rail then relies on the offer ceiling alone). */
 export function payerDailyCapUsd(env: Env): number {
   const raw = env.X402_PAYER_DAILY_CAP_USD;
@@ -48,10 +77,6 @@ export function payerDailyCapUsd(env: Env): number {
   return parsed;
 }
 
-export type SpendReservation =
-  | { ok: true; spentUsd: number; capUsd: number }
-  | { ok: false; reason: 'cap_exceeded' | 'counter_unavailable'; spentUsd: number; capUsd: number };
-
 function stubFor(env: Env, payer: string) {
   // Lower-cased: one address must not get two counters because of checksum casing. The `payer:`
   // prefix keeps a wallet address from ever colliding with an API key id in the same DO.
@@ -59,17 +84,30 @@ function stubFor(env: Env, payer: string) {
 }
 
 /**
- * Reserve `amountUsd` against the payer's daily cap. Returns `ok: false` when the cap would be
- * exceeded, or when the counter is unreachable (fail-closed).
+ * Reserve `amountUsd` against the payer's daily cap.
+ *
+ * Returns `ok: false` when the cap would be exceeded, when the counter is unreachable (fail-closed),
+ * or when the cap is enabled and no payer was identified (also fail-closed — an unattributable
+ * payment cannot be metered, so it must not settle).
  */
 export async function reservePayerSpend(
   env: Env,
-  payer: string,
+  payer: string | null | undefined,
   amountUsd: number,
   nowMs: number = Date.now()
 ): Promise<SpendReservation> {
   const capUsd = payerDailyCapUsd(env);
-  if (capUsd <= 0) return { ok: true, spentUsd: 0, capUsd };
+  const day = utcDay(nowMs);
+
+  // An explicit `0` disables the control entirely, the payer requirement included. That is the only
+  // way to run without a cap, and it has to be asked for.
+  if (capUsd <= 0) {
+    return { ok: true, spentUsd: 0, capUsd, handle: { payer: payer ?? '', day, amountUsd: 0 } };
+  }
+
+  if (!payer) {
+    return { ok: false, reason: 'payer_unidentified', spentUsd: 0, capUsd };
+  }
   if (!env.API_KEY_USAGE) {
     // An unavailable counter must not mean unbounded spend.
     return { ok: false, reason: 'counter_unavailable', spentUsd: 0, capUsd };
@@ -77,13 +115,15 @@ export async function reservePayerSpend(
 
   try {
     const response = await stubFor(env, payer).fetch(
-      `https://usage/spend/reserve?day=${utcDay(nowMs)}&amount=${toMicroUsd(amountUsd)}&cap=${toMicroUsd(capUsd)}`,
+      `https://usage/spend/reserve?day=${day}&amount=${toMicroUsd(amountUsd)}&cap=${toMicroUsd(capUsd)}`,
       { method: 'POST' }
     );
     const body = (await response.json()) as { allowed: boolean; spent: number; cap: number };
+    const spentUsd = fromMicroUsd(body.spent);
+    const actualCapUsd = fromMicroUsd(body.cap);
     return body.allowed
-      ? { ok: true, spentUsd: fromMicroUsd(body.spent), capUsd: fromMicroUsd(body.cap) }
-      : { ok: false, reason: 'cap_exceeded', spentUsd: fromMicroUsd(body.spent), capUsd: fromMicroUsd(body.cap) };
+      ? { ok: true, spentUsd, capUsd: actualCapUsd, handle: { payer, day, amountUsd } }
+      : { ok: false, reason: 'cap_exceeded', spentUsd, capUsd: actualCapUsd };
   } catch (error) {
     console.warn(`[X402] spend counter unavailable for ${payer}:`, error);
     return { ok: false, reason: 'counter_unavailable', spentUsd: 0, capUsd };
@@ -91,23 +131,20 @@ export async function reservePayerSpend(
 }
 
 /**
- * Give back a reservation that did not result in a payment. Never called when money moved or might
- * have (a pending settlement), and over-counting is the safe direction when this fails: the payer is
- * capped slightly early, never overspent.
+ * Give back a reservation, against the bucket it was taken from.
+ *
+ * Call this **only** on positive terminal evidence that no money moved. An ambiguous settlement
+ * error is not that evidence, and over-counting is the safe direction when this is wrong or fails:
+ * the payer is capped slightly early, never overspent.
  */
-export async function releasePayerSpend(
-  env: Env,
-  payer: string,
-  amountUsd: number,
-  nowMs: number = Date.now()
-): Promise<void> {
-  if (!env.API_KEY_USAGE || amountUsd <= 0) return;
+export async function releasePayerSpend(env: Env, handle: SpendReservationHandle): Promise<void> {
+  if (!env.API_KEY_USAGE || handle.amountUsd <= 0) return;
   try {
-    await stubFor(env, payer).fetch(
-      `https://usage/spend/release?day=${utcDay(nowMs)}&amount=${toMicroUsd(amountUsd)}`,
+    await stubFor(env, handle.payer).fetch(
+      `https://usage/spend/release?day=${handle.day}&amount=${toMicroUsd(handle.amountUsd)}`,
       { method: 'POST' }
     );
   } catch (error) {
-    console.warn(`[X402] failed to release reserved spend for ${payer}:`, error);
+    console.warn(`[X402] failed to release reserved spend for ${handle.payer}:`, error);
   }
 }
