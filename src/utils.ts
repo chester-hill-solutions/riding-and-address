@@ -32,6 +32,13 @@ export const DEFAULT_RATE_LIMIT = 100; // requests per minute
  */
 export const DEFAULT_DEMO_RATE_LIMIT = 30;
 
+/**
+ * The paid rail's own per-IP throttle. Deliberately not the demo bucket: an agent platform's egress
+ * IP is shared, so a paying caller held to the demo bucket can be throttled by unrelated demo
+ * traffic on the same address. This bucket is a separate key namespace, so the two cannot collide.
+ */
+export const DEFAULT_PAID_RATE_LIMIT = 100;
+
 // Rate limiting store
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 

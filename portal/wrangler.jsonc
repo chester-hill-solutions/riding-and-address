@@ -87,6 +87,12 @@
       {
         "name": "API_KEY_USAGE",
         "class_name": "ApiKeyUsageDO"
+      },
+      // Per-payer daily spend counter for the x402 rail. Same reason as above, opposite failure
+      // direction: an unavailable counter refuses the sale rather than spending blind.
+      {
+        "name": "X402_SPEND",
+        "class_name": "X402SpendDO"
       }
     ]
   },
@@ -103,6 +109,10 @@
     {
       "tag": "v3",
       "new_sqlite_classes": ["ApiKeyUsageDO"]
+    },
+    {
+      "tag": "v4",
+      "new_sqlite_classes": ["X402SpendDO"]
     }
   ],
 
@@ -137,6 +147,9 @@
     "ODA_SUGGEST_LIMIT": "7",
     "FREE_MONTHLY_ALLOWANCE": "1000",
     "DEMO_RATE_LIMIT": "30",
+    // The paid rail's own bucket (see src/routes.ts). Separate from the demo throttle so a paying
+    // caller on a shared egress IP is not throttled by unrelated demo traffic.
+    "PAID_RATE_LIMIT": "100",
     "ALERTS_ENABLED": "true",
     // Portal (React Router) vars — see portal/.env.example for local dev via .dev.vars.
     // Secrets (AUTH_SECRET, STRIPE_*, RESEND_API_KEY) must be set with `wrangler secret put`.
@@ -180,6 +193,7 @@
         "ODA_SUGGEST_LIMIT": "7",
         "FREE_MONTHLY_ALLOWANCE": "1000",
         "DEMO_RATE_LIMIT": "30",
+        "PAID_RATE_LIMIT": "100",
         "ALERTS_ENABLED": "true",
         "ENVIRONMENT": "staging",
         "STRIPE_METER_EVENT_NAME": "riding_lookup_api_call",
@@ -237,7 +251,8 @@
         "bindings": [
           { "name": "QUEUE_MANAGER", "class_name": "QueueManagerDO" },
           { "name": "CIRCUIT_BREAKER_DO", "class_name": "CircuitBreakerDO" },
-          { "name": "API_KEY_USAGE", "class_name": "ApiKeyUsageDO" }
+          { "name": "API_KEY_USAGE", "class_name": "ApiKeyUsageDO" },
+          { "name": "X402_SPEND", "class_name": "X402SpendDO" }
         ]
       },
       // Same as top-level: cache warm + webhook drain every 6h (not billing).

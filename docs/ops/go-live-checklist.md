@@ -46,6 +46,13 @@ Config and deploy live under [`portal/`](../../portal/) (`wrangler.jsonc`; run `
         before the security review and the stablecoin treasury policy in ADR 0007
   - [ ] `X402_RPC_URL` — EVM JSON-RPC endpoint used by `POST /api/x402/reconcile` to confirm
         settlements on chain; that route fails closed (`503 RECONCILE_UNAVAILABLE`) without it
+  - [ ] **`X402_SPEND` Durable Object binding** — the per-payer daily spend cap (security review
+        item 4). Declared in `portal/wrangler.jsonc` with migration `v4`; required whenever the rail
+        is enabled, because `reservePayerSpend` fails **closed** without it. Tune the cap with
+        `X402_PAYER_DAILY_CAP_USD` (default `$25` per payer per UTC day; `0` disables the control).
+  - [x] `PAID_RATE_LIMIT` — the paid rail's own throttle bucket (`100`/min in both environments),
+        separate from `DEMO_RATE_LIMIT` so a paying caller on a shared egress IP is not throttled by
+        unrelated demo traffic (security review item 7)
   - [x] **`X402_RECEIPTS` KV namespace** — created and bound for prod
         (`8dba512f75124b348cd6790a7f59b663`) and staging (`bf549c66a0dc435c9d86ba18cd7db82f`).
         Required whenever the rail is enabled: without it `/api/quote/accept` fails closed, because a

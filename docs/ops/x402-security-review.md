@@ -46,16 +46,29 @@ Object ledger (ADR 0002) are out of scope and unchanged.
    follow the v2 contract but have never been exercised against a real facilitator. A mis-shape fails
    closed (no charge) but also means the rail simply does not work. **Confirm against the chosen
    facilitator before enabling.**
-4. **No per-payer spend cap beyond the offer ceiling.** An agent can accept many offers. The offer
-   ceiling bounds each one; nothing bounds the total.
+4. **Per-payer spend cap — addressed 2026-10-17.** `X402SpendDO` (`src/x402-spend-do.ts`) counts
+   spend per payer per UTC day, and `reservePayerSpend` refuses past the cap **before** settlement, so
+   a capped payer is refused without money moving. The reservation is released only when we know no
+   money moved (a failed or errored settlement); a **pending** settlement keeps it, because the money
+   may still confirm — over-counting caps a payer early, never overspends. Fails **closed** when the
+   counter is unreachable, unlike the per-key quota DO, which fails open.
+   **What it does not do:** it bounds a runaway agent — one wallet in a retry loop — not a determined
+   actor, who can generate wallets freely. That is why a treasury policy remains a prerequisite
+   rather than a substitute. Default `$25`/day per payer, tunable with `X402_PAYER_DAILY_CAP_USD`;
+   `0` disables it. Evidence: `test/x402-spend.test.ts` (cap, independence, casing, release,
+   fail-closed) and the end-to-end refusal in `test/x402-accept.test.ts`, which asserts the refused
+   accept never reached `/settle`.
 5. **Settlement replay is argued, not tested.** The claim rests on the facilitator/chain rejecting a
    second settlement of the same payload. There is no test for it here because it is not our code —
    but it is the control that prevents double charging, so it should be demonstrated, not assumed.
 6. **`OFFER_SIGNING_SECRET` is the root of trust** for both offers and cursors. Rotating it
    invalidates every outstanding offer and cursor (short TTLs make that acceptable, but it should be
    a deliberate act, not a surprise).
-7. **Paid paths share the demo rate-limit bucket.** Fine for launch volume; revisit if a paid caller
-   can be throttled by an unrelated demo user.
+7. **Paid paths share the demo rate-limit bucket — addressed 2026-10-17.** `/api/quote`,
+   `/api/quote/accept` and `/api/area` now declare the `paid` bucket, which keys on
+   `paid:<client-address>` with its own limit (`PAID_RATE_LIMIT`, default 100/min). A paying caller
+   behind a shared egress IP can no longer be throttled by unrelated demo traffic on the same address.
+   Evidence: the route-table assertions in `test/routes.test.ts`.
 
 ## Reviewer checklist
 
@@ -63,5 +76,6 @@ Object ledger (ADR 0002) are out of scope and unchanged.
 - [ ] Walk the threat table and confirm each control is where it says and the test exists.
 - [ ] Confirm the receipt store is required, and that no code path can settle without it.
 - [ ] Confirm the boundary/scope check precedes every payment step.
-- [ ] Decide items 1–7; item 1 and item 3 gate enabling.
+- [ ] Confirm the spend cap precedes settlement, and that a refused accept makes no `/settle` call.
+- [ ] Decide items 1–7. Item 1 and item 3 gate enabling; items 4 and 7 were addressed 2026-10-17.
 - [ ] Confirm the facilitator against a real deployment on testnet before mainnet.

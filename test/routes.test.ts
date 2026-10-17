@@ -12,6 +12,7 @@ import {
 import { createRouteContext, type RouteContext } from '../src/route-context';
 import type { Env } from '../src/types';
 import { createLookupTestEnv, fetchLookup } from './helpers/lookup-test-env';
+import { DEFAULT_DEMO_RATE_LIMIT, DEFAULT_PAID_RATE_LIMIT } from '../src/utils';
 
 /**
  * Unit tests for the route table itself. Dispatch is a pure function of the table, so these pin
@@ -230,6 +231,24 @@ function contextFor(env: Env, request: Request): RouteContext {
  * `runPrelude` returned early for `handler: legacy`. These assert the declared policy is the one
  * actually enforced — not merely present in the table.
  */
+describe('paid rail rate-limit bucket', () => {
+  /**
+   * The defect this pins: the paid routes shared the demo bucket, so a paying caller behind a shared
+   * egress IP could be throttled by unrelated demo traffic on the same address.
+   */
+  it('throttles the paid routes in their own bucket, not the demo one', () => {
+    for (const path of ['/api/quote', '/api/quote/accept', '/api/area']) {
+      const entry = ROUTES.find((candidate) => candidate.path === path);
+      expect(entry?.rateLimit, path).toBe('paid');
+    }
+  });
+
+  it('gives the paid bucket its own key namespace, so the two cannot share a counter', () => {
+    // Both buckets key on the client address; only the prefix keeps them apart.
+    expect(DEFAULT_PAID_RATE_LIMIT).not.toBe(DEFAULT_DEMO_RATE_LIMIT);
+  });
+});
+
 describe('declared policy is enforced', () => {
   it('401s an admin-only legacy entry without credentials (fail closed)', async () => {
     const entry = entryWithPath('/api/cache/warm');

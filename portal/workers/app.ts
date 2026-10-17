@@ -3,6 +3,7 @@ import apiWorker, { ApiKeyUsageDO, CircuitBreakerDO, QueueManagerDO } from '../.
 import { ownerOf } from '../../src/routes';
 import { securityHeaders } from '../../src/http-headers';
 import { forceHttpsRedirect } from '../../src/force-https';
+import { X402SpendDO } from '../../src/x402-spend-do';
 import { negotiateMarkdown } from '../../src/markdown-for-agents';
 import type { CloudflareEnv } from '~/lib/cloudflare-env';
 import { isSignupRequest } from '../../src/free-access-policy';
@@ -82,4 +83,4 @@ export default {
 
 // Durable Objects live in src/worker.ts (the API worker); re-export so this combined entry
 // (wrangler.jsonc `main`) is what Wrangler sees the exported classes from.
-export { QueueManagerDO, CircuitBreakerDO, ApiKeyUsageDO };
+export { QueueManagerDO, CircuitBreakerDO, ApiKeyUsageDO, X402SpendDO };
