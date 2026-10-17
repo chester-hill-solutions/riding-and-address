@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createServiceTerms, SUPPORT_URL } from '../src/service-terms';
+import { AREA_MAX_RESULTS, AREA_UNIT_PRICE_USD, AREA_UNIT_RECORDS, areaPriceUsd } from '../src/offers';
 import { createOpenAPISpec } from '../src/docs';
 import { PROVINCIAL_DATASETS, FEDERAL_DATASET } from '../src/datasets';
 import { KEY_DENIAL_REASONS, httpStatusForKeyDenial } from '../src/api-keys';
@@ -30,6 +31,30 @@ describe('machine-readable service terms', () => {
     expect(pricing.unitPrice).toBe(UPLOAD_ROW_PRICE_USD);
     expect(pricing.uploadRowPrice).toBe(UPLOAD_ROW_PRICE_USD);
     expect(pricing.uploadMinimumCharge).toBe(0.5);
+  });
+
+  it('publishes the area product as its own unit, not inferred from the lookup price', () => {
+    const { pricing, capabilities } = terms();
+    expect(pricing.area.unitRecords).toBe(AREA_UNIT_RECORDS);
+    expect(pricing.area.unitPrice).toBe(AREA_UNIT_PRICE_USD);
+    expect(pricing.area.maxRecordsPerOffer).toBe(AREA_MAX_RESULTS);
+    // A point lookup and a 250-record area unit are different things.
+    expect(pricing.area.unitPrice).not.toBe(pricing.unitPrice);
+
+    const area = capabilities.find((capability) => capability.id === 'area');
+    expect(area).toBeTruthy();
+    expect(area?.endpoints).toContain(`${ORIGIN}/api/area`);
+    expect(area?.endpoints).toContain(`${ORIGIN}/api/quote?operation=area.search`);
+  });
+
+  it('publishes an area unit price the quote path actually charges', () => {
+    // The document and the offer path disagree only if these diverge.
+    expect(areaPriceUsd(AREA_UNIT_RECORDS)).toBe(terms().pricing.area.unitPrice);
+  });
+
+  it('says the area records cannot be bought yet, rather than leaving the gap unexplained', () => {
+    // Quoting is live; acceptance returns 503. An agent should learn that here, not by trial.
+    expect(terms().pricing.area.note).toMatch(/not yet enabled/i);
   });
 
   it('publishes the configured free allowance', () => {
