@@ -1,6 +1,6 @@
 # x402 treasury and custody decision
 
-**Status: open. This is the gate on enabling the rail in production.**
+**Status: answered 2026-10-17, except two items** — the tax treatment (with the accountant) and the production facilitator (recommendation below, awaiting a yes).
 
 `docs/adr/0007-account-free-x402-payments.md` records that the rail must not be enabled until
 stablecoin receipt, treasury and tax policy are resolved. This is that decision, as a form: each
@@ -27,7 +27,7 @@ about who can move the money once it lands.
 **Recommended:** a hardware wallet or multisig for mainnet. A throwaway hot wallet is fine for the
 testnet run below, where the funds are worthless.
 
-**Answer:**
+**Answer:** MetaMask (the browser wallet). Recorded as the owner's decision. The trade-off is the one above — a browser wallet's key is the whole balance — and the mitigation is cheap: the Worker holds only the **address**, so moving to a hardware wallet later is a single config change (`X402_PAY_TO`).
 
 ## 2. Network and asset
 
@@ -40,7 +40,7 @@ testnet run below, where the funds are worthless.
 **Recommended:** Base mainnet + USDC. Testnet is `base-sepolia` with free USDC from the Circle
 faucet — no cost, no real money.
 
-**Answer:**
+**Answer:** Base mainnet + USDC. Note what was actually exercised: the verification runs used **Base Sepolia**, and one pass used **Ethereum Sepolia** because the faucet delivered there — the rail is network-agnostic, but production should be Base.
 
 ## 3. Which facilitator settles the payments?
 
@@ -56,7 +56,7 @@ one URL, so switching later is a config change.
 **Recommended:** CDP (or another managed facilitator) for production; the public one for the testnet
 run.
 
-**Answer:**
+**Answer:** *Open — recommended:* a managed production facilitator (Coinbase CDP is the natural default, and its API key drops straight into `X402_FACILITATOR_TOKEN`, which the rail already supports). Not the public testnet one, which x402's own docs say is not for production.
 
 ## 4. Who reconciles, and how often?
 
@@ -71,7 +71,7 @@ was delivered, what failed, and the value by currency.
 **Recommended:** a named owner, checked weekly, with entries copied into your accounting. State the
 cadence — it is the difference between a policy and a hope.
 
-**Answer (who, and how often):**
+**Answer:** The owner, ad hoc — no fixed cadence was set. Recorded as given. Worth knowing: the cadence is the cheapest thing here to change, and it is what turns this from a hope into a policy.
 
 ## 5. Tax and accounting treatment
 
@@ -81,7 +81,7 @@ This is the one question that probably needs your accountant rather than you.
 **Recommended:** ask your accountant before enabling. The receipts give them the data — amount,
 currency, timestamp, transaction hash — but the treatment is theirs to state.
 
-**Answer:**
+**Answer:** *Open —* the owner will ask their accountant. **This is the item ADR 0007 names as gating**, so it is the last thing between this document and enabling the rail in production.
 
 ## 6. Refund policy
 
@@ -97,7 +97,7 @@ There is no automated refund path.
 **Recommended:** state it publicly, and keep it narrow — an undelivered result gets refunded, a
 delivered result does not. Whatever you choose becomes buyer-facing copy.
 
-**Answer:**
+**Answer:** Refund only when nothing was delivered — a settled payment whose result failed to deliver. A delivered result is not refunded. That is the policy the code already records: `delivered: false` on the receipt is the trigger.
 
 ## 7. Per-payer daily cap
 
@@ -109,7 +109,7 @@ Current default: **$25 per payer per UTC day** (`X402_PAYER_DAILY_CAP_USD`; `0` 
 
 **Recommended:** start at the default, watch real buyer behaviour, raise it deliberately.
 
-**Answer:**
+**Answer:** Keep the default, $25 per payer per UTC day, and raise it deliberately once there are real buyers.
 
 ---
 
