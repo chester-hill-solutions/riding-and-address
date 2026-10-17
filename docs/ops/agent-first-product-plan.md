@@ -197,6 +197,7 @@ Implementation verification should include `bun run build`, `bun run validate`, 
 ## Engineering references
 
 - [Agent discovery operations](agent-discovery.md)
+- [x402 security review packet](x402-security-review.md)
 - [Area product W0 definition](../plans/area-product.md)
 - [Area-query contract (W7)](../plans/area-query-contract.md)
 - [Go-live checklist](go-live-checklist.md)

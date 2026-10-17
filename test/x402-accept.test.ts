@@ -155,6 +155,40 @@ describe('POST /api/quote/accept', () => {
     expect(body.result.riding).toBeTruthy();
   });
 
+  it('records the payer so a settled-but-undelivered result has a refund destination', async () => {
+    const env = baseEnv();
+    stubFacilitator();
+    const offerId = await quote(env);
+
+    const signed = btoa(
+      JSON.stringify({
+        x402Version: 2,
+        payload: { signature: '0xdeadbeef', authorization: { from: '0x857b06519E91e3A54538791bDbb0E22373e36b66' } },
+      })
+    );
+
+    const response = await handleAcceptRequest(
+      context(`/api/quote/accept?offer=${offerId}`, env, { [PAYMENT_SIGNATURE_HEADER]: signed })
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { receipt: { payer?: string } };
+    expect(body.receipt.payer).toBe('0x857b06519E91e3A54538791bDbb0E22373e36b66');
+  });
+
+  it('records no payer when the payload does not name one, rather than guessing', async () => {
+    const env = baseEnv();
+    stubFacilitator();
+    const offerId = await quote(env);
+
+    const response = await handleAcceptRequest(
+      context(`/api/quote/accept?offer=${offerId}`, env, {
+        [PAYMENT_SIGNATURE_HEADER]: paymentSignature(),
+      })
+    );
+    const body = (await response.json()) as { receipt: { payer?: string } };
+    expect(body.receipt.payer).toBeUndefined();
+  });
+
   it('re-challenges with 402 when the payment is not valid', async () => {
     const env = baseEnv();
     stubFacilitator({ verify: false });

@@ -74,9 +74,10 @@ no place to record a receipt, `/api/quote/accept` fails closed rather than take 
 account for. `POST /api/x402/reconcile` (admin) then confirms each stored settlement against the
 chain, so a receipt that merely *looked* settled is distinguishable from one that is paid for.
 
-Still required before enabling it in production: the security review; the credit/refund path for a
-settled-but-undelivered result — today that is recorded with `delivered: false` and returns
-`SETTLEMENT_DELIVERY_FAILED` with the settlement reference; scheduling the reconciliation job (today
-it runs on demand — a cron trigger is a one-line `wrangler.jsonc` addition); and stablecoin treasury,
+Still required before enabling it in production: the security review (packet at
+[`x402-security-review.md`](../ops/x402-security-review.md)); the credit/refund path for a
+settled-but-undelivered result — today it is **recorded** with `delivered: false` and the payer
+address, but the refund itself is manual; scheduling the reconciliation job (**done** — it rides the
+existing six-hourly cron, and no-ops while the rail is unconfigured); and stablecoin treasury,
 receipt and tax policy. The facilitator request/response envelope follows the v2 contract but must
 be confirmed against the chosen facilitator.

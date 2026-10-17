@@ -26,6 +26,7 @@ import {
   buildPaymentRequired,
   decodeBase64Json,
   HttpFacilitator,
+  payerFromPaymentPayload,
   PAYMENT_REQUIRED_HEADER,
   PAYMENT_RESPONSE_HEADER,
   PAYMENT_SIGNATURE_HEADER,
@@ -933,6 +934,8 @@ export async function handleAcceptRequest(ctx: RouteContext): Promise<Response> 
     scope: receiptScope,
     resultCount: delivery.resultCount,
     delivered: delivered.ok,
+    /** Where a refund would go if this was settled but not delivered. */
+    payer: payerFromPaymentPayload(paymentPayload) ?? undefined,
     correlationId,
     recordedAt: new Date().toISOString(),
   };

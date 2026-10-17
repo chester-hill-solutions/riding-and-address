@@ -44,6 +44,8 @@ export const X402ReceiptSchema = z.object({
   resultCount: z.number(),
   /** False means settled but not delivered — the case an operator must credit or retry. */
   delivered: z.boolean(),
+  /** The address that paid, when the payload named one — the destination for a refund. */
+  payer: z.string().optional(),
   /**
    * Chain-confirmation state, written by the reconciliation job. Absent until it has run, so an
    * unchecked receipt is distinguishable from a checked-but-unknown one.

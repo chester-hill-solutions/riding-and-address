@@ -193,3 +193,28 @@ export function base64Json(value: unknown): string {
 export function decodeBase64Json(header: string): unknown {
   return JSON.parse(atob(header));
 }
+
+/**
+ * The address that paid, when the payload names one.
+ *
+ * Refunds are on-chain, so a settled-but-undelivered result needs somewhere to send the money back —
+ * and the payment payload is the only place that address exists. The three shapes are the ones the
+ * `exact` scheme's transfer methods use (EIP-3009, Permit2, ERC-7710); anything else returns null
+ * rather than a guess, so a receipt never records an address that was not the payer.
+ */
+export function payerFromPaymentPayload(paymentPayload: unknown): string | null {
+  if (typeof paymentPayload !== 'object' || paymentPayload === null) return null;
+  const inner = (paymentPayload as { payload?: unknown }).payload;
+  if (typeof inner !== 'object' || inner === null) return null;
+  const body = inner as Record<string, unknown>;
+
+  const authorization = body.authorization as { from?: unknown } | undefined;
+  if (authorization && typeof authorization.from === 'string') return authorization.from;
+
+  const permit2 = body.permit2Authorization as { from?: unknown } | undefined;
+  if (permit2 && typeof permit2.from === 'string') return permit2.from;
+
+  if (typeof body.delegator === 'string') return body.delegator;
+
+  return null;
+}
