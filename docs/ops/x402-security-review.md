@@ -59,9 +59,11 @@ Object ledger (ADR 0002) are out of scope and unchanged.
    **Confirmed 2026-10-17:** a real testnet payment settled through `/settle` against the live staging
    rail, and the receipt was read back from the store — offer, settlement transaction, amount, scope,
    payer and `delivered: false`. See item 5 for the replay result.
-   **What this does *not* establish, and was over-claimed:** the **delivery leg was never exercised**.
-   That payment settled and then failed delivery, so verify and settle are proven and delivery is not.
-   Nor does it establish direct-CDP authentication, which is a separate gap
+   **Delivery is now exercised too (2026-10-17).** A paid **coordinate** lookup — chosen because it
+   needs no geocoding — settled *and delivered*: `200`, `delivered: true`, and `Ottawa Centre` returned,
+   with the receipt read back from the store. The earlier run settled and failed delivery only because
+   staging has no geocoding data; that was a staging gap, not a rail one. What remains unproven is
+   direct-CDP authentication, a separate gap
    ([#176](https://github.com/chester-hill-solutions/riding-and-address/issues/176)).
    Runbook and known-good list: `docs/ops/x402-facilitator-verification.md`.
 
