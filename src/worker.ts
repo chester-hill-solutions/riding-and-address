@@ -58,7 +58,8 @@ import {
   httpStatusForKeyDenial,
   type KeyAuthResult,
 } from './api-keys';
-import { checkRateLimit, getClientId, rateLimitExceededResponse, DEFAULT_RATE_LIMIT, DEFAULT_DEMO_RATE_LIMIT } from './utils';
+import { rateLimitExceededResponse, DEFAULT_RATE_LIMIT, DEFAULT_DEMO_RATE_LIMIT } from './utils';
+import { consumeRateWindow, rateLimitIdentity, rateLimitKey } from './rate-limit';
 import { getAgentQuickstart, createCanCoderMcpHandler } from './mcp';
 import { createUcpProfile } from './ucp-profile';
 import { createServiceTerms } from './service-terms';
@@ -673,8 +674,20 @@ export default {
             return badRequest(auth.message || 'Unauthorized', status, auth.reason || 'UNAUTHORIZED', correlationId);
           }
         }
-        const limit = parseInt(bearerToken ? String(env.RATE_LIMIT || DEFAULT_RATE_LIMIT) : (env.DEMO_RATE_LIMIT || String(DEFAULT_DEMO_RATE_LIMIT)), 10);
-        if (!checkRateLimit({ ...env, RATE_LIMIT: limit }, `mcp:${getClientId(request)}`)) {
+        // Keyed on the authenticated key when there is one, and on the address only for the keyless
+        // demo tier. An authenticated call used to be bucketed by IP like everything else, so an
+        // agent on a shared cloud egress was throttled by its neighbours' traffic — and an agent
+        // rotating addresses was not throttled at all.
+        const limit = parseInt(
+          bearerToken
+            ? String(env.RATE_LIMIT || DEFAULT_RATE_LIMIT)
+            : String(env.DEMO_RATE_LIMIT || DEFAULT_DEMO_RATE_LIMIT),
+          10
+        );
+        const allowed = (
+          await consumeRateWindow(env, 'mcp', rateLimitKey('mcp', request, rateLimitIdentity(auth)), limit)
+        ).allowed;
+        if (!allowed) {
           return rateLimitExceededResponse(correlationId);
         }
 

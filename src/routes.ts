@@ -37,10 +37,9 @@ import type { RouteContext } from './route-context';
 import {
   badRequest,
   checkAdminAuth,
-  checkRateLimit,
   DEFAULT_DEMO_RATE_LIMIT,
   DEFAULT_PAID_RATE_LIMIT,
-  getClientId,
+  DEFAULT_RATE_LIMIT,
   hasValidBasicAuth,
   rateLimitExceededResponse,
   unauthorizedResponse,
@@ -50,9 +49,11 @@ import {
   authorizeLookupRequest,
   authorizeSearchRequest,
   extractApiKey,
+  extractBearerToken,
   httpStatusForKeyDenial,
   type KeyAuthResult,
 } from './api-keys';
+import { consumeRateWindow, rateLimitIdentity, rateLimitKey } from './rate-limit';
 import type { BillableAuthContext } from './billing';
 import { isOdaSuggestEnabled } from './oda-config';
 
@@ -352,72 +353,141 @@ function billingFromAuth(auth: KeyAuthResult): BillableAuthContext | null {
 }
 
 /**
- * The one rate-limit seam, keyed by the entry's declared bucket. A valid operator credential is a
- * server-to-server secret used for bulk work, so it is never held to the per-IP bucket (a large
- * import would otherwise fail with 429 partway through).
+ * The one rate-limit seam, keyed by the entry's declared bucket.
+ *
+ * `identity` is the authenticated principal when there is one. See `rate-limit.ts` for why that
+ * matters more than the address: an agent on a shared cloud egress is throttled by its neighbours
+ * when the key is an IP, and walks past the limit entirely when it rotates addresses. A valid
+ * operator credential is a server-to-server secret used for bulk work, so it is never held to the
+ * bucket at all — a large import would otherwise fail with 429 partway through.
+ *
+ * The counter is shared (`consumeRateWindow`), not per-isolate. That is the difference between a
+ * limit and a number in a config file.
  */
-function enforceRateLimit(entry: RouteEntry, ctx: RouteContext): Response | null {
+async function enforceRateLimit(
+  entry: RouteEntry,
+  ctx: RouteContext,
+  identity: string | null,
+  override?: { bucket: string; multiplier: number }
+): Promise<Response | null> {
   const { request, env, correlationId } = ctx;
-  const demoRateEnv = { ...env, RATE_LIMIT: parseInt(env.DEMO_RATE_LIMIT || String(DEFAULT_DEMO_RATE_LIMIT), 10) };
-  const paidRateEnv = { ...env, RATE_LIMIT: parseInt(env.PAID_RATE_LIMIT || String(DEFAULT_PAID_RATE_LIMIT), 10) };
+  const demoLimit = parseInt(env.DEMO_RATE_LIMIT || String(DEFAULT_DEMO_RATE_LIMIT), 10);
+  const paidLimit = parseInt(env.PAID_RATE_LIMIT || String(DEFAULT_PAID_RATE_LIMIT), 10);
+  const apiLimit = parseInt(String(env.RATE_LIMIT || DEFAULT_RATE_LIMIT), 10);
+
+  const allow = async (bucket: string, limit: number): Promise<boolean> => {
+    const name = override?.bucket ?? bucket;
+    const ceiling = Math.max(1, Math.round(limit * (override?.multiplier ?? 1)));
+    return (await consumeRateWindow(env, name, rateLimitKey(name, request, identity), ceiling)).allowed;
+  };
 
   switch (entry.rateLimit) {
     case 'none':
     case 'batch':
       return null;
 
-    // Keyless demo mirrors are always per-IP throttled — the demo bucket is the abuse control,
-    // so even an operator credential does not skip it.
+    // Keyless demo mirrors are always per-address throttled — the demo bucket is the abuse control.
+    // Nothing authenticates to them, so there is never an identity here.
     case 'demo':
-      if (checkRateLimit(demoRateEnv, `demo:${getClientId(request)}`)) return null;
+      if (await allow('demo', demoLimit)) return null;
       return rateLimitExceededResponse(correlationId);
 
     // The paid rail throttles in its own bucket. Sharing the demo bucket meant a paying caller on a
-    // shared egress IP could be throttled by unrelated demo traffic; the key namespace keeps the two
-    // independent even when the client address is the same.
+    // shared egress IP could be throttled by unrelated demo traffic; the separate bucket keeps the
+    // two independent even when the address is the same.
     case 'paid':
-      if (checkRateLimit(paidRateEnv, `paid:${getClientId(request)}`)) return null;
+      if (await allow('paid', paidLimit)) return null;
       return rateLimitExceededResponse(correlationId);
 
-    // A valid operator credential is a server-to-server secret used for bulk work; throttling it
-    // with the public per-IP bucket would fail a large import with 429 partway through.
     case 'lookup':
     case 'geocode':
     case 'search': {
       if (hasValidBasicAuth(request, env)) return null;
 
       if (entry.rateLimit === 'search' && isOdaSuggestEnabled(env)) {
-        // The portal try-it key is public and shared, so hold it to the stricter per-IP demo
-        // bucket; every other caller keeps its own per-IP bucket. While the suggest flag is off
-        // the path is the lookup catch-all, so it keeps the plain per-IP bucket.
+        // The portal try-it key is public and shared, so hold it to the stricter demo bucket; every
+        // other caller keeps its own. While the suggest flag is off the path is the lookup
+        // catch-all, so it keeps the plain bucket.
         const isDemoKey =
           !!env.DEMO_BROWSER_API_KEY && extractApiKey(request) === env.DEMO_BROWSER_API_KEY;
-        const clientId = isDemoKey ? `demo-search:${getClientId(request)}` : getClientId(request);
-        const rateEnv = isDemoKey ? demoRateEnv : env;
-        if (checkRateLimit(rateEnv, clientId)) return null;
-        return rateLimitExceededResponse(correlationId);
+        if (isDemoKey) {
+          if (await allow('demo-search', demoLimit)) return null;
+          return rateLimitExceededResponse(correlationId);
+        }
       }
 
-      if (checkRateLimit(env, getClientId(request))) return null;
+      if (await allow('api', apiLimit)) return null;
       return rateLimitExceededResponse(correlationId);
     }
   }
 }
 
+/** Whether the request presents anything that might resolve to an identity. */
+function presentsCredential(request: Request): boolean {
+  return Boolean(extractBearerToken(request) || extractApiKey(request));
+}
+
 /**
- * The one auth/rate-limit seam, run once per dispatched entry — legacy entries included. The
- * declared bucket is applied, then the declared dialect, and the outcome lands on the context.
- * Handlers (ported or legacy) never re-check what the table declares; `legacyFetch` keeps only
- * body parsing and the store/lookup call.
+ * How far above its own limit a shared address may go before it is refused outright.
  *
- * `key` and `search` delegate to their real dialects; `batch` resolves the Enterprise batch gate;
- * `projection` checks the portal ops Bearer secret. ADR-0005: denial statuses come only from
- * `httpStatusForKeyDenial`.
+ * A flood guard, not a rate limit. It exists because a request presenting a credential is no longer
+ * limited by address — that is the point of identity keying — which would otherwise leave a flood of
+ * *rejected* credentials doing unbounded lookup work. Ten times the real limit is far above any
+ * legitimate caller, shared egress or not, and far below what a flood needs.
  */
+const FLOOD_GUARD_MULTIPLIER = 10;
+
+/**
+ * The half of rate limiting that runs before the dialect.
+ *
+ * The buckets with no identity to key on are limited here for real: the public ones (demo mirrors
+ * and the paid rail) and any request arriving without a credential. A credentialed request is
+ * deliberately *not* limited by address — that is the bug this split exists to fix — so what it gets
+ * here is the flood guard, and its actual limit after the dialect.
+ */
+async function preAuthRateLimit(entry: RouteEntry, ctx: RouteContext): Promise<Response | null> {
+  if (entry.auth === 'public') return enforceRateLimit(entry, ctx, null);
+  if (presentsCredential(ctx.request)) {
+    return enforceRateLimit(entry, ctx, null, {
+      bucket: 'flood',
+      multiplier: FLOOD_GUARD_MULTIPLIER,
+    });
+  }
+  return enforceRateLimit(entry, ctx, null);
+}
+
+/** The half that runs after it, keyed on whatever the dialect resolved. */
+async function postAuthRateLimit(entry: RouteEntry, ctx: RouteContext): Promise<Response | null> {
+  // Public entries, and requests that arrived without a credential, were already counted for real
+  // before the dialect. Counting them again would halve their limit.
+  if (entry.auth === 'public') return null;
+  if (!presentsCredential(ctx.request)) return null;
+
+  // A browser key resolves to no identity — deliberately; see `rateLimitIdentity` — so this falls
+  // back to the address, which is exactly the limit a public key should have.
+  return enforceRateLimit(entry, ctx, rateLimitIdentity(ctx.auth ?? null));
+}
+
 export async function runPrelude(entry: RouteEntry, ctx: RouteContext): Promise<Response | null> {
-  const limited = enforceRateLimit(entry, ctx);
+  const limited = await preAuthRateLimit(entry, ctx);
   if (limited) return limited;
 
+  // A rejected credential is returned as rejected. Counting it against the same bucket would turn a
+  // mistyped key into a 429, which reads as "you are going too fast" when the truth is "that key is
+  // wrong" — and the flood guard above has already bounded the work a flood can do.
+  const denial = await authorizeRoute(entry, ctx);
+  if (denial) return denial;
+
+  return postAuthRateLimit(entry, ctx);
+}
+
+/**
+ * The auth dialects, one per entry. Denial is a Response; success lands on the context.
+ *
+ * Split out of `runPrelude` so the rate limit can run on both sides of it: before, with only the
+ * address to go on, and after, with the identity the dialect resolved.
+ */
+async function authorizeRoute(entry: RouteEntry, ctx: RouteContext): Promise<Response | null> {
   switch (entry.auth) {
     case 'public':
       return null;

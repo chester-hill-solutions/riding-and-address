@@ -1,5 +1,5 @@
 import { Env } from './types';
-import { utcDay } from './time';
+import { utcDay, utcMinute } from './time';
 import { UploadJobs } from './upload-jobs';
 
 // `utcDay`/`utcMonth` live in `src/time.ts`; import them from there.
@@ -80,6 +80,33 @@ export class ApiKeyUsageDO {
       return new Response('Not found', { status: 404 });
     }
 
+    // The per-minute rate window.
+    //
+    // One instance per identity, so the counter is shared by every isolate serving that identity —
+    // which is the whole point. The limiter this replaces held its counts in a module-level Map, so
+    // the effective ceiling was the configured limit multiplied by however many isolates happened to
+    // be serving the caller, and an agent that spread its requests was limited by arithmetic nobody
+    // had chosen. A DO serialises its own requests, so the count is simply correct.
+    if (url.pathname === '/window' && request.method === 'POST') {
+      const minute = url.searchParams.get('minute') || utcMinute(Date.now());
+      const bucket = url.searchParams.get('bucket') || 'default';
+      const limit = Math.max(0, parseInt(url.searchParams.get('limit') || '0', 10) || 0);
+      const storageKey = `rate:${bucket}:${minute}`;
+
+      const current = (await this.state.storage.get<number>(storageKey)) || 0;
+      if (limit > 0 && current >= limit) {
+        // Fail closed, and do not increment: a blocked request must not inflate the number the
+        // operator sees, nor keep pushing the counter up during an attack.
+        return json({ minute, bucket, count: current, limit, allowed: false });
+      }
+
+      const next = current + 1;
+      await this.state.storage.put(storageKey, next);
+      await this.pruneOldRateWindows(bucket, minute);
+
+      return json({ minute, bucket, count: next, limit, allowed: true });
+    }
+
     const period =
       url.searchParams.get('month') ||
       url.searchParams.get('day') ||
@@ -136,11 +163,32 @@ export class ApiKeyUsageDO {
     }
   }
 
+  /**
+   * Keep only a few minutes of rate windows.
+   *
+   * The counter is written once per minute per bucket, so without this an idle identity would keep
+   * a row per minute for as long as it exists. Five minutes is enough for the clock to roll over
+   * during a request without the previous window disappearing underneath it.
+   */
+  private async pruneOldRateWindows(bucket: string, currentMinute: string): Promise<void> {
+    if (Math.random() > 0.01) return;
+    try {
+      const prefix = `rate:${bucket}:`;
+      const entries = await this.state.storage.list<number>({ prefix });
+      const cutoffMs = Date.parse(`${currentMinute}:00Z`) - 5 * 60_000;
+      const cutoff = utcMinute(cutoffMs);
+      for (const key of entries.keys()) {
+        if (key.slice(prefix.length) < cutoff) await this.state.storage.delete(key);
+      }
+    } catch (error) {
+      console.warn('[ApiKeyUsageDO] rate window prune failed:', error);
+    }
+  }
+
   /** Keep only a short window; without this every key accretes a row per day forever. */
   private async pruneOldDays(currentDay: string): Promise<void> {
     // Cheap guard: only sweep occasionally rather than on every request.
-    if (Math.random() > 0.01) return;
-    try {
+    if (Math.random() > 0.01) return;    try {
       const entries = await this.state.storage.list<number>({ prefix: 'count:' });
       const cutoff = dayBefore(currentDay, 7);
       for (const key of entries.keys()) {

@@ -42,6 +42,17 @@ export const DEFAULT_PAID_RATE_LIMIT = 100;
 // Rate limiting store
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 
+/**
+ * Drop every in-memory rate-limit entry.
+ *
+ * The in-memory limiter is the fallback used when the Durable Object binding is absent — local dev,
+ * and most unit tests. Tests that assert on it have to start from a known state, and the counter is
+ * module-level, so without this a test inherits whatever the previous one counted.
+ */
+export function clearRateLimitStore(): void {
+  rateLimitStore.clear();
+}
+
 // Cleanup expired rate limit entries to prevent memory leaks
 function cleanupRateLimitStore(): void {
   const now = Date.now();
