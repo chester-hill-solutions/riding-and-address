@@ -15,9 +15,14 @@ updates:
       interval: weekly
     groups:
       dev-dependencies:
-        dependency-type: development
         patterns:
           - "*"
+        exclude-patterns:
+          - "vite"
+          - "@cloudflare/vite-plugin"
+        update-types:
+          - patch
+          - minor
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
