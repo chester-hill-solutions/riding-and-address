@@ -1,11 +1,22 @@
 import { auth as createBetterAuth, createSessionReader } from '@chester-hill-solutions/auth-d1';
+import { jwt, mcp } from '@chester-hill-solutions/auth-d1/plugins';
 import { drizzleAdapter } from '@better-auth/drizzle-adapter';
 import { createRequireSessionUserId } from '@chester-hill-solutions/auth-react-router';
 import { getDb } from '~/lib/db.server';
 import { env } from '~/lib/env.server';
 import { requireCloudflareEnv } from './cloudflare-context.server';
 import { sendEmail, escapeHtml } from './email.server';
-import { authSchema } from '~/db/schema';
+import { betterAuthSchema } from '~/db/schema';
+
+/**
+ * The scopes this deployment issues, and the vocabulary the consent screen shows.
+ *
+ * `ridings:area` is separate from `ridings:lookup` on purpose. A lookup is half a cent and an area
+ * search can be $8, so one approval should not quietly authorise both — the consent screen is where
+ * a person sees the difference. MCP asks a server to treat a broader scope as implying narrower
+ * ones, and nothing here implies anything: area search does not grant lookups.
+ */
+const OAUTH_SCOPES = ['ridings:lookup', 'ridings:area'] as const;
 
 function buildAuth() {
   const { authSecret, baseUrl, authTrustedOrigins } = env();
@@ -17,9 +28,26 @@ function buildAuth() {
     trustedOrigins: [...new Set([baseUrl, ...authTrustedOrigins])],
     database: drizzleAdapter(getDb(), {
       provider: 'sqlite',
-      schema: authSchema,
+      schema: betterAuthSchema,
     }),
     emailAndPassword: { enabled: true },
+    // The OAuth authorization server for MCP clients. Until these were registered the portal had no
+    // plugins at all, and there was no authorization server — `/auth.md` said so.
+    plugins: [
+      // Owns the signing key and the `/jwks` endpoint a resource server verifies access tokens
+      // against. `mcp()` requires it; without it there is nothing to verify a token with.
+      jwt(),
+      // OAuth 2.1 discovery, client registration, PKCE, resource binding and the RFC 9728
+      // protected-resource metadata. `resource` is the canonical URI of the MCP server, and access
+      // tokens carry it as their audience (RFC 8707), so a token minted here is not usable against
+      // another MCP server and vice versa.
+      mcp({
+        loginPage: '/login',
+        consentPage: '/consent',
+        resource: `${baseUrl}/mcp`,
+        scopes: [...OAUTH_SCOPES],
+      }),
+    ],
     emailVerification: {
       sendVerificationEmail: async ({ user, url }) => {
         const binding = requireCloudflareEnv().API_KEY_USAGE;

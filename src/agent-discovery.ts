@@ -87,9 +87,13 @@ export function createMcpServerCard(origin: string): unknown {
 }
 
 /**
- * `/auth.md` — how an agent authenticates. CanCoder has no OAuth server and no agent
- * self-registration, so this is deliberately self-contained rather than pointing at metadata that
- * does not exist.
+ * `/auth.md` — how an agent authenticates.
+ *
+ * An OAuth 2.1 authorization server now exists (the portal registers Better Auth's `jwt` and `mcp`
+ * plugins), so the old claim that there is none had to go. What replaces it says exactly how far it
+ * goes: the authorization server metadata is published, and the RFC 9728 protected-resource
+ * metadata — the document an MCP client reads first — is not. Nothing here points at a document
+ * that does not exist.
  */
 export function createAuthMd(origin: string): string {
   return `# auth.md
@@ -102,8 +106,8 @@ Autonomous agents and the developers running them, calling the riding-lookup API
 
 ## Credentials
 
-CanCoder issues **Server API keys** (\`sk_…\`). There is no OAuth authorization server, no
-self-registration endpoint, and no anonymous account creation.
+CanCoder issues **Server API keys** (\`sk_…\`). There is no self-registration endpoint and no
+anonymous account creation.
 
 | Method | How | Use |
 | --- | --- | --- |
@@ -121,6 +125,19 @@ A Server key is created in the portal by a human, after signing up:
 
 Agents cannot mint their own keys. If your workflow needs account-free, autonomous payment, see
 ${origin}/api/quote — an agent requests a free, expiring offer there.
+
+## OAuth
+
+An OAuth 2.1 authorization server is live. Its issuer is \`${origin}/api/auth\` and its metadata is
+at \`${origin}/api/auth/.well-known/oauth-authorization-server\`. It serves the authorization code
+flow with PKCE (S256 only), binds access tokens to the MCP server as their audience (RFC 8707), and
+publishes signing keys at \`${origin}/api/auth/jwks\`. Client registration is by pre-registration
+only: dynamic registration is not enabled, and there is no self-registration endpoint.
+
+**The RFC 9728 protected-resource metadata is not published yet.** That document is what an MCP
+client reads first, so a client cannot discover this server on its own today — it would have to be
+given the issuer directly. Read this as a statement of what exists, not as a discovery path. Server
+keys remain the supported way for an agent to authenticate.
 
 ## Credential use
 

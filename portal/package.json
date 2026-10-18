@@ -35,7 +35,10 @@
     "stripe": "^18.0.0",
     "tailwind-merge": "^3.6.0",
     "@chester-hill-solutions/validation": "file:../vendor/@chester-hill-solutions/validation",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "@better-auth/mcp": "^1.7.10",
+    "@better-auth/oauth-provider": "^1.7.10",
+    "@better-auth/cimd": "^1.7.10"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.45.0",

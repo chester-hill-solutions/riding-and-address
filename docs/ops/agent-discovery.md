@@ -58,18 +58,33 @@ DNSSEC with the registrar/provider before advertising the discovery zone.
 ## Not published
 
 The MCP endpoint supports a rate-limited demo without credentials and the existing metered Server
-API key through `Authorization: Bearer`. The service does not operate an OAuth authorization server
-and does not offer agent self-registration, so **OAuth/OIDC discovery and OAuth protected-resource
-metadata are deliberately not emitted** — publishing them would point agents at an authorization
-server that does not exist. `/auth.md` *is* published, but kept self-contained: it documents the
-demo tier and the human-provisioned Server key rather than advertising a registration flow.
+API key through `Authorization: Bearer`.
 
-**That is a current state, not a settled position.** Every major MCP client — ChatGPT, Claude, Cursor,
-VS Code, Zed — expects OAuth for a remote server, so this absence is what stops them connecting at all.
-Building it is scoped in [`docs/plans/oauth-authorization-server.md`](../plans/oauth-authorization-server.md),
-which also records what the MCP specification requires of us in each role. **Publish nothing here
-until the authorization server exists** — the rule that got us this far is that a discovery document
-must not point at something that is not there.
+**Updated 2026-10-18 — the authorization server now exists, and only half of the discovery is
+emitted.** The portal registers Better Auth's `jwt` and `mcp` plugins, so:
+
+| Resource | State |
+| --- | --- |
+| Authorization server metadata (RFC 8414) | **emitted**, at the issuer-relative path `/api/auth/.well-known/oauth-authorization-server` |
+| Signing keys (`jwks_uri`) | **emitted**, at `/api/auth/jwks` |
+| Protected resource metadata (RFC 9728) | **not emitted** |
+| Dynamic client registration | **not enabled**, deliberately — pre-registration only |
+| OIDC discovery (`/.well-known/openid-configuration`) | **not emitted** |
+
+The issuer is `${origin}/api/auth`, not the origin root, because Better Auth's base path is part of
+it. The resource-server half — the RFC 9728 document, and the `WWW-Authenticate` challenge on `/mcp`
+that points at it — is the part still missing, and **it is the document an MCP client reads first**.
+So a client cannot discover this server on its own today; it would have to be handed the issuer.
+
+`/auth.md` *is* published and now says exactly that: the authorization server and its metadata URL,
+and that the protected-resource metadata is not published yet. It still documents the demo tier and
+the human-provisioned Server key.
+
+**The rule that got us here still holds: a discovery document must not point at something that is not
+there.** It is why PRM is absent rather than present-and-empty, and why `/auth.md` hedges rather than
+advertises a flow a client cannot complete. The remaining work — PRM, the `/mcp` challenge, and the
+consent screen's place in the flow — is in
+[`docs/plans/oauth-authorization-server.md`](../plans/oauth-authorization-server.md).
 
 Browser tool registration through **WebMCP** is also not implemented; it would need a real
 browser-side integration, not a discovery document. Add either resource when the corresponding

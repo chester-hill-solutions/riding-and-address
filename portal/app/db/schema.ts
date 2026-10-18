@@ -17,6 +17,31 @@ export {
   workspaceFeaturePermissions,
 } from '@chester-hill-solutions/auth-d1/schema';
 
+export {
+  jwks,
+  oauthAccessToken,
+  oauthClient,
+  oauthClientAssertion,
+  oauthClientResource,
+  oauthConsent,
+  oauthRefreshToken,
+  oauthResource,
+  oauthSchema,
+} from '@chester-hill-solutions/auth-d1/schema';
+
+import { authSchema, oauthSchema } from '@chester-hill-solutions/auth-d1/schema';
+
+/**
+ * Everything Better Auth resolves a model from: its own core tables plus the OAuth provider's.
+ *
+ * This, not `authSchema` alone, is what the drizzle adapter is given. The OAuth models have to be
+ * in the object or Better Auth refuses to serve — it fails with "Drizzle schema mismatch: Missing
+ * tables" naming all eight, which is a good error, but only if you get far enough to see it. The
+ * tables existing in D1 is not sufficient: the adapter matches by the schema object, not the
+ * database.
+ */
+export const betterAuthSchema = { ...authSchema, ...oauthSchema };
+
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import { workspaces } from '@chester-hill-solutions/auth-d1/schema';
 

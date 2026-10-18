@@ -4,6 +4,10 @@ export default [
   index('routes/home.tsx'),
   route('login', 'routes/login.tsx'),
   route('signup', 'routes/signup.tsx'),
+  // The OAuth consent screen. Better Auth redirects here from the authorization endpoint; see
+  // routes/consent.tsx. Registered because `mcp({ consentPage })` names it, and a consent page that
+  // 404s would leave an MCP client at a dead end after it had already sent the user to us.
+  route('consent', 'routes/consent.tsx'),
   route('api/auth/*', 'routes/api.auth.$.ts'),
   route('api/stripe/webhook', 'routes/api.stripe-webhook.ts'),
   route('app', 'routes/app.tsx', [
