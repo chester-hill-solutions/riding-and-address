@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createLookupTestEnv, fetchLookup, TORONTO_LAT, TORONTO_LON } from './helpers/lookup-test-env';
+import { fakeUsageNamespace, stubUsageNamespace } from './helpers/fake-usage-do';
 import { Env, Suggestion } from '../src/types';
 import { clearApiKeyCache } from '../src/api-keys';
 import { clearCustomerCache } from '../src/customer';
@@ -209,21 +210,9 @@ describe('browser key gate on /api/search', () => {
         },
       },
       // Hard monthly fuse fail-closes without the DO; tests that expect 200 need a permissive stub.
-      API_KEY_USAGE: env.API_KEY_USAGE ?? {
-        idFromName: () => 'id',
-        get: () => ({
-          fetch: async () =>
-            new Response(
-              JSON.stringify({
-                allowed: true,
-                count: 1,
-                limit: 1000,
-                day: '2026-07-16',
-                month: '2026-07',
-              })
-            ),
-        }),
-      },
+      // Path-aware, because the DO now answers the rate window as well as the quota — a stub that
+      // replies to both with one body answers one of them wrongly.
+      API_KEY_USAGE: env.API_KEY_USAGE ?? stubUsageNamespace(),
     } as unknown as Env;
   }
 
@@ -334,6 +323,9 @@ describe('browser key gate on /api/search', () => {
       ...withKeys(base()),
       DEMO_BROWSER_API_KEY: 'pk_live_abc',
       DEMO_RATE_LIMIT: '2',
+      // The real DO, not a stub: a rate limit cannot be tested against something that always says
+      // yes, and this test is the one that asserts the clamp actually clamps.
+      API_KEY_USAGE: fakeUsageNamespace(),
     } as Env;
     const headers = { Origin: 'https://acme.com', 'CF-Connecting-IP': '203.0.113.77' };
 
@@ -361,19 +353,15 @@ describe('browser key gate on /api/search', () => {
   it('429s with Retry-After once the daily cap is hit', async () => {
     const env = {
       ...withKeys(base()),
-      API_KEY_USAGE: {
-        idFromName: () => 'id',
-        get: () => ({
-          fetch: async () =>
-            new Response(JSON.stringify({ allowed: false, count: 1000, limit: 1000, day: '2026-07-15' })),
-        }),
-      },
+      API_KEY_USAGE: stubUsageNamespace({ daily: { allowed: false, count: 1000, limit: 1000 } }),
     } as unknown as Env;
 
     const response = await fetchLookup(env, '/api/search?q=main st tor&key=pk_live_abc', {
       headers: { Origin: 'https://acme.com' },
     });
     expect(response.status).toBe(429);
+    // The DAILY cap, not the rate window: the window is permissive here, so a RATE_LIMIT_EXCEEDED
+    // would mean the limiter had answered a question it was not asked.
     expect((await readJson(response)).code).toBe('DAILY_LIMIT_EXCEEDED');
     expect(Number(response.headers.get('Retry-After'))).toBeGreaterThan(0);
   });
@@ -403,13 +391,9 @@ describe('basic auth works from any domain', () => {
       ...enabled(withSuggestDb(createLookupTestEnv())),
       BASIC_AUTH: 'admin:secret',
       API_KEYS: { get: async (n: string) => (n === 'key:pk_live_abc' ? KEY2 : null) },
-      // A cap that would block everything, to prove server credentials skip it.
-      API_KEY_USAGE: {
-        idFromName: () => 'id',
-        get: () => ({
-          fetch: async () => new Response(JSON.stringify({ allowed: false, count: 9, limit: 9, day: 'd' })),
-        }),
-      },
+      // A cap that would block everything, to prove server credentials skip it. The rate window is
+      // permissive: this test is about the cap, and a stub that denied both would prove neither.
+      API_KEY_USAGE: stubUsageNamespace({ daily: { allowed: false, count: 9, limit: 9 } }),
     } as unknown as Env;
   }
 

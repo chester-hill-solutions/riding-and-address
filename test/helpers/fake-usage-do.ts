@@ -32,6 +32,47 @@ export function newUsageDO(): ApiKeyUsageDO {
   return new ApiKeyUsageDO(fakeState(), {} as Env);
 }
 
+/**
+ * A DO stub that answers the two different questions `ApiKeyUsageDO` is asked, **separately**.
+ *
+ * The DO serves both the daily/monthly quota (`/consume`, `/peek`) and the shared per-minute rate
+ * window (`/window`). A stub that replies to every request with one canned body therefore answers
+ * the rate question with the quota's answer — so a test that meant "the cap would block everything"
+ * silently became "the rate limit blocks everything", and the response code changed underneath it
+ * without the test changing. That is exactly what happened when the rate window moved into this DO.
+ *
+ * Answering per path keeps the two controls distinguishable, which is what the tests assert. Use
+ * `fakeUsageNamespace()` instead when the counter has to be real — a rate limit cannot be tested
+ * against a stub that always says yes.
+ */
+export function stubUsageNamespace(answers: {
+  daily?: { allowed: boolean; count?: number; limit?: number };
+  window?: { allowed: boolean; count?: number; limit?: number };
+} = {}): DurableObjectNamespace {
+  const daily = answers.daily ?? { allowed: true, count: 1, limit: 1000 };
+  const window = answers.window ?? { allowed: true, count: 1, limit: 1000 };
+  return {
+    idFromName: () => 'id',
+    get: () => ({
+      fetch: async (input: string | Request) => {
+        const url = typeof input === 'string' ? input : input.url;
+        const answer = url.includes('/window') ? window : daily;
+        return new Response(
+          JSON.stringify({
+            allowed: answer.allowed,
+            count: answer.count ?? 1,
+            limit: answer.limit ?? 1000,
+            day: '2026-07-16',
+            month: '2026-07',
+            minute: '2026-07-16T12:00',
+            bucket: 'stub',
+          }),
+        );
+      },
+    }),
+  } as unknown as DurableObjectNamespace;
+}
+
 /** One DO instance per name, as the platform would give. */
 export function fakeUsageNamespace(): DurableObjectNamespace {
   const instances = new Map<string, ApiKeyUsageDO>();
