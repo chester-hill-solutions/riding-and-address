@@ -2,11 +2,17 @@
  * The UCP (Universal Commerce Protocol) business profile served at `/.well-known/ucp`.
  *
  * CanCoder advertises exactly one thing: an MCP transport binding. It implements no UCP
- * commerce capability and has no live payment handler, so `capabilities` is omitted and
- * `payment_handlers` is empty. Both registries that UCP requires are still emitted, because
- * the schema demands their presence even when empty. Publishing only live facts is the
- * point of this document — see `docs/ops/agent-first-product-plan.md` (W3) and
- * `docs/ops/agent-discovery.md`.
+ * commerce capability, so `capabilities` is omitted and `payment_handlers` is empty. Both
+ * registries that UCP requires are still emitted, because the schema demands their presence
+ * even when empty. Publishing only live facts is the point of this document — see
+ * `docs/ops/agent-first-product-plan.md` (W3) and `docs/ops/agent-discovery.md`.
+ *
+ * **This is not a claim that CanCoder cannot be paid.** It can: the account-free x402 rail is
+ * live, and it is declared where an x402 buyer looks — `/.well-known/cancoder.json`
+ * (`payment.accountFree`) and the `PAYMENT-REQUIRED` challenge itself. x402 is not a UCP
+ * commerce payment handler, which is what this registry is for; whether UCP defines a way to
+ * *reference* an x402 handler is a question for the UCP specification, and this profile will
+ * not guess at a shape it has not verified.
  *
  * The service entry deliberately carries no `schema`. A UCP service `schema` is
  * authority-bound: its URL host must reverse-match the service namespace, so it could only
