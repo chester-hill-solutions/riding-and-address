@@ -41,6 +41,14 @@ export interface Env {
    */
   PAID_RATE_LIMIT?: string;
   /**
+   * Ceiling on one Customer's total request rate, across every key it holds (default 5× RATE_LIMIT).
+   *
+   * The per-key limit alone is walkable by minting another key, so this is what actually bounds one
+   * account's draw on the service. It is deliberately higher than the per-key limit — equal to it
+   * would mean a customer with two keys got less than one key's allowance.
+   */
+  CUSTOMER_RATE_LIMIT?: string;
+  /**
    * Public pk_* browser key used by the portal try-it embed. /api/search requests presenting
    * this key are held to DEMO_RATE_LIMIT per IP: the key is shared by every portal visitor,
    * so its daily cap alone would let one abuser exhaust it for everyone.

@@ -80,31 +80,49 @@ export class ApiKeyUsageDO {
       return new Response('Not found', { status: 404 });
     }
 
-    // The per-minute rate window.
+    // The per-minute rate windows.
     //
-    // One instance per identity, so the counter is shared by every isolate serving that identity —
-    // which is the whole point. The limiter this replaces held its counts in a module-level Map, so
-    // the effective ceiling was the configured limit multiplied by however many isolates happened to
-    // be serving the caller, and an agent that spread its requests was limited by arithmetic nobody
-    // had chosen. A DO serialises its own requests, so the count is simply correct.
+    // One instance per shard, so the counters are shared by every isolate serving that shard — which
+    // is the whole point. The limiter this replaces held its counts in a module-level Map, so the
+    // effective ceiling was the configured limit multiplied by however many isolates happened to be
+    // serving the caller, and an agent that spread its requests was limited by arithmetic nobody had
+    // chosen. A DO serialises its own requests, so the counts are simply correct.
+    //
+    // Several windows are checked in one call because the per-key limit and the per-customer ceiling
+    // have to be decided together: the caller's identity is what shards them, so they are already in
+    // the same instance, and a second round trip to ask the same object a second question would be
+    // latency bought for nothing.
     if (url.pathname === '/window' && request.method === 'POST') {
       const minute = url.searchParams.get('minute') || utcMinute(Date.now());
-      const bucket = url.searchParams.get('bucket') || 'default';
-      const limit = Math.max(0, parseInt(url.searchParams.get('limit') || '0', 10) || 0);
-      const storageKey = `rate:${bucket}:${minute}`;
+      const buckets = url.searchParams.getAll('bucket');
+      const limits = url.searchParams.getAll('limit').map((v) => Math.max(0, parseInt(v, 10) || 0));
+      if (buckets.length === 0) return new Response('Missing bucket', { status: 400 });
 
-      const current = (await this.state.storage.get<number>(storageKey)) || 0;
-      if (limit > 0 && current >= limit) {
-        // Fail closed, and do not increment: a blocked request must not inflate the number the
-        // operator sees, nor keep pushing the counter up during an attack.
-        return json({ minute, bucket, count: current, limit, allowed: false });
+      // `rate:<minute>:<bucket>` — the minute first and fixed-width, so pruning is a prefix scan.
+      const keys = buckets.map((bucket) => `rate:${minute}:${bucket}`);
+      const counts = await Promise.all(keys.map((key) => this.state.storage.get<number>(key)));
+
+      // All or nothing. A request refused on one window must not increment any of them: a blocked
+      // request should not inflate the number the operator sees, nor make a caller that is already
+      // over its ceiling look busier on its key than it is.
+      const refused = counts.findIndex(
+        (count, i) => limits[i] > 0 && (count ?? 0) >= limits[i]
+      );
+      if (refused >= 0) {
+        return json({
+          minute,
+          allowed: false,
+          refusedBy: buckets[refused],
+          count: counts[refused] ?? 0,
+          limit: limits[refused],
+        });
       }
 
-      const next = current + 1;
-      await this.state.storage.put(storageKey, next);
-      await this.pruneOldRateWindows(bucket, minute);
+      const next = counts.map((count) => (count ?? 0) + 1);
+      await Promise.all(keys.map((key, i) => this.state.storage.put(key, next[i])));
+      await this.pruneOldRateWindows(minute);
 
-      return json({ minute, bucket, count: next, limit, allowed: true });
+      return json({ minute, allowed: true, count: next[0], limit: limits[0] });
     }
 
     const period =
@@ -170,15 +188,24 @@ export class ApiKeyUsageDO {
    * a row per minute for as long as it exists. Five minutes is enough for the clock to roll over
    * during a request without the previous window disappearing underneath it.
    */
-  private async pruneOldRateWindows(bucket: string, currentMinute: string): Promise<void> {
+  /**
+   * Keep only a few minutes of rate windows.
+   *
+   * A row is written once per minute per bucket, so without this an idle shard would keep one per
+   * minute for as long as it exists. Five minutes is enough for the clock to roll over mid-request
+   * without the window disappearing underneath it.
+   */
+  private async pruneOldRateWindows(currentMinute: string): Promise<void> {
     if (Math.random() > 0.01) return;
     try {
-      const prefix = `rate:${bucket}:`;
-      const entries = await this.state.storage.list<number>({ prefix });
-      const cutoffMs = Date.parse(`${currentMinute}:00Z`) - 5 * 60_000;
-      const cutoff = utcMinute(cutoffMs);
+      const entries = await this.state.storage.list<number>({ prefix: 'rate:' });
+      const cutoff = utcMinute(Date.parse(`${currentMinute}:00Z`) - 5 * 60_000);
       for (const key of entries.keys()) {
-        if (key.slice(prefix.length) < cutoff) await this.state.storage.delete(key);
+        // `rate:<minute>:<bucket>`; the minute is 16 characters and fixed-width, so this is a
+        // lexicographic comparison and not a date parse per key.
+        if (key.slice('rate:'.length, 'rate:'.length + 16) < cutoff) {
+          await this.state.storage.delete(key);
+        }
       }
     } catch (error) {
       console.warn('[ApiKeyUsageDO] rate window prune failed:', error);
