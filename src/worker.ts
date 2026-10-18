@@ -59,7 +59,14 @@ import {
   type KeyAuthResult,
 } from './api-keys';
 import { rateLimitExceededResponse, DEFAULT_RATE_LIMIT, DEFAULT_DEMO_RATE_LIMIT } from './utils';
-import { consumeRateWindow, rateLimitIdentity, rateLimitKey } from './rate-limit';
+import {
+  consumeRateWindows,
+  customerRateBucket,
+  customerRateLimit,
+  rateLimitIdentity,
+  rateLimitKey,
+  type RateWindow,
+} from './rate-limit';
 import { getAgentQuickstart, createCanCoderMcpHandler } from './mcp';
 import { createUcpProfile } from './ucp-profile';
 import { createServiceTerms } from './service-terms';
@@ -684,10 +691,20 @@ export default {
             : String(env.DEMO_RATE_LIMIT || DEFAULT_DEMO_RATE_LIMIT),
           10
         );
-        const allowed = (
-          await consumeRateWindow(env, 'mcp', rateLimitKey('mcp', request, rateLimitIdentity(auth)), limit)
-        ).allowed;
-        if (!allowed) {
+        const identity = rateLimitIdentity(auth);
+        const windows: RateWindow[] = [{ bucket: rateLimitKey('mcp', request, identity), limit }];
+        const customerId = auth?.customer?.id ?? null;
+        if (customerId) {
+          // The same ceiling the REST routes apply. Leaving it off this path would make /mcp the way
+          // around it — an account could hold its REST traffic under the ceiling and spend the rest
+          // here.
+          windows.push({
+            bucket: customerRateBucket(customerId),
+            limit: customerRateLimit(env, limit),
+          });
+        }
+        const shard = customerId ? customerRateBucket(customerId) : windows[0].bucket;
+        if (!(await consumeRateWindows(env, shard, windows)).allowed) {
           return rateLimitExceededResponse(correlationId);
         }
 

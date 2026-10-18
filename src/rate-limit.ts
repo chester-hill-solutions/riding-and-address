@@ -57,14 +57,73 @@ export interface RateWindowResult {
   allowed: boolean;
   count: number;
   limit: number;
+  /** The window that refused, when one did. */
+  refusedBy?: string;
+}
+
+/** One counter to check: a name and the ceiling for it. */
+export interface RateWindow {
+  /** The full counter name — bucket plus identity, e.g. `api:key:sk_live_abc`. */
+  bucket: string;
+  limit: number;
 }
 
 /**
- * Count one request against a shared per-minute window, returning whether it is allowed.
+ * Count one request against every window, in one call, and allow it only if all of them allow.
  *
- * When the binding is absent — local dev, most unit tests — this falls straight through to the
- * in-memory limiter, so nothing that runs today needs a Durable Object to keep working.
+ * `shard` names the Durable Object instance. It is the caller's identity, so the windows that
+ * belong to one caller are already in one instance — which is why the per-key limit and the
+ * per-customer ceiling can be decided together rather than in two round trips.
+ *
+ * All-or-nothing on refusal, matching the DO: a request blocked on one window must not consume the
+ * others, or a caller already over its ceiling would look busier than it is on everything else.
+ *
+ * When the binding is absent — local dev, most unit tests — this falls through to the in-memory
+ * limiter, so nothing that runs today needs a Durable Object to keep working. That fallback is
+ * *not* all-or-nothing: it counts windows in order and stops at the first refusal, so a refused
+ * request leaves the earlier ones incremented. It is the old behaviour, deliberately kept as the
+ * floor rather than pretended to be equivalent.
  */
+export async function consumeRateWindows(
+  env: Env,
+  shard: string,
+  windows: readonly RateWindow[],
+  nowMs: number = Date.now()
+): Promise<RateWindowResult> {
+  const fallback = (): RateWindowResult => {
+    for (const window of windows) {
+      if (!checkRateLimit({ ...env, RATE_LIMIT: window.limit }, window.bucket)) {
+        return { allowed: false, count: 0, limit: window.limit, refusedBy: window.bucket };
+      }
+    }
+    return { allowed: true, count: 0, limit: windows[0]?.limit ?? 0 };
+  };
+
+  if (!env.API_KEY_USAGE || windows.length === 0) return fallback();
+
+  try {
+    const id = env.API_KEY_USAGE.idFromName(shard);
+    const stub = env.API_KEY_USAGE.get(id);
+    const params = new URLSearchParams({ minute: utcMinute(nowMs) });
+    for (const window of windows) {
+      params.append('bucket', window.bucket);
+      params.append('limit', String(window.limit));
+    }
+    const response = await stub.fetch(`https://usage/window?${params}`, { method: 'POST' });
+    const body = (await response.json()) as RateWindowResult;
+    return {
+      allowed: body.allowed,
+      count: body.count,
+      limit: body.limit,
+      ...(body.refusedBy ? { refusedBy: body.refusedBy } : {}),
+    };
+  } catch (error) {
+    console.warn(`[rate-limit] window unavailable for ${shard}:`, error);
+    return fallback();
+  }
+}
+
+/** The single-window case, which is most of them. */
 export async function consumeRateWindow(
   env: Env,
   bucket: string,
@@ -72,26 +131,27 @@ export async function consumeRateWindow(
   limit: number,
   nowMs: number = Date.now()
 ): Promise<RateWindowResult> {
-  const fallback = (): RateWindowResult => ({
-    allowed: checkRateLimit({ ...env, RATE_LIMIT: limit }, key),
-    count: 0,
-    limit,
-  });
+  return consumeRateWindows(env, key, [{ bucket: key, limit }], nowMs);
+}
 
-  if (!env.API_KEY_USAGE || limit <= 0) return fallback();
+/**
+ * The per-customer ceiling, as a multiple of the per-key limit.
+ *
+ * It cannot equal the per-key limit: a customer with two keys would then get *less* than one key's
+ * allowance, which would be a regression for legitimate multi-key use. Five times means one or two
+ * keys see no change at all, while minting twenty does not buy twenty times the rate. Overridable
+ * with `CUSTOMER_RATE_LIMIT` when a deployment wants a different bound.
+ */
+export const DEFAULT_CUSTOMER_RATE_MULTIPLIER = 5;
 
-  try {
-    const id = env.API_KEY_USAGE.idFromName(key);
-    const stub = env.API_KEY_USAGE.get(id);
-    const minute = utcMinute(nowMs);
-    const response = await stub.fetch(
-      `https://usage/window?bucket=${encodeURIComponent(bucket)}&minute=${minute}&limit=${limit}`,
-      { method: 'POST' }
-    );
-    const body = (await response.json()) as RateWindowResult;
-    return { allowed: body.allowed, count: body.count, limit: body.limit };
-  } catch (error) {
-    console.warn(`[rate-limit] window unavailable for ${key}:`, error);
-    return fallback();
-  }
+/** The ceiling for one Customer, whatever keys it holds. */
+export function customerRateLimit(env: Env, perKeyLimit: number): number {
+  const configured = parseInt(String(env.CUSTOMER_RATE_LIMIT ?? ''), 10);
+  if (Number.isFinite(configured) && configured > 0) return configured;
+  return perKeyLimit * DEFAULT_CUSTOMER_RATE_MULTIPLIER;
+}
+
+/** The counter name for a Customer's total draw, shared across every key it holds. */
+export function customerRateBucket(customerId: string): string {
+  return `customer:${customerId}`;
 }

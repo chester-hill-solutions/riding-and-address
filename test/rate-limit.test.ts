@@ -1,6 +1,14 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 
-import { consumeRateWindow, rateLimitIdentity, rateLimitKey } from '../src/rate-limit';
+import {
+  consumeRateWindow,
+  consumeRateWindows,
+  customerRateBucket,
+  customerRateLimit,
+  rateLimitIdentity,
+  rateLimitKey,
+  type RateWindow,
+} from '../src/rate-limit';
 import type { KeyAuthResult } from '../src/api-keys';
 import type { Env } from '../src/types';
 import { fakeUsageNamespace } from './helpers/fake-usage-do';
@@ -114,5 +122,60 @@ describe('consumeRateWindow', () => {
     for (let i = 0; i < 5; i++) {
       expect((await consumeRateWindow(env, 'api', 'api:key:sk_live_abc', 0)).allowed).toBe(true);
     }
+  });
+});
+
+describe('the per-customer ceiling', () => {
+  it('defaults to five times the per-key limit, and is overridable', () => {
+    expect(customerRateLimit({} as Env, 100)).toBe(500);
+    expect(customerRateLimit({ CUSTOMER_RATE_LIMIT: '250' } as unknown as Env, 100)).toBe(250);
+    // A value that is not a positive number falls back rather than removing the ceiling — a typo in
+    // an environment variable must not be the thing that disables the limit.
+    expect(customerRateLimit({ CUSTOMER_RATE_LIMIT: 'lots' } as unknown as Env, 100)).toBe(500);
+    expect(customerRateLimit({ CUSTOMER_RATE_LIMIT: '0' } as unknown as Env, 100)).toBe(500);
+    expect(customerRateLimit({ CUSTOMER_RATE_LIMIT: '-5' } as unknown as Env, 100)).toBe(500);
+  });
+
+  it('bounds a customer that mints a second key', async () => {
+    // Two keys, one account. Per-key limits alone would give this twice the rate; the ceiling is what
+    // stops a second key buying another allowance. This is the property the per-key limit cannot
+    // have, because minting a key is a UI click.
+    const env = envWithUsage();
+    const shard = customerRateBucket('c1');
+    const windowsFor = (keyId: string): RateWindow[] => [
+      { bucket: `api:key:${keyId}`, limit: 10 },
+      { bucket: customerRateBucket('c1'), limit: 2 },
+    ];
+
+    // Awaited in order, deliberately: the point is the sequence, and concurrent calls would make the
+    // counts depend on scheduling rather than on the ceiling.
+    expect((await consumeRateWindows(env, shard, windowsFor('sk_a'))).allowed).toBe(true);
+    expect((await consumeRateWindows(env, shard, windowsFor('sk_b'))).allowed).toBe(true);
+
+    // The third request in total, on either key, is refused — and by the customer window, not the
+    // key one, which has plenty left.
+    const third = await consumeRateWindows(env, shard, windowsFor('sk_a'));
+    expect(third.allowed).toBe(false);
+    expect(third.refusedBy).toBe(customerRateBucket('c1'));
+  });
+
+  it('does not count a refused request against the windows that allowed', async () => {
+    // All-or-nothing, matching the DO. Otherwise a caller already blocked on its ceiling would keep
+    // inflating its per-key counter, and an operator reading that number would be reading one that
+    // never happened.
+    const env = envWithUsage();
+    const shard = customerRateBucket('c1');
+    const windows: RateWindow[] = [
+      { bucket: 'api:key:sk_a', limit: 100 },
+      { bucket: customerRateBucket('c1'), limit: 1 },
+    ];
+
+    expect((await consumeRateWindows(env, shard, windows)).allowed).toBe(true);
+    expect((await consumeRateWindows(env, shard, windows)).allowed).toBe(false);
+
+    // The key window saw exactly one request: had the refusal counted, the ceiling of 2 would already
+    // have been reached and this would be false.
+    const keyOnly = await consumeRateWindows(env, shard, [{ bucket: 'api:key:sk_a', limit: 2 }]);
+    expect(keyOnly.allowed).toBe(true);
   });
 });

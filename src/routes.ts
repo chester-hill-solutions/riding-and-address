@@ -53,7 +53,14 @@ import {
   httpStatusForKeyDenial,
   type KeyAuthResult,
 } from './api-keys';
-import { consumeRateWindow, rateLimitIdentity, rateLimitKey } from './rate-limit';
+import {
+  consumeRateWindows,
+  customerRateBucket,
+  customerRateLimit,
+  rateLimitIdentity,
+  rateLimitKey,
+  type RateWindow,
+} from './rate-limit';
 import type { BillableAuthContext } from './billing';
 import { isOdaSuggestEnabled } from './oda-config';
 
@@ -375,10 +382,26 @@ async function enforceRateLimit(
   const paidLimit = parseInt(env.PAID_RATE_LIMIT || String(DEFAULT_PAID_RATE_LIMIT), 10);
   const apiLimit = parseInt(String(env.RATE_LIMIT || DEFAULT_RATE_LIMIT), 10);
 
+  const customerId = ctx.billing?.customer.id ?? null;
+
   const allow = async (bucket: string, limit: number): Promise<boolean> => {
     const name = override?.bucket ?? bucket;
     const ceiling = Math.max(1, Math.round(limit * (override?.multiplier ?? 1)));
-    return (await consumeRateWindow(env, name, rateLimitKey(name, request, identity), ceiling)).allowed;
+    const windows: RateWindow[] = [{ bucket: rateLimitKey(name, request, identity), limit: ceiling }];
+
+    // The per-customer ceiling rides along in the same call. The shard is the Customer, so both
+    // windows are already in one Durable Object instance and asking it twice would be latency bought
+    // for nothing. This is the limit that actually bounds an account: the per-key limit is walkable
+    // by minting another key.
+    if (customerId) {
+      windows.push({
+        bucket: customerRateBucket(customerId),
+        limit: customerRateLimit(env, apiLimit),
+      });
+    }
+
+    const shard = customerId ? customerRateBucket(customerId) : windows[0].bucket;
+    return (await consumeRateWindows(env, shard, windows)).allowed;
   };
 
   switch (entry.rateLimit) {
