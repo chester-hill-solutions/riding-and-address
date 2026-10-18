@@ -6,15 +6,17 @@
     "dev": "react-router dev",
     "build": "react-router build",
     "preview": "bun run build && vite preview",
-    "deploy": "bun run build && wrangler deploy",
-    "deploy:staging": "CLOUDFLARE_ENV=staging bun run build && wrangler deploy",
+    "deploy": "bun run build && bun run db:migrate:remote && wrangler deploy",
+    "deploy:staging": "CLOUDFLARE_ENV=staging bun run build && bun run db:migrate:staging && wrangler deploy",
     "typecheck": "react-router typegen && tsc -b",
     "cf-typegen": "wrangler types",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply PORTAL_DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply PORTAL_DB --remote",
     "db:migrate:staging": "wrangler d1 migrations apply PORTAL_DB --env staging --remote",
-    "test:runtime": "node scripts/test-runtime.mjs"
+    "test:runtime": "node scripts/test-runtime.mjs",
+    "db:status": "wrangler d1 migrations list PORTAL_DB --remote",
+    "db:status:staging": "wrangler d1 migrations list PORTAL_DB --env staging --remote"
   },
   "packageManager": "bun@1.4.3",
   "dependencies": {
