@@ -20,6 +20,13 @@ responses use the hostname from the request, while rejecting unconfigured hosts 
   auth, and error codes — every value read from the constant the Worker and Portal enforce)
 - `/mcp` with `lookup_riding` and the `quote_lookup` / `quote_area` offer tools, plus public setup
   notes at `/docs/agents.md`
+- The **x402 Bazaar declaration** — every `PAYMENT-REQUIRED` challenge carries
+  `extensions.bazaar` (`info.input` / `info.output`) plus `serviceName` and `tags` on the resource, so
+  an x402-capable agent can find the paid endpoint in a catalogue. Cataloguing needs the *client* to
+  echo the extension inside its payment payload, which the official SDKs do — verified against a real
+  one. **Whether it is catalogued is the facilitator's implementation detail**, not ours: CDP does it,
+  and the static-key facilitator we are live on is unconfirmed. `cancoder.json`'s `payment` block
+  declares the same capability in the meantime.
 - Homepage `Link` headers for the API docs, OpenAPI description, and API catalog
 
 Deploy the Worker with the normal production deployment so these routes become available. The
