@@ -70,11 +70,43 @@ export interface PaymentRequirements {
   extra: { name: string; version: string };
 }
 
+/**
+ * Service metadata for a discovery catalogue (the x402 Bazaar). All optional: a facilitator soft-drops
+ * a field that fails its validation rules and keeps the rest.
+ */
+export interface PaymentResourceInfo {
+  url: string;
+  description: string;
+  mimeType: string;
+  /** Human-readable name, ≤ 32 printable ASCII characters. */
+  serviceName?: string;
+  /** Up to five short topical tags, each ≤ 32 printable ASCII characters. */
+  tags?: string[];
+}
+
+/**
+ * The Bazaar discovery extension. Declaring it is what makes a paid endpoint findable, and it is
+ * catalogued only when a *client* echoes it back inside its payment payload — the official SDKs do
+ * that automatically, which is why `@x402/fetch` sends an `extensions` key.
+ *
+ * `info.input.type` and `info.output.type` are required when the block is present; a declaration
+ * missing them is dropped by the facilitator even when settlement succeeds.
+ */
+export interface PaymentExtensions {
+  bazaar: {
+    info: {
+      input: { type: 'http'; method: string; queryParams?: Record<string, string> };
+      output: { type: 'json'; example: unknown };
+    };
+  };
+}
+
 export interface PaymentRequired {
   x402Version: number;
   error?: string;
-  resource: { url: string; description: string; mimeType: string };
+  resource: PaymentResourceInfo;
   accepts: PaymentRequirements[];
+  extensions?: PaymentExtensions;
 }
 
 /** USD to the asset's minor units, as a string. `0.005` at 6 decimals → `"5000"`. */
@@ -87,6 +119,13 @@ export function toMinorUnits(amountUsd: number, decimals: number): string {
  * The `PAYMENT-REQUIRED` body for an offer. The amount is the offer's own price ceiling, so a
  * requirements set can never ask for more than the caller accepted.
  */
+/** A small, honest illustration of what a buyer receives, for the discovery catalogue. */
+function outputExample(offer: Offer): unknown {
+  return offer.operation === 'lookup.point'
+    ? { riding: 'Ottawa Centre', datasetId: offer.scope.datasetId, datasetYear: offer.scope.datasetYear }
+    : { records: [{ civicNumber: '100', streetName: 'Wellington', city: 'Ottawa', province: 'ON' }] };
+}
+
 export function buildPaymentRequired(
   config: X402Config,
   offer: Offer,
@@ -98,6 +137,19 @@ export function buildPaymentRequired(
       url: resourceUrl,
       description: `CanCoder ${offer.operation}`,
       mimeType: 'application/json',
+      serviceName: 'CanCoder',
+      tags: ['canada', 'address', 'electoral-district', 'geocoding'],
+    },
+    // The Bazaar declaration. It describes the paid endpoint an agent reaches after paying, not the
+    // quote it came from — the offer id is deliberately absent, since it is per-offer and short-lived
+    // and would put a signed token in a public catalogue.
+    extensions: {
+      bazaar: {
+        info: {
+          input: { type: 'http', method: 'POST' },
+          output: { type: 'json', example: outputExample(offer) },
+        },
+      },
     },
     accepts: [
       {
