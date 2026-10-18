@@ -125,7 +125,7 @@ export declare const workspaceInvitations: import("drizzle-orm/sqlite-core").SQL
             tableName: "workspace_invitation";
             dataType: "string";
             columnType: "SQLiteText";
-            data: "expired" | "canceled" | "pending" | "accepted" | "superseded";
+            data: "pending" | "accepted" | "canceled" | "expired" | "superseded";
             driverParam: string;
             notNull: true;
             hasDefault: true;

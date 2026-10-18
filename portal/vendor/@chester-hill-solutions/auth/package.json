@@ -1,6 +1,6 @@
 {
   "name": "@chester-hill-solutions/auth",
-  "version": "0.2.0",
+  "version": "0.5.0",
   "description": "Framework- and provider-agnostic auth utilities (redirects, cookies, session types, capability actors, tokens)",
   "type": "module",
   "license": "MIT",
@@ -9,11 +9,22 @@
     "url": "git+https://github.com/chester-hill-solutions/chester-hill-solutions.git",
     "directory": "packages/auth"
   },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js",
+      "default": "./dist/testing/index.js"
     },
     "./cookies": {
       "types": "./dist/cookies.d.ts",

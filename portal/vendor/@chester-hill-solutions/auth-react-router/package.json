@@ -1,6 +1,6 @@
 {
   "name": "@chester-hill-solutions/auth-react-router",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "React Router 7/8 auth guards, capability checks, and invite completion loaders",
   "type": "module",
   "license": "MIT",
@@ -9,6 +9,12 @@
     "url": "git+https://github.com/chester-hill-solutions/chester-hill-solutions.git",
     "directory": "packages/auth-react-router"
   },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

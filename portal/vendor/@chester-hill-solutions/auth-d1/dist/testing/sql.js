@@ -3,11 +3,14 @@
 // package yet). Matches the D1 migrations a real deployment would run.
 import { WORKSPACE_FEATURE_AUTHZ_DDL } from "../workspace-feature-sql.js";
 import { WORKSPACE_INVITATION_DDL } from "../invitation-sql.js";
+import { OAUTH_DDL } from "../oauth-sql.js";
 export const DDL = `
+-- Matches the package's own declaration: id is required, name and slug are optional, and two
+-- workspaces may share a slug. Asserted by auth-conformance.ts, which auth-postgres also runs.
 CREATE TABLE IF NOT EXISTS "workspace" (
   "id" text PRIMARY KEY NOT NULL,
-  "name" text NOT NULL,
-  "slug" text NOT NULL UNIQUE,
+  "name" text,
+  "slug" text,
   "created_at" integer NOT NULL DEFAULT (unixepoch() * 1000),
   "updated_at" integer NOT NULL DEFAULT (unixepoch() * 1000)
 );
@@ -24,6 +27,8 @@ CREATE TABLE IF NOT EXISTS "workspace_member" (
 ${WORKSPACE_FEATURE_AUTHZ_DDL}
 
 ${WORKSPACE_INVITATION_DDL}
+
+${OAUTH_DDL}
 
 CREATE TABLE IF NOT EXISTS "user" (
   "id" text PRIMARY KEY NOT NULL,
