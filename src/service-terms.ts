@@ -12,10 +12,10 @@
  *   - coverage                ← src/datasets.ts
  *   - auth errors             ← src/api-keys.ts
  *
- * Payment options are deliberately absent: the x402 rail is implemented but disabled
- * (`X402_ENABLED` unset), and the plan's discovery decision is to publish only capabilities that are
- * live. Quoting is live and free, so the area product and its price are published here — but the
- * ability to *accept* an offer is not, and is not claimed.
+ * Payment is published **only when the rail is configured**: the `payment` block is built from the
+ * same environment the Worker settles with, so this document cannot claim a payment capability the
+ * deployment does not have — or stay silent about one it does. That second failure is how these terms
+ * spent a morning telling agents the rail was off after it had been switched on.
  */
 
 import { KEY_DENIAL_REASONS, httpStatusForKeyDenial, type KeyDenialReason } from './api-keys';
@@ -36,6 +36,19 @@ export interface ServiceCapability {
   transport: 'http' | 'mcp';
   description: string;
   endpoints: string[];
+}
+
+/**
+ * What the terms need to know about the payment rail, read from the same environment the Worker
+ * settles with. Absent means the rail is not configured, and nothing is claimed.
+ */
+export interface PaymentTermsInput {
+  protocol: string;
+  version: number;
+  scheme: string;
+  network: string;
+  asset: string;
+  perPayerDailyCapUsd: number;
 }
 
 export interface ServiceTerms {
@@ -89,10 +102,22 @@ export interface ServiceTerms {
     request: Array<{ code: string; httpStatus: number }>;
     reference: string;
   };
+  /**
+   * Present only when the rail is configured. An agent reading this can decide whether it holds the
+   * right asset *before* calling, rather than discovering it from a 402.
+   */
+  payment?: {
+    accountFree: PaymentTermsInput & {
+      /** How to obtain and pay an offer, in the order the protocol requires. */
+      howToPay: string;
+      /** No account, key or registration is needed: the payer's wallet authorises the spend. */
+      requiresAccount: boolean;
+    };
+  };
   support: { url: string };
 }
 
-export function createServiceTerms(origin: string): ServiceTerms {
+export function createServiceTerms(origin: string, payment?: PaymentTermsInput | null): ServiceTerms {
   return {
     service: 'CanCoder',
     description:
@@ -160,8 +185,7 @@ export function createServiceTerms(origin: string): ServiceTerms {
         maxRecordsPerOffer: AREA_MAX_RESULTS,
         note:
           `Priced in whole ${AREA_UNIT_RECORDS}-record units, up to ${AREA_MAX_RESULTS} records per ` +
-          'offer. The accepted ceiling is charged, not the number of pages read. Quoting is live; ' +
-          'accepting an offer is not yet enabled.',
+          'offer. The accepted ceiling is charged, not the number of pages read.',
       },
     },
     freeTier: {
@@ -224,6 +248,21 @@ export function createServiceTerms(origin: string): ServiceTerms {
       ],
       reference: `${origin}/api/docs`,
     },
+    ...(payment
+      ? {
+          payment: {
+            accountFree: {
+              ...payment,
+              howToPay:
+                `Request a free, expiring offer from ${origin}/api/quote, then POST it to ` +
+                `${origin}/api/quote/accept with a signed payment payload in the PAYMENT-SIGNATURE ` +
+                'header. The exact amount, network and asset are in the PAYMENT-REQUIRED challenge, ' +
+                'and one settled payment delivers the quoted result.',
+              requiresAccount: false,
+            },
+          },
+        }
+      : {}),
     support: { url: SUPPORT_URL },
   };
 }
