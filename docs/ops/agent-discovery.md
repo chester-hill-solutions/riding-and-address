@@ -64,6 +64,13 @@ metadata are deliberately not emitted** — publishing them would point agents a
 server that does not exist. `/auth.md` *is* published, but kept self-contained: it documents the
 demo tier and the human-provisioned Server key rather than advertising a registration flow.
 
+**That is a current state, not a settled position.** Every major MCP client — ChatGPT, Claude, Cursor,
+VS Code, Zed — expects OAuth for a remote server, so this absence is what stops them connecting at all.
+Building it is scoped in [`docs/plans/oauth-authorization-server.md`](../plans/oauth-authorization-server.md),
+which also records what the MCP specification requires of us in each role. **Publish nothing here
+until the authorization server exists** — the rule that got us this far is that a discovery document
+must not point at something that is not there.
+
 Browser tool registration through **WebMCP** is also not implemented; it would need a real
 browser-side integration, not a discovery document. Add either resource when the corresponding
 service exists.

@@ -206,6 +206,7 @@ Implementation verification should include `bun run build`, `bun run validate`, 
 - [Account-free payment rail (W2)](../adr/0007-account-free-x402-payments.md)
 - [MCP payment elicitation — the human path](../plans/mcp-payment-elicitation.md)
 - [Paid MCP tools — plan](../plans/mcp-paid-tools.md)
+- [OAuth authorization server — scoping](../plans/oauth-authorization-server.md)
 - [x402 treasury and custody decision](x402-treasury-decision.md)
 - [Dataset vintage decision](../adr/0004-dataset-versioning-no-dual-serve.md)
 - [Billing invariant gate](../adr/0005-billing-invariants-gate.md)
