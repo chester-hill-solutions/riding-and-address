@@ -99,24 +99,32 @@ the abuse surface and the one the spec is retiring.
 - **Authorization requests** per client and per IP (the consent screen is a page a stranger can hit).
 - **CIMD fetches**: one per client id, cached, with a timeout and a size cap.
 
-## 7. Decisions this plan needs
+## 7. Decisions — answered 2026-10-18
 
-| # | Decision | Leaning |
+| # | Decision | Answer |
 |---|---|---|
-| 1 | Build the authorization server, or buy one (Auth0, WorkOS, Cloudflare Access)? | Build, consistent with the repo's self-contained principle — but a provider is a legitimate answer if the consent UI and revocation are the expensive part |
-| 2 | Which discovery mechanism? | Both RFC 8414 and OIDC Discovery — clients must support both, so we should serve both |
-| 3 | Registration: CIMD, pre-registration, or DCR? | CIMD + pre-registration (§5) |
-| 4 | Scopes | Start with one read scope covering the lookup tools; area search is a separate scope |
-| 5 | Refresh tokens | Yes, with rotation — an agent that must re-consent hourly is worse than one that cannot |
-| 6 | Where consent lives | The portal, next to keys and billing, so revocation is in one place |
-| 7 | Does an OAuth token replace the `purchase` tool, or sit beside it? | Sit beside: `purchase` is for clients that cannot do OAuth, which is most of them today |
+| 1 | Build or buy the authorization server? | **Build it ourselves** — no monthly cost, no third party holding users' logins, and we own the consent screen and token issuing. The cost is the security surface, which is why §6's limits are not optional |
+| 2 | Which discovery mechanism? | **Both** RFC 8414 and OIDC Discovery. Clients must support both, so we serve both |
+| 3 | Registration mechanism? | **CIMD + pre-registration**, no DCR (§5). CIMD is the spec's preference and pre-registration covers clients that cannot do it |
+| 4 | Scopes | **Area search gets its own scope.** A lookup is half a cent; an area search can be $8, and one approval should not quietly authorise both |
+| 5 | Refresh tokens | **Yes, long-lived and revocable**, with rotation. An agent that must re-consent hourly is worse than one that cannot work |
+| 6 | Where consent lives | **The portal**, beside keys and billing, so revocation is in one place |
+| 7 | Replace the `purchase` tool, or sit beside it? | **Sit beside.** `purchase` serves the clients that cannot do OAuth, which is most of them today |
 
 ## 8. Sequencing
 
-1. **Resource-server side first** — protected-resource metadata, the 401 challenge, audience validation.
-   It is required either way, it is smaller, and it can ship without an authorization server.
-2. **Authorization-server side** — metadata, authorization code + PKCE, token endpoint, the consent
-   screen, revocation.
+**A correction to this section, forced by decision 1.** It previously said the resource-server half
+"can ship without an authorization server". With the authorization server built in-house, that is not
+true of the *published* half: protected-resource metadata points clients at an authorization server,
+and the 401 challenge carries its URL. Publishing either before the authorization server can answer
+would break the rule this repo has kept throughout — **a discovery document must not point at
+something that is not there.** So the two halves are built and turned on together.
+
+1. **Authorization-server side first** — metadata, authorization code + PKCE, token endpoint, the
+   consent screen, revocation. It is the bigger piece and the other half is inert without it.
+2. **Resource-server side** — protected-resource metadata, the 401 challenge with `WWW-Authenticate`,
+   audience validation, `403` on insufficient scope. Written and tested alongside, **enabled at the
+   same time**, never before.
 3. **Client registration** — pre-registration first (a client id we issue), then CIMD.
 4. **Refresh and step-up**, once the basic flow is exercised by a real client.
 5. **Then** the directory submissions that need it — the OpenAI app and the MCP registries.
