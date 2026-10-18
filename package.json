@@ -59,7 +59,7 @@
     "keys": "tsx scripts/manage-keys.ts",
     "prepare": "husky"
   },
-  "packageManager": "bun@1.2.15",
+  "packageManager": "bun@1.4.3",
   "keywords": [],
   "author": "",
   "license": "ISC",
