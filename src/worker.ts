@@ -63,6 +63,8 @@ import { getAgentQuickstart, createCanCoderMcpHandler } from './mcp';
 import { createUcpProfile } from './ucp-profile';
 import { createServiceTerms } from './service-terms';
 import { EvmRpcChainClient, reconcileReceipts } from './x402-reconcile';
+import { X402_VERSION, x402ConfigFromEnv } from './x402';
+import { payerDailyCapUsd } from './x402-spend';
 import { createLlmsTxt, createLlmsFullTxt } from './llms-txt';
 import {
   createAgentSkillsIndex,
@@ -572,7 +574,21 @@ async function discoveryResponse(routeCtx: RouteContext): Promise<Response | nul
     return new Response(createLlmsFullTxt(origin), { headers: { 'content-type': 'text/plain; charset=utf-8', ...routeCtx.corsHeaders(request.headers.get('Origin')) } });
   }
   if (pathname === '/.well-known/cancoder.json' && request.method === 'GET') {
-    return Response.json(createServiceTerms(origin), { headers: { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*' } });
+    // Publish payment only if this deployment can actually take it: the block is built from the same
+    // environment the accept path settles with, so the document cannot claim a capability the Worker
+    // does not have — nor stay silent about one it does.
+    const rail = x402ConfigFromEnv(env);
+    const payment = rail
+      ? {
+          protocol: 'x402',
+          version: X402_VERSION,
+          scheme: 'exact',
+          network: rail.network,
+          asset: rail.asset,
+          perPayerDailyCapUsd: payerDailyCapUsd(env),
+        }
+      : null;
+    return Response.json(createServiceTerms(origin, payment), { headers: { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*' } });
   }
   if (pathname === '/.well-known/ucp' && request.method === 'GET') {
     return Response.json(createUcpProfile(origin), { headers: { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*' } });

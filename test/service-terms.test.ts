@@ -52,9 +52,12 @@ describe('machine-readable service terms', () => {
     expect(areaPriceUsd(AREA_UNIT_RECORDS)).toBe(terms().pricing.area.unitPrice);
   });
 
-  it('says the area records cannot be bought yet, rather than leaving the gap unexplained', () => {
-    // Quoting is live; acceptance returns 503. An agent should learn that here, not by trial.
-    expect(terms().pricing.area.note).toMatch(/not yet enabled/i);
+  it('describes the area unit without also claiming the rail is off', () => {
+    // The note is about pricing. Whether records can be bought is the `payment` block's job, and this
+    // document said "not yet enabled" for a morning after the rail was switched on — so the state is
+    // stated in exactly one place, derived from the config.
+    expect(terms().pricing.area.note).toMatch(/250-record units/);
+    expect(terms().pricing.area.note).not.toMatch(/not yet enabled/i);
   });
 
   it('publishes the configured free allowance', () => {
@@ -89,9 +92,33 @@ describe('machine-readable service terms', () => {
     }
   });
 
-  it('claims no payment options, since none is live', () => {
+  it('claims no payment capability when the rail is not configured', () => {
+    // The default deployment has no rail, so nothing is claimed — the plan's rule that discovery
+    // publishes only what is live.
+    expect(terms()).not.toHaveProperty('payment');
     expect(terms()).not.toHaveProperty('paymentOptions');
     expect(terms().pricing).not.toHaveProperty('paymentMethods');
+  });
+
+  it('declares the payment capability, from the config the Worker settles with', () => {
+    // This is the failure the block exists to prevent: the rail went live and the terms kept saying
+    // accepting an offer was "not yet enabled", so agents were told they could not buy.
+    const paid = createServiceTerms(ORIGIN, {
+      protocol: 'x402',
+      version: 2,
+      scheme: 'exact',
+      network: 'eip155:8453',
+      asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      perPayerDailyCapUsd: 25,
+    });
+
+    expect(paid.payment?.accountFree.network).toBe('eip155:8453');
+    expect(paid.payment?.accountFree.asset).toBe('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913');
+    expect(paid.payment?.accountFree.requiresAccount).toBe(false);
+    expect(paid.payment?.accountFree.howToPay).toContain('/api/quote/accept');
+    // And it never claims the rail is off, which is what it said while live.
+    expect(paid.pricing.area.note).not.toMatch(/not yet enabled/i);
+    expect(JSON.stringify(paid)).not.toMatch(/not yet enabled/i);
   });
 
   it('points support at the same target as the OpenAPI contact', () => {
