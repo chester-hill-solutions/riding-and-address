@@ -445,3 +445,53 @@ describe('POST /api/quote/accept', () => {
     expect(((await response.json()) as { code?: string }).code).toBe('PAYMENT_MALFORMED');
   });
 });
+
+describe('the Bazaar discovery declaration', () => {
+  /**
+   * The x402 Bazaar catalogues a paid endpoint from an extension the server declares and a *client*
+   * echoes back inside its payment payload. A declaration missing `info.input.type` or
+   * `info.output.type` is dropped by the facilitator even when settlement succeeds, so both are
+   * pinned — as are the catalogue's own limits, which are enforced by soft-dropping fields.
+   */
+  async function challenge(env: Env) {
+    const offerId = await quote(env);
+    const response = await handleAcceptRequest(context(`/api/quote/accept?offer=${offerId}`, env));
+    const header = response.headers.get(PAYMENT_REQUIRED_HEADER);
+    expect(header).toBeTruthy();
+    return JSON.parse(atob(header!)) as {
+      resource: { url: string; serviceName?: string; tags?: string[] };
+      extensions?: {
+        bazaar?: {
+          info?: { input?: { type?: string; method?: string }; output?: { type?: string } };
+        };
+      };
+    };
+  }
+
+  it('declares the extension with the fields a facilitator requires', async () => {
+    const required = await challenge(baseEnv());
+    const bazaar = required.extensions?.bazaar;
+    expect(bazaar?.info?.input?.type).toBe('http');
+    expect(bazaar?.info?.input?.method).toBe('POST');
+    expect(bazaar?.info?.output?.type).toBe('json');
+  });
+
+  it('publishes service metadata within the catalogue limits', async () => {
+    const required = await challenge(baseEnv());
+    // A relative resource URL is a documented rejection reason.
+    expect(new URL(required.resource.url).protocol).toBe('https:');
+    expect(required.resource.serviceName).toBe('CanCoder');
+    expect(required.resource.serviceName!.length).toBeLessThanOrEqual(32);
+    expect(required.resource.tags!.length).toBeLessThanOrEqual(5);
+    for (const tag of required.resource.tags!) expect(tag.length).toBeLessThanOrEqual(32);
+  });
+
+  it('keeps the per-offer signed token out of the public catalogue', async () => {
+    const env = baseEnv();
+    const offerId = await quote(env);
+    const response = await handleAcceptRequest(context(`/api/quote/accept?offer=${offerId}`, env));
+    const decoded = atob(response.headers.get(PAYMENT_REQUIRED_HEADER)!);
+    // The catalogue is public and durable; a short-lived signed token has no business in it.
+    expect(decoded).not.toContain(offerId);
+  });
+});
