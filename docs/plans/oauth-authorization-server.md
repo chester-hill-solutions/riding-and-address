@@ -1,6 +1,7 @@
 # OAuth authorization server — scoping
 
-**Status: plan. Nothing built. This is the next big discovery unlock, not a listing.**
+**Status: superseded in approach 2026-10-18 — we are composing with Better Auth, not building.**
+See §0. The specification requirements in §2 and the discovery rules still stand; §7 and §8 do not.
 
 Companion to [`mcp-payment-elicitation.md`](mcp-payment-elicitation.md) (the human path, shipped),
 [ADR 0007](../adr/0007-account-free-x402-payments.md) (the autonomous rail) and
@@ -19,6 +20,65 @@ sending a human to a sign-up page, the client authenticates the user and gets a 
 
 **What it does not do:** bring demand. It makes us *connectable*, not *found* — and the product still
 needs buyers who are looking.
+
+## 0. Correction, 2026-10-18: composing with Better Auth, not building
+
+**This supersedes §7 and §8, and it corrects an error in them.** §7 offered a binary — build the
+authorization server ourselves, or buy one (Auth0, WorkOS) — and the answer came back "build". That
+binary was wrong. A third option existed and I had not looked for it: **Better Auth, which
+`@chester-hill-solutions/auth-d1` already wraps, ships a maintained MCP authorization server.** The
+right move was to inspect the auth dependency *before* writing the plan, not after starting to build.
+That is the error being corrected here; the facts did not change.
+
+Verified 2026-10-18 against the published packages and the Better Auth documentation:
+
+| Package | Version | What it provides |
+|---|---|---|
+| `@better-auth/mcp` | 1.7.10 | the MCP authorization server — "turn your Better Auth server into an OAuth provider for MCP clients". Serves RFC 9728 protected-resource metadata, binds tokens to the `resource`, exports `requireMcpAuth` and `createMcpProtectedRequestHandler` |
+| `@better-auth/oauth-provider` | 1.7.10 | OAuth 2.1: authorization code + S256 PKCE, refresh, `iss` (RFC 9207), RFC 8707 resource binding, RFC 7591 DCR (off by default), RFC 7662 introspection, RFC 7009 revocation, consent |
+| `@better-auth/cimd` | 1.7.10 | Client ID Metadata Documents, with an `mcp-2026-07-28` profile and a documented SSRF contract for the fetch transport |
+
+The documentation states the division directly: *"Better Auth owns OAuth discovery, client
+registration and discovery, PKCE authorization, resource binding, token issuance and refresh, and
+protected-resource challenges."*
+
+**So the deliverable changes from "build an authorization server" to "improve our wrapper."** The
+work lands in the CHS auth packages (`auth`, `auth-d1`, `auth-postgres`) and CanCoder consumes it —
+which is also where the instruction to upstream improvements points.
+
+Three of this plan's decisions turn out to agree with the library's defaults, which is worth noting
+rather than re-litigating: CIMD over DCR (Better Auth never enables DCR implicitly, and advertises
+`client_id_metadata_document_supported` only when `cimd()` is installed); exact redirect URI
+matching; and S256-only PKCE. §6's CIMD fetch limits — 5 KB read cap, no redirects, no RFC 6890
+special-use addresses — are now the documented transport contract rather than ours to invent.
+
+### What it costs, verified
+
+- **A version bump, not a plugin toggle.** Our installed `better-auth` is **1.6.23**, whose
+  `oidc-provider` plugin is marked deprecated in favour of `@better-auth/oauth-provider`, and whose
+  `mcp` plugin imports from that deprecated one. The current packages need `better-auth: ^1.7.10`.
+- **The wrapper's peer range blocks it.** `auth-d1` and `auth-postgres` declare
+  `better-auth: ^1.6.0`, which does not admit `1.7.x`. Widening those ranges is the first upstream
+  change, and it is the kind of thing that should be deliberate rather than incidental.
+- **`jwt()` is required.** The MCP plugin needs it for the signing key and the `/jwks` endpoint that
+  resource servers verify against. CanCoder's auth config registers **no plugins at all** today.
+- **Five tables and a migration:** `oauthClient`, `oauthAccessToken`, `oauthRefreshToken`,
+  `oauthConsent`, `oauthClientAssertion`. CHS `auth-d1` has to carry them.
+- **Access tokens become JWTs verified locally against JWKS.** Faster than the KV-opaque design
+  sketched in §4 — no per-request store read — and **a JWT cannot be revoked server-side**, which
+  directly contradicts §9's *"revoking in the portal stops the agent on its next request"*. The
+  library's answer is a short access-token lifetime, or ending the session (a session-bound token
+  reports inactive once its session ends). **§9's criterion needs restating; the design does not.**
+- **MCP SDK v2 with `legacy: "reject"`.** CanCoder runs `@modelcontextprotocol/server@2.3.1` with
+  `legacy: 'stateless'`, so the protocol profile has to be aligned.
+- **The auth stack is vendored** with a manual refresh (`portal/vendor/README.md`), so the bump
+  travels through that process rather than a plain dependency update.
+
+### What still stands
+
+§2's requirements are not wasted — they are what the wrapper must be *verified* against, and they
+are the acceptance tests. §3's inventory of what exists, §4's token → User → Customer mapping, §5's
+registration preference, §6's limits, and the discovery rule from the inventory all still hold.
 
 ## 2. What the spec requires
 
@@ -99,7 +159,14 @@ the abuse surface and the one the spec is retiring.
 - **Authorization requests** per client and per IP (the consent screen is a page a stranger can hit).
 - **CIMD fetches**: one per client id, cached, with a timeout and a size cap.
 
-## 7. Decisions — answered 2026-10-18
+## 7. Decisions — superseded by §0
+
+**The decisions below were answered before §0's correction.** They are kept because the *policy*
+choices in them still apply, and because the record of what was decided and why should not be
+quietly rewritten. What changed is only that a library implements the mechanism: rows 2, 3, 5 and 7
+are now configuration rather than code.
+
+Original answers, 2026-10-18:
 
 | # | Decision | Answer |
 |---|---|---|
@@ -111,7 +178,17 @@ the abuse surface and the one the spec is retiring.
 | 6 | Where consent lives | **The portal**, beside keys and billing, so revocation is in one place |
 | 7 | Replace the `purchase` tool, or sit beside it? | **Sit beside.** `purchase` serves the clients that cannot do OAuth, which is most of them today |
 
-## 8. Sequencing
+## 8. Sequencing — superseded by §0
+
+**Read §0 first.** The sequencing below was written for a build. The composition sequence is:
+widen the peer ranges and add the plugins in `auth-d1`; carry the five tables and a migration; wire
+the consent page in the portal; then align the MCP protocol profile and verify against a real client.
+The resource-server half is `requireMcpAuth` rather than hand-written, which removes the
+"enabled together" constraint that dominated the original plan — but it does **not** remove the rule
+that a discovery document must not point at something that is not there, so the well-known endpoints
+still only appear once the provider can answer.
+
+The original sequencing, kept for the record:
 
 **A correction to this section, forced by decision 1.** It previously said the resource-server half
 "can ship without an authorization server". With the authorization server built in-house, that is not
@@ -136,7 +213,10 @@ something that is not there.** So the two halves are built and turned on togethe
 - An unauthenticated request gets `401` with `WWW-Authenticate` pointing at protected-resource metadata.
 - A token minted for another audience is refused; an expired one is refused; an under-scoped one gets
   `403` with `insufficient_scope`.
-- Revoking in the portal stops the agent on its next request.
+- Revoking in the portal stops the agent on its next request. **Corrected by §0:** if access tokens are
+  JWTs verified against JWKS, they cannot be revoked server-side, so this becomes "stops the agent
+  within the access-token lifetime, or immediately when the session ends". That is a real weakening of
+  the guarantee and should be stated as one rather than assumed away.
 - The Customer's allowance and metering behave exactly as they do for a Server key — proven by a test
   that spends through both.
 - `/auth.md` and the discovery inventory no longer say there is no authorization server.
