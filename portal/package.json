@@ -16,7 +16,7 @@
     "db:migrate:staging": "wrangler d1 migrations apply PORTAL_DB --env staging --remote",
     "test:runtime": "node scripts/test-runtime.mjs"
   },
-  "packageManager": "bun@1.2.15",
+  "packageManager": "bun@1.4.3",
   "dependencies": {
     "@better-auth/drizzle-adapter": "^1.6.11",
     "@chester-hill-solutions/auth": "file:./vendor/@chester-hill-solutions/auth",
