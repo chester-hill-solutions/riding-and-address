@@ -1,47 +1,35 @@
-import { asCapabilityId } from "@chester-hill-solutions/auth";
-import { workspaceFeaturePermissions, workspaceFeatures, workspaceRoles, } from "./workspace-authz-schema.js";
-/** Cutover roles for CallCaster-style products. Owner is never invitational. */
-export const PRODUCT_ROLE_IDS = ["owner", "admin", "member", "caller"];
-export const PRODUCT_ROLE_RANKS = {
-    caller: 0,
-    member: 1,
-    admin: 2,
-    owner: 3,
-};
-/** Roles an actor with `fromRole` may invite (strictly subordinate). Owner is never invitational. */
-export function invitationalRolesFor(fromRole) {
-    switch (fromRole) {
-        case "owner":
-            return ["admin", "member", "caller"];
-        case "admin":
-            return ["member", "caller"];
-        case "member":
-            return ["caller"];
-        case "caller":
-            return [];
-        default: {
-            const _exhaustive = fromRole;
-            return _exhaustive;
-        }
-    }
-}
+import { asCapabilityId, assertProductRoles, PRODUCT_ROLES, } from '@chester-hill-solutions/auth';
+import { workspaceFeaturePermissions, workspaceFeatures, workspaceRoles, } from './workspace-authz-schema.js';
+// Re-exported so a consumer importing from `auth-d1` keeps the surface it had, and gets the one
+// implementation rather than a second copy.
+export { assertProductRoles, invitationalRolesFor, PRODUCT_ROLES, PRODUCT_ROLE_IDS, PRODUCT_ROLE_RANKS, productRoleRanks, } from '@chester-hill-solutions/auth';
 /**
- * Upsert global (workspace_id null) roles + features + allow permissions for a
- * product capability matrix. Idempotent on stable ids.
+ * Upsert global (`workspace_id` null) roles, features and allow permissions.
+ *
+ * @param db the dialect's database
+ * @param matrix what each role is allowed
+ * @param roles the product's own role set. Defaults to `PRODUCT_ROLES` for a caller that has not
+ *   declared one, which is the only reason that set exists
+ * @throws Error when the hierarchy is incoherent, before any row is written
  */
-export async function seedProductRoleCapabilityMatrix(db, matrix) {
+export async function seedProductRoleCapabilityMatrix(db, matrix, roles = PRODUCT_ROLES) {
+    // Checked before the first insert, so a bad hierarchy stops the deploy rather than leaving a
+    // half-seeded set behind.
+    assertProductRoles(roles);
     const now = new Date();
     const allCapabilities = [
         ...new Set(matrix.flatMap((row) => row.capabilityIds.map((id) => String(id)))),
     ];
-    for (const roleId of PRODUCT_ROLE_IDS) {
+    // Every role the product declared is seeded, including one with no capabilities: that is a
+    // legitimate thing to define, and creating it by accident is not.
+    for (const role of roles) {
         await db
             .insert(workspaceRoles)
             .values({
-            id: roleId,
-            name: roleId,
+            id: role.id,
+            name: role.id,
             workspaceId: null,
-            rank: PRODUCT_ROLE_RANKS[roleId],
+            rank: role.rank,
             createdAt: now,
         })
             .onConflictDoNothing();

@@ -104,4 +104,5 @@ export * from "./invitation.js";
 export * from "./product-role-seeds.js";
 export { WORKSPACE_FEATURE_AUTHZ_DDL } from "./workspace-feature-sql.js";
 export { WORKSPACE_INVITATION_DDL } from "./invitation-sql.js";
+export { OAUTH_DDL } from "./oauth-sql.js";
 export { workspaceInvitations, } from "./invitation-schema.js";

@@ -17,8 +17,8 @@ export declare function createRequireWorkspaceRole(requiredRole: WorkspaceRole):
 }) => Promise<void>;
 export declare function getWorkspacesForUser(db: DB, userId: string): Promise<{
     id: string;
-    name: string;
-    slug: string;
+    name: string | null;
+    slug: string | null;
     roleId: string;
     role: string | null;
 }[]>;

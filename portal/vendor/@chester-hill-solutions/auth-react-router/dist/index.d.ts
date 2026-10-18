@@ -47,3 +47,4 @@ export declare function createAuthLayoutLoader(options: AuthLayoutLoaderOptions)
     user: AuthUser;
 }>>;
 export { createInviteCompletionLoader, createRequireCapability, type InviteCompletionLoaderOptions, type RequireCapabilityOptions, type ResolveAuthorizationActor, } from "./capability.js";
+export { createRequireApiKeyActor, isResponse, type ApiKeyGuard, type ExtractApiKey, type RequireApiKeyArgs, type RequireApiKeyOptions, } from "./api-key.js";

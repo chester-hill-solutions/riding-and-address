@@ -18,11 +18,11 @@
   },
   "packageManager": "bun@1.4.3",
   "dependencies": {
-    "@better-auth/drizzle-adapter": "^1.6.11",
+    "@better-auth/drizzle-adapter": "^1.7.10",
     "@chester-hill-solutions/auth": "file:./vendor/@chester-hill-solutions/auth",
     "@chester-hill-solutions/auth-d1": "file:./vendor/@chester-hill-solutions/auth-d1",
     "@chester-hill-solutions/auth-react-router": "file:./vendor/@chester-hill-solutions/auth-react-router",
-    "better-auth": "^1.6.11",
+    "better-auth": "^1.7.10",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
