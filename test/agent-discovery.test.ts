@@ -64,10 +64,19 @@ describe('MCP Server Card', () => {
 });
 
 describe('auth.md', () => {
-  it('leads with an auth.md H1 and does not invent an OAuth flow', () => {
+  it('leads with an auth.md H1, and claims only the OAuth surface that exists', () => {
     const md = createAuthMd(ORIGIN);
     expect(md.split('\n')[0].toLowerCase()).toContain('auth.md');
-    expect(md).toMatch(/no OAuth authorization server/i);
+
+    // The boundary moved. The authorization server now exists — the portal registers Better Auth's
+    // `jwt` and `mcp` plugins — so the document names it and its metadata URL, and the old
+    // "there is no OAuth authorization server" assertion is gone with it. What the test guards now
+    // is the part that is still absent: the RFC 9728 protected-resource metadata, which is the
+    // document an MCP client reads first. Pointing at that before it is served is the failure this
+    // was always about.
+    expect(md).toContain(`${ORIGIN}/api/auth/.well-known/oauth-authorization-server`);
+    expect(md).toMatch(/protected-resource metadata is not published yet/i);
+
     // It must still say how to authenticate, and where a key comes from.
     expect(md).toContain('Authorization: Bearer sk_');
     expect(md).toContain(`${ORIGIN}/app/keys`);
