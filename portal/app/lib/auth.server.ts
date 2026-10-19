@@ -8,6 +8,7 @@ import { cimd } from '@better-auth/cimd';
 import { fetchClientMetadataResource } from '../../../src/cimd-fetch';
 import { ensureCustomerForUser, getCustomerContext } from '~/lib/customer.server';
 import { MCP_SCOPES } from '../../../src/mcp-scopes';
+import { ACCESS_TOKEN_LIFETIME_SECONDS } from './oauth-lifetime';
 import { drizzleAdapter } from '@better-auth/drizzle-adapter';
 import { createRequireSessionUserId } from '@chester-hill-solutions/auth-react-router';
 import { getDb } from '~/lib/db.server';
@@ -52,6 +53,11 @@ function buildAuth() {
         consentPage: '/consent',
         resource: `${baseUrl}/mcp`,
         scopes: [...MCP_SCOPES],
+        // Stated here rather than left to the provider's default, because the consent screen
+        // tells a person how long they are agreeing for and the two must not disagree. The
+        // default is the same number today; a default nobody wrote down is a number nobody can
+        // point at. See `oauth-lifetime.ts`.
+        accessTokenExpiresIn: ACCESS_TOKEN_LIFETIME_SECONDS,
         // The token carries the Customer it is billed to, decided once here rather than looked up
         // per request by the API worker — which would mean reading the portal's database from a
         // Worker that is deliberately not supposed to. `getCustomerContext` resolves a user to a
