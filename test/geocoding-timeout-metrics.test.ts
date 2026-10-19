@@ -9,8 +9,9 @@ import type { Env } from '../src/types';
  * The two geocoding counters that were declared and served on /metrics but never written:
  * `odaStageTimeouts` and `geocodingErrors`. A cold isolate whose first ODA query exceeds the 3s
  * stage budget throws a `TimeoutError` that is rethrown (not a fallback), which surfaces to the
- * caller as a 500 LOOKUP_ERROR — and until these counters were wired, that left no trace in
- * metrics. See docs/plans/reduce-external-geocoder-fallback.md (Wave 0).
+ * caller as a 503 LOOKUP_TIMEOUT (see test/lookup-timeout-response.test.ts) — and until these
+ * counters were wired, that left no trace in metrics. See
+ * docs/plans/reduce-external-geocoder-fallback.md (Wave 0).
  */
 
 const nullKv = () =>

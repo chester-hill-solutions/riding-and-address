@@ -630,6 +630,8 @@ export interface Metrics {
   lookupCacheHits: number;
   lookupCacheMisses: number;
   lookupErrors: number;
+  /** The transient subset of `lookupErrors`: a stage timeout, answered as 503 + Retry-After. */
+  lookupTimeouts: number;
   batchRequests: number;
   batchErrors: number;
   webhookDeliveries: number;
