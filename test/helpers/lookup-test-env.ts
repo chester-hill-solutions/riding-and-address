@@ -1,4 +1,6 @@
 import type { Env, GeoJSONFeature, GeoJSONFeatureCollection } from '../../src/types';
+import { createMemoryKv } from './memory-kv';
+import { fakeUsageNamespace } from './fake-usage-do';
 
 /** Point inside the Toronto fixture polygon. */
 export const TORONTO_LAT = 43.642;
@@ -112,26 +114,6 @@ export function buildVictoriaParkGeoJson(): Record<string, GeoJSONFeatureCollect
   };
 }
 
-function createMemoryKv(): KVNamespace {
-  const store = new Map<string, string>();
-  return {
-    get: async (key: string, type?: 'text' | 'json' | 'arrayBuffer' | 'stream') => {
-      const value = store.get(key);
-      if (value === undefined) return null;
-      if (type === 'json') return JSON.parse(value);
-      return value;
-    },
-    put: async (key: string, value: string) => {
-      store.set(key, value);
-    },
-    delete: async (key: string) => {
-      store.delete(key);
-    },
-    list: async () => ({ keys: [], list_complete: true, cacheStatus: null }),
-    getWithMetadata: async () => ({ value: null, metadata: null, cacheStatus: null }),
-  } as unknown as KVNamespace;
-}
-
 export function createLookupTestEnv(
   geoJson = buildLookupTestGeoJson()
 ): Env {
@@ -160,6 +142,24 @@ export function createLookupTestEnv(
     ODA_GEOCODING_ENABLED: 'false',
     RATE_LIMIT: 10_000,
   };
+}
+
+/**
+ * An environment with the bindings the credential and billing surfaces need.
+ *
+ * `createLookupTestEnv` binds the caches and R2, because that is what a *lookup* reads. The
+ * projection surfaces — minting a key, reading a Customer's usage — read `API_KEYS` and the usage
+ * Durable Object instead, so this binds those.
+ *
+ * It exists because the projection handlers were at 12% line coverage, and the reason was not that
+ * they are hard to reach: it was that no environment bound what they read.
+ */
+export function createProjectionTestEnv(): Env {
+  const env = createLookupTestEnv();
+  env.API_KEYS = createMemoryKv();
+  env.API_KEY_USAGE = fakeUsageNamespace();
+  env.FREE_MONTHLY_ALLOWANCE = '1000';
+  return env;
 }
 
 export async function fetchLookup(
