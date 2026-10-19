@@ -15,7 +15,8 @@ import {
   TIME_CONSTANTS_SECONDS,
   QUALITY_THRESHOLDS,
 } from './config';
-import { runOrDefer, withRetry, withTimeout, TimeoutError } from './utils';
+import { withRetry, withTimeout, TimeoutError } from './retry';
+import { runOrDefer } from './utils';
 import { readTimestampedEntry, writeTimestampedEntry } from './kv-cache';
 import { CircuitBreakerOpenError } from './circuit-breaker';
 import { isPostalOnlyQuery, wantsPostalCentroidOnly } from './geocode-query';

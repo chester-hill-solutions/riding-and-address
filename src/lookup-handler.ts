@@ -1,7 +1,8 @@
 import { geocodeIfNeeded } from './geocoding';
 import { geocodingExecutor } from './circuit-breaker';
 import { incrementMetric, recordTiming } from './metrics';
-import { parseQuery, badRequest, internalErrorResponse, serviceUnavailableResponse, TimeoutError } from './utils';
+import { TimeoutError } from './retry';
+import { parseQuery, badRequest, internalErrorResponse, serviceUnavailableResponse } from './utils';
 import { getTimeoutConfig } from './config';
 import { performExpandedLookup, expandedLookupResponseFields } from './lookup-expansion';
 import { resolveLookupPath } from './return-selector';

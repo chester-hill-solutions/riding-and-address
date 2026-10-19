@@ -1,5 +1,5 @@
 import { CANADIAN_PROVINCE_ALIASES, normalizeCanadianProvinceCode } from '@chester-hill-solutions/validation';
-import { validatePostalCode } from './utils';
+import { validatePostalCode } from './input-validation';
 
 /** StatCan province/territory numeric ID → two-letter code */
 export const PROVINCE_ID_TO_CODE: Record<string, string> = {

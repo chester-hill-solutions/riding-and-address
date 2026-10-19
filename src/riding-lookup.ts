@@ -1,5 +1,7 @@
 import { Env, GeoJSONFeature, GeoJSONFeatureCollection, LookupResult, SpatialIndex } from './types';
-import { isPointInPolygon, ridingNameFromProperties, withTimeout } from './utils';
+import { isPointInPolygon } from './geometry';
+import { withTimeout } from './retry';
+import { ridingNameFromProperties } from './utils';
 import { findCandidateFeatures, isPointInBoundingBox } from './spatial';
 import { getTimeoutConfig } from './config';
 import { incrementMetric, recordTiming } from './metrics';

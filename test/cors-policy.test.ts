@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { geoCacheLRU, spatialIndexCacheLRU } from '../src/cache';
+import { geoCacheLRU, spatialIndexCacheLRU } from '../src/dataset-cache';
 import { createLookupTestEnv, TORONTO_LAT, TORONTO_LON } from './helpers/lookup-test-env';
 import type { Env } from '../src/types';
 

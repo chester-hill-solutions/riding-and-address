@@ -10,8 +10,8 @@
       "branches": 100
     },
     "src/api-key-usage-do.ts": {
-      "statements": 92.68,
-      "branches": 88.23
+      "statements": 92.03,
+      "branches": 87.62
     },
     "src/api-keys.ts": {
       "statements": 82.58,
@@ -42,8 +42,8 @@
       "branches": 62.5
     },
     "src/cache.ts": {
-      "statements": 75.52,
-      "branches": 53.4
+      "statements": 60,
+      "branches": 37.93
     },
     "src/canada-post-format.ts": {
       "statements": 96.15,
@@ -72,6 +72,14 @@
     "src/customer.ts": {
       "statements": 100,
       "branches": 95
+    },
+    "src/daily-quota.ts": {
+      "statements": 100,
+      "branches": 100
+    },
+    "src/dataset-cache.ts": {
+      "statements": 90.41,
+      "branches": 83.33
     },
     "src/dataset-source.ts": {
       "statements": 74.07,
@@ -121,9 +129,17 @@
       "statements": 68.24,
       "branches": 51.89
     },
+    "src/geometry.ts": {
+      "statements": 45.79,
+      "branches": 57.81
+    },
     "src/http-headers.ts": {
       "statements": 95.65,
       "branches": 93.75
+    },
+    "src/input-validation.ts": {
+      "statements": 97.05,
+      "branches": 95.58
     },
     "src/kv-cache.ts": {
       "statements": 100,
@@ -202,8 +218,8 @@
       "branches": 74.5
     },
     "src/oda-handlers.ts": {
-      "statements": 73.04,
-      "branches": 61.06
+      "statements": 81.1,
+      "branches": 66.34
     },
     "src/oda-import.ts": {
       "statements": 62.06,
@@ -212,6 +228,10 @@
     "src/oda-normalize.ts": {
       "statements": 98.35,
       "branches": 89.47
+    },
+    "src/oda-resolve.ts": {
+      "statements": 0,
+      "branches": 0
     },
     "src/oda-schema.ts": {
       "statements": 63.63,
@@ -256,6 +276,10 @@
     "src/rate-limit.ts": {
       "statements": 93.75,
       "branches": 96.15
+    },
+    "src/retry.ts": {
+      "statements": 74.07,
+      "branches": 37.5
     },
     "src/return-selector.ts": {
       "statements": 100,
@@ -310,8 +334,8 @@
       "branches": 75
     },
     "src/utils.ts": {
-      "statements": 76.84,
-      "branches": 80.16
+      "statements": 95.41,
+      "branches": 87.62
     },
     "src/validation.ts": {
       "statements": 79.36,

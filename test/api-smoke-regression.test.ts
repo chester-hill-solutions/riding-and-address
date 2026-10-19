@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { geoCacheLRU, spatialIndexCacheLRU } from '../src/cache';
+import { geoCacheLRU, spatialIndexCacheLRU } from '../src/dataset-cache';
 import { createLookupTestEnv, fetchLookup } from './helpers/lookup-test-env';
 import { createOdaFixtureEnv } from './helpers/oda-sqlite';
 
