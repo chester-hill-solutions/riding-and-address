@@ -1,5 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 
+import type { AuthInfo } from '@modelcontextprotocol/server';
+
 import {
   Env
 } from './types';
@@ -72,6 +74,7 @@ import {
 import { getAgentQuickstart, createCanCoderMcpHandler } from './mcp';
 import { LOOKUP_SCOPE as MCP_LOOKUP_SCOPE } from './mcp-scopes';
 import { unauthorizedMcpResponse } from './oauth-challenge';
+import { resourceMetadataUrl } from './oauth-metadata';
 import { verifyOAuthAccessToken } from './oauth-token';
 import { createUcpProfile } from './ucp-profile';
 import { createServiceTerms } from './service-terms';
@@ -680,6 +683,10 @@ export default {
         // Set when the credential was an OAuth access token rather than a Server key, so the rate
         // limit can key on the user the token acts for instead of falling back to the address.
         let oauthSubject: string | null = null;
+        // The verified token, carried to the MCP tool boundary. The server needs the token's
+        // scopes to decide whether a call is one the grant covers, and the resource-metadata URL
+        // so the refusal it builds advertises the same document the 401 challenge does.
+        let oauthAuthInfo: AuthInfo | undefined;
 
         if (bearerToken) {
           if (bearerToken.startsWith(SERVER_KEY_PREFIX)) {
@@ -714,6 +721,16 @@ export default {
             auth = { ok: true, customer };
             routeCtx.billing = { customer };
             oauthSubject = verified.claims.subject || null;
+            // The scopes travel with the request to the tool boundary. They used to be read off
+            // the token and then dropped here, so nothing downstream could tell an under-scoped
+            // token from a fully-scoped one — and the tool ran anyway.
+            oauthAuthInfo = {
+              token: bearerToken,
+              clientId: verified.claims.clientId,
+              scopes: verified.claims.scopes,
+              expiresAt: verified.claims.expiresAt,
+              resourceMetadataUrl: resourceMetadataUrl(mcpOrigin),
+            };
           }
         } else if (request.headers.has('Authorization') || request.headers.has('X-Api-Key')) {
           // A header that is not a usable credential. Answered as a challenge rather than as prose,
@@ -770,7 +787,11 @@ export default {
           return rateLimitExceededResponse(correlationId);
         }
 
-        const response = await createCanCoderMcpHandler({ request, routeContext: routeCtx, lookupRiding, auth }).fetch(request);
+        const response = await createCanCoderMcpHandler({ request, routeContext: routeCtx, lookupRiding, auth })
+        // The credential is passed in, never read from the headers here: the MCP server performs
+        // no token verification of its own, so a request with no credential simply has no
+        // credential, and the keyless demo tier stays open.
+        .fetch(request, oauthAuthInfo ? { authInfo: oauthAuthInfo } : undefined);
         if (origin && (origin.toLowerCase() === requestOrigin || localHost)) {
           const headers = new Headers(response.headers);
           for (const [name, value] of Object.entries(routeCtx.corsHeaders(origin))) headers.set(name, value);

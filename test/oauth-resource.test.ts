@@ -7,12 +7,7 @@ import {
   protectedResourceMetadataResponse,
   resourceMetadataUrl,
 } from '../src/oauth-metadata';
-import {
-  bearerChallenge,
-  insufficientScopeMcpResponse,
-  insufficientScopeChallenge,
-  unauthorizedMcpResponse,
-} from '../src/oauth-challenge';
+import { bearerChallenge, unauthorizedMcpResponse } from '../src/oauth-challenge';
 import { LOOKUP_SCOPE, MCP_SCOPES, hasScope } from '../src/mcp-scopes';
 
 const ORIGIN = 'https://lookup.test';
@@ -70,14 +65,6 @@ describe('the MCP challenge', () => {
     );
   });
 
-  it('names every needed scope in one insufficient_scope challenge', () => {
-    // Challenging one scope at a time forces an authorization round trip per scope.
-    expect(insufficientScopeChallenge(ORIGIN, 'ridings:lookup ridings:area')).toBe(
-      `Bearer error="insufficient_scope", scope="ridings:lookup ridings:area", ` +
-        `resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource/mcp"`
-    );
-  });
-
   it('answers 401 with a JSON-RPC body, because an MCP client parses that', async () => {
     const response = unauthorizedMcpResponse(ORIGIN, LOOKUP_SCOPE, 'no credential');
     expect(response.status).toBe(401);
@@ -90,12 +77,6 @@ describe('the MCP challenge', () => {
     });
   });
 
-  it('answers 403, not 401, when the token is fine and the scopes are not', async () => {
-    // The difference is what the caller can do: 403 means step up, 401 means start over.
-    const response = insufficientScopeMcpResponse(ORIGIN, LOOKUP_SCOPE);
-    expect(response.status).toBe(403);
-    expect(response.headers.get('www-authenticate')).toContain('error="insufficient_scope"');
-  });
 });
 
 describe('scopes', () => {

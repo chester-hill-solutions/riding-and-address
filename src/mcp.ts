@@ -10,6 +10,7 @@ import {
 } from './mcp-purchase';
 import { handleLookupRequest } from './lookup-handler';
 import { AREA_MAX_RESULTS, AREA_UNIT_RECORDS, handleQuoteRequest } from './offers';
+import { LOOKUP_SCOPE, scopeChallengeFor } from './mcp-scopes';
 import { type LookupRidingFn } from './lookup-expansion';
 import type { KeyAuthResult } from './api-keys';
 import type { RouteContext } from './route-context';
@@ -285,6 +286,11 @@ export function createCanCoderMcpHandler(options: CanCoderMcpOptions) {
         inputSchema: LOOKUP_TOOL_SCHEMA,
         outputSchema: TOOL_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+        // The scope an OAuth token must carry to run this tool. The server refuses a call the
+        // token's scopes do not cover, before the tool runs, so an under-scoped token never
+        // executes or bills a lookup. A request with no credential — the keyless demo tier — is
+        // not challenged at all, because it is how an agent discovers this service.
+        scopeChallenge: scopeChallengeFor(LOOKUP_SCOPE),
       },
       async (args) => {
         const built = lookupQueryFor(args);
@@ -301,7 +307,12 @@ export function createCanCoderMcpHandler(options: CanCoderMcpOptions) {
           ...options.routeContext,
           request: lookupRequest,
           url: new URL(lookupRequest.url),
-          billing: options.auth?.ok && options.auth.key && options.auth.customer
+          // The Customer is what the ledger keys on, so a Customer alone is enough to bill. An
+          // OAuth access token resolves to a Customer and carries no key record, and the
+          // condition used to require one — so an authenticated token's lookups skipped the
+          // monthly ledger, the monthly hard fuse and the Stripe meter entirely, and no rate
+          // limit noticed, because those are minute-window counters and not the monthly one.
+          billing: options.auth?.ok && options.auth.customer
             ? { key: options.auth.key, customer: options.auth.customer }
             : null,
           deps: { lookup: options.lookupRiding },

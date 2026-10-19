@@ -1,10 +1,17 @@
 /**
  * The `WWW-Authenticate` challenges a protected MCP resource returns.
  *
- * **This is hand-built because the library cannot do a per-operation challenge.**
- * `createMcpProtectedRequestHandler` authenticates a *whole* handler, which would put a credential in
- * front of the demo tier — and the demo tier is how an agent discovers this service at all. Measured
- * against the library, its own 401 is:
+ * **Only the 401 is hand-built, and it has to be.** It answers "there is no usable credential",
+ * and it is produced by the Worker *before* the MCP server is involved at all. The server's own
+ * authentication gate covers a *whole* handler, which would put a credential in front of the demo
+ * tier — and the demo tier is how an agent discovers this service at all.
+ *
+ * The 403 — a valid token whose scopes do not cover the operation — is the MCP server's own
+ * per-operation challenge, declared on the tool (`scopeChallenge`). Only the server knows which
+ * operation is being asked for, and it refuses before the operation runs. Its `WWW-Authenticate`
+ * has the same shape as the one below.
+ *
+ * Measured against the library, its own 401 is:
  *
  *   WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource/mcp", scope="…"
  *   body: {"jsonrpc":"2.0","error":{"code":-32000,"message":"missing authorization header"},"id":null}
@@ -47,15 +54,6 @@ export function bearerChallenge(origin: string, scope?: string): string {
   ])}`;
 }
 
-/** The challenge for a valid token that does not carry the scopes the operation needs. */
-export function insufficientScopeChallenge(origin: string, scope: string): string {
-  return `Bearer ${parameters([
-    ['error', 'insufficient_scope'],
-    ['scope', scope],
-    ['resource_metadata', resourceMetadataUrl(origin)],
-  ])}`;
-}
-
 function jsonRpc(message: string): string {
   return JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message }, id: null });
 }
@@ -70,21 +68,6 @@ export function unauthorizedMcpResponse(origin: string, scope: string, message: 
     headers: {
       'content-type': 'application/json; charset=UTF-8',
       'www-authenticate': bearerChallenge(origin, scope),
-      'cache-control': 'no-store',
-    },
-  });
-}
-
-/**
- * 403 — the token is valid and under-scoped. Every scope the operation needs is named in one
- * challenge, because challenging one at a time forces a separate authorization round trip each.
- */
-export function insufficientScopeMcpResponse(origin: string, scope: string): Response {
-  return new Response(jsonRpc(`insufficient scope; this operation needs: ${scope}`), {
-    status: 403,
-    headers: {
-      'content-type': 'application/json; charset=UTF-8',
-      'www-authenticate': insufficientScopeChallenge(origin, scope),
       'cache-control': 'no-store',
     },
   });
