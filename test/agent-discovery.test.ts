@@ -7,6 +7,7 @@ import {
   createRidingLookupSkill,
   ridingLookupSkillPath,
 } from '../src/agent-discovery';
+import { getAgentQuickstart } from '../src/mcp';
 import { createLookupTestEnv, fetchLookup } from './helpers/lookup-test-env';
 
 /**
@@ -80,6 +81,67 @@ describe('auth.md', () => {
     // It must still say how to authenticate, and where a key comes from.
     expect(md).toContain('Authorization: Bearer sk_');
     expect(md).toContain(`${ORIGIN}/app/keys`);
+  });
+
+  it('names both ways a client can identify itself, and the one that is live', () => {
+    const md = createAuthMd(ORIGIN);
+
+    // The document said "pre-registration only" while the server accepted a Client ID Metadata
+    // Document — and on production there is no pre-registered client at all, so a client reading
+    // it would have concluded it could not get a token. The mechanism is the same one ADR 0010
+    // chose, and the one the live walk used.
+    expect(md).toContain('Client ID Metadata Document');
+    expect(md).toContain('Pre-registration');
+
+    // And it must not imply a registration endpoint that does not answer.
+    expect(md).toMatch(/Dynamic registration is \*\*not\*\* enabled|no self-registration endpoint/);
+  });
+
+  it('tells the client what the consent screen needs, and that a person approves', () => {
+    const md = createAuthMd(ORIGIN);
+
+    // The profile is `mcp-2026-07-28`, which is stricter than draft-02 about exactly these two
+    // fields. An agent that publishes a document without them gets a consent screen that cannot
+    // say what it is asking a person to approve.
+    expect(md).toContain('client_name');
+    expect(md).toContain('redirect_uris');
+
+    // And the consent screen needs a person. An agent cannot approve on the user's behalf, and a
+    // document that does not say so sends the agent looking for a flow that does not exist.
+    expect(md).toContain(`${ORIGIN}/consent`);
+    expect(md).toMatch(/a signed-in user|person approves/);
+  });
+
+  it('names the scopes, which are the ones the server advertises and the challenge names', () => {
+    const md = createAuthMd(ORIGIN);
+    expect(md).toContain('ridings:lookup');
+    expect(md).toContain('ridings:area');
+  });
+});
+
+describe('the riding-lookup skill', () => {
+  it('offers the OAuth route, not only the Server key', () => {
+    const skill = createRidingLookupSkill(ORIGIN);
+
+    // The skill's Cost section said "Metered calls need a Server API key". This is the document
+    // an agent loads *as a skill*, so it is the one most likely to be read — and it sent the
+    // reader to a human-created key for a route that needs no key at all.
+    expect(skill).toContain('Server API key');
+    expect(skill).toContain('OAuth');
+    expect(skill).toContain(`${ORIGIN}/auth.md`);
+  });
+});
+
+describe('the agent quickstart', () => {
+  it('offers the OAuth route, not only the Server key', () => {
+    const guide = getAgentQuickstart(ORIGIN);
+
+    // The guide told an agent to create a Server key and said nothing about the authorization
+    // server this same deployment runs. A key is the wrong answer for an agent: it has to be
+    // created by a person, copied by hand, and then it is a Customer-wide credential.
+    expect(guide).toContain('Authorization: Bearer <server-key>');
+    expect(guide).toContain('OAuth');
+    expect(guide).toContain(`${ORIGIN}/auth.md`);
   });
 });
 

@@ -11,6 +11,7 @@
  *   - rate limits             ← src/utils.ts
  *   - coverage                ← src/datasets.ts
  *   - auth errors             ← src/api-keys.ts
+ *   - OAuth scopes            ← src/mcp-scopes.ts
  *
  * Payment is published **only when the rail is configured**: the `payment` block is built from the
  * same environment the Worker settles with, so this document cannot claim a payment capability the
@@ -24,6 +25,7 @@ import { FEDERAL_DATASET, getAllProvincialPaths, getAllProvincialDatasets } from
 import { AREA_MAX_RESULTS, AREA_UNIT_PRICE_USD, AREA_UNIT_RECORDS } from './offers';
 import { UPLOAD_ROW_PRICE_USD } from './upload-sheet';
 import { DEFAULT_DEMO_RATE_LIMIT, DEFAULT_RATE_LIMIT } from './utils';
+import { MCP_SCOPES } from './mcp-scopes';
 
 /** Where support requests go — the same target the OpenAPI `info.contact` advertises. */
 export const SUPPORT_URL = 'https://github.com/chester-hill-solutions/riding-and-address/issues';
@@ -55,7 +57,13 @@ export interface ServiceTerms {
   service: string;
   description: string;
   url: string;
-  docs: { guide: string; openapi: string; reference: string };
+  docs: {
+    guide: string;
+    openapi: string;
+    reference: string;
+    /** How to authenticate — the credentials, the authorization server and the scopes. */
+    auth: string;
+  };
   capabilities: ServiceCapability[];
   pricing: {
     currency: string;
@@ -96,6 +104,16 @@ export interface ServiceTerms {
     serverKey: { prefix: string; transport: string; use: string };
     browserKey: { prefix: string; transport: string; use: string };
     demo: { credential: string; use: string };
+    oauth: {
+      issuer: string;
+      metadata: string;
+      protectedResource: string;
+      grantType: string;
+      pkce: string;
+      scopes: string[];
+      clientIdentification: string[];
+      use: string;
+    };
   };
   errors: {
     auth: Array<{ code: KeyDenialReason; httpStatus: number }>;
@@ -128,6 +146,9 @@ export function createServiceTerms(origin: string, payment?: PaymentTermsInput |
       guide: `${origin}/docs/agents.md`,
       openapi: `${origin}/api/docs`,
       reference: `${origin}/docs`,
+      // The authentication document. The `auth` block below says what the credentials are; this
+      // is where a client goes to find out how to get one that needs no key.
+      auth: `${origin}/auth.md`,
     },
     capabilities: [
       {
@@ -232,6 +253,23 @@ export function createServiceTerms(origin: string, payment?: PaymentTermsInput |
         use: 'Search and embed from a browser, restricted to an origin allowlist.',
       },
       demo: { credential: 'none', use: 'Keyless trial on /api/demo/* and /mcp; not billable.' },
+      // The authorization server, as a client needs it to get a scoped token. Every field here is
+      // one a client acts on: where to read the metadata, which grant and which PKCE method, which
+      // scopes to ask for, and how to identify the client. A document that lists only the key
+      // methods leaves a client that wants a token — rather than a Customer-wide key — with
+      // nothing to act on.
+      oauth: {
+        issuer: `${origin}/api/auth`,
+        metadata: `${origin}/api/auth/.well-known/oauth-authorization-server`,
+        protectedResource: `${origin}/.well-known/oauth-protected-resource/mcp`,
+        grantType: 'authorization_code',
+        pkce: 'S256',
+        scopes: [...MCP_SCOPES],
+        clientIdentification: ['client-id-metadata-document', 'pre-registration'],
+        use:
+          'A scoped access token for MCP calls, with a person approving the grant once at ' +
+          `${origin}/consent. The token is bound to the MCP server as its audience (RFC 8707).`,
+      },
     },
     errors: {
       auth: KEY_DENIAL_REASONS.map((reason) => ({

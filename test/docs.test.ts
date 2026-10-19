@@ -159,11 +159,32 @@ describe('GET /api/search is documented', () => {
     expect(JSON.stringify(responses)).toContain('SUGGEST_INDEX_MISSING');
   });
 
-  it('accepts either basic auth or a browser API key', () => {
-    // The route itself takes EITHER: server-to-server callers use basic auth, the embed widget
-    // presents a public pk_ key. Declaring only basicAuth told browser integrators they could not
-    // call it at all.
-    expect(searchOp().security).toEqual([{ basicAuth: [] }, { apiKey: [] }]);
+  it('accepts a Server key, basic auth or a browser API key', () => {
+    // The route takes all three: server-to-server callers use a Server key (or basic auth), the
+    // embed widget presents a public pk_ key. Declaring only basicAuth told browser integrators
+    // they could not call it at all — and declaring no bearer scheme at all left a generated
+    // client with no way to use the Server key, which is the credential every other document
+    // tells a client to reach for.
+    expect(searchOp().security).toEqual([
+      { bearerAuth: [] },
+      { basicAuth: [] },
+      { browserKey: [] },
+      { apiKey: [] },
+    ]);
+  });
+
+  it('declares the bearer scheme the Server key is actually sent in', () => {
+    // The Server key is a bearer token: `Authorization: Bearer sk_…`. A document that names
+    // HTTP Basic and a provider key but no bearer scheme describes an API nobody is told how to
+    // call — and a generated client would have nothing to put in the header.
+    const schemes = spec().components?.securitySchemes as Record<string, { type?: string; scheme?: string }>;
+    expect(schemes.bearerAuth).toBeDefined();
+    expect(schemes.bearerAuth.type).toBe('http');
+    expect(schemes.bearerAuth.scheme).toBe('bearer');
+
+    // And the Browser key, which is the search route's other credential.
+    expect(schemes.browserKey).toBeDefined();
+    expect((schemes.browserKey as { name?: string }).name).toBe('X-Api-Key');
   });
 
   it('tells integrators that riding is resolved separately', () => {

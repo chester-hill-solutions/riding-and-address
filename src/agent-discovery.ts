@@ -129,8 +129,31 @@ ${origin}/api/quote — an agent requests a free, expiring offer there.
 An OAuth 2.1 authorization server is live. Its issuer is \`${origin}/api/auth\` and its metadata is
 at \`${origin}/api/auth/.well-known/oauth-authorization-server\`. It serves the authorization code
 flow with PKCE (S256 only), binds access tokens to the MCP server as their audience (RFC 8707), and
-publishes signing keys at \`${origin}/api/auth/jwks\`. Client registration is by pre-registration
-only: dynamic registration is not enabled, and there is no self-registration endpoint.
+publishes signing keys at \`${origin}/api/auth/jwks\`.
+
+**A client identifies itself in one of two ways**, and either is enough:
+
+| Mechanism | Your \`client_id\` | When |
+| --- | --- | --- |
+| Client ID Metadata Document | the HTTPS URL of a document that describes your client | any client — the server fetches that document to read your name and your redirect URIs |
+| Pre-registration | an identifier we issued you | a client we have already set up together |
+
+**Dynamic registration is not enabled**, and there is no self-registration endpoint: a client
+identifies itself by publishing a document, not by asking to be registered.
+
+**A client document must carry \`client_name\` and \`redirect_uris\`.** The profile this server
+requires is \`mcp-2026-07-28\`, which is stricter than draft-02 for exactly that reason — a
+consent screen with neither cannot tell a person what it is asking them to approve. Serve the
+document over HTTPS; the server fetches it.
+
+**The scopes are \`ridings:lookup\` and \`ridings:area\`** — the same two the server's metadata
+advertises, and the same one the 401 challenge names. A lookup is one call; an area search is
+priced per 250 records, so the two are separate lines on a consent screen rather than one.
+
+**A person approves the grant once.** The authorization request ends on a consent screen at
+\`${origin}/consent\`, where a signed-in user sees the client and the scopes and accepts or
+refuses. An agent cannot approve on the user's behalf, so a headless run has to arrange for that
+approval to happen — a browser, once, per user.
 
 **The RFC 9728 protected-resource metadata is published** at
 \`${origin}/.well-known/oauth-protected-resource\` (and at the resource-path alias
@@ -195,9 +218,12 @@ it as unresolved and ask for a more complete address or coordinates.
 
 ## Cost
 
-A keyless demo is available without a key. Metered calls need a Server API key. To price a lookup
-before paying, request a free, expiring offer from \`${origin}/api/quote\` (or the \`quote_lookup\`
-MCP tool); requesting a quote consumes no billable usage.
+A keyless demo is available without a key. Metered calls need a Server API key — or an OAuth
+access token, because this server is an OAuth 2.1 authorization server: a client can get a
+**scoped** token instead of a key, with a person approving the grant once at \`${origin}/consent\`.
+\`${origin}/auth.md\` has the endpoints, how a client identifies itself, and the scopes. To price a
+lookup before paying, request a free, expiring offer from \`${origin}/api/quote\` (or the
+\`quote_lookup\` MCP tool); requesting a quote consumes no billable usage.
 
 See ${origin}/docs/agents.md for the full agent guide.
 `;

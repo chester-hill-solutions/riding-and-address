@@ -34,6 +34,15 @@ describe('llms.txt', () => {
     }
   });
 
+  it('names the OAuth route, and links the document that describes it', () => {
+    const text = createLlmsTxt(ORIGIN);
+
+    // The index said "metered Server API keys for production" and gave a client that wants a
+    // scoped token no way in. It links the API reference already, so it can link this too.
+    expect(text).toContain(`${ORIGIN}/auth.md`);
+    expect(text).toMatch(/Server API keys — or scoped OAuth access tokens — for production/);
+  });
+
   it('resolves against the host that served it', () => {
     expect(createLlmsTxt('https://cancoder.chesterhillsolutions.ca')).toContain(
       'https://cancoder.chesterhillsolutions.ca/api/docs'

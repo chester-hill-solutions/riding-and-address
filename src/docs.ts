@@ -354,7 +354,7 @@ function buildProvincialEndpointSpecs(): Record<string, unknown> {
             },
           },
         },
-        security: [{ basicAuth: [] }, { apiKey: [] }],
+        security: [{ bearerAuth: [] }, { basicAuth: [] }, { apiKey: [] }],
       },
     };
   }
@@ -599,7 +599,7 @@ export function createOpenAPISpec(baseUrl: string) {
               },
             },
           },
-          security: [{ basicAuth: [] }, { apiKey: [] }],
+          security: [{ bearerAuth: [] }, { basicAuth: [] }, { apiKey: [] }],
         },
       },
       "/api/federal": {
@@ -691,7 +691,7 @@ export function createOpenAPISpec(baseUrl: string) {
               },
             },
           },
-          security: [{ basicAuth: [] }, { apiKey: [] }],
+          security: [{ bearerAuth: [] }, { basicAuth: [] }, { apiKey: [] }],
         },
       },
       "/api/combined": {
@@ -790,7 +790,7 @@ export function createOpenAPISpec(baseUrl: string) {
               },
             },
           },
-          security: [{ basicAuth: [] }, { apiKey: [] }],
+          security: [{ bearerAuth: [] }, { basicAuth: [] }, { apiKey: [] }],
         },
       },
       ...buildProvincialEndpointSpecs(),
@@ -805,7 +805,7 @@ export function createOpenAPISpec(baseUrl: string) {
             "200": { description: "Geocode result with confidence and mailingAddress" },
             "422": { description: "AMBIGUOUS_LOCATION or LOW_CONFIDENCE_GEOCODE" },
           },
-          security: [{ basicAuth: [] }],
+          security: [{ bearerAuth: [] }, { basicAuth: [] }],
         },
       },
       "/api/search": {
@@ -984,9 +984,10 @@ export function createOpenAPISpec(baseUrl: string) {
             "429": { description: "Rate limit exceeded, or DAILY_LIMIT_EXCEEDED for the key (resets 00:00 UTC)" },
             "503": { description: "SUGGEST_INDEX_MISSING — run npm run build:oda:suggest" },
           },
-          // Either scheme works: server-to-server callers use Basic Auth; the embed widget and
-          // other browser callers present a public pk_ key (see the `key` parameter above).
-          security: [{ basicAuth: [] }, { apiKey: [] }],
+          // Three ways in: server-to-server callers use a Server key (or Basic Auth); the embed
+          // widget and other browser callers present a public pk_ key (see the `key` parameter
+          // above, or the X-Api-Key header).
+          security: [{ bearerAuth: [] }, { basicAuth: [] }, { browserKey: [] }, { apiKey: [] }],
         },
       },
       "/embed.js": {
@@ -1024,7 +1025,7 @@ export function createOpenAPISpec(baseUrl: string) {
             "200": { description: "Nearest ODA address with distanceMeters" },
             "404": { description: "NO_NEARBY_ADDRESS" },
           },
-          security: [{ basicAuth: [] }],
+          security: [{ bearerAuth: [] }, { basicAuth: [] }],
         },
       },
       "/api/normalize-address": {
@@ -1033,7 +1034,7 @@ export function createOpenAPISpec(baseUrl: string) {
           tags: ["ODA Geolocation"],
           parameters: ODA_NORMALIZE_PARAMETERS,
           responses: { "200": { description: "Normalized mailing address" } },
-          security: [{ basicAuth: [] }],
+          security: [{ bearerAuth: [] }, { basicAuth: [] }],
         },
       },
       "/batch": {
@@ -1117,7 +1118,7 @@ export function createOpenAPISpec(baseUrl: string) {
               },
             },
           },
-          security: [{ basicAuth: [] }, { apiKey: [] }],
+          security: [{ bearerAuth: [] }, { basicAuth: [] }, { apiKey: [] }],
         },
       },
       "/health": {
@@ -1153,9 +1154,29 @@ export function createOpenAPISpec(baseUrl: string) {
     // on the paths above referenced a scheme the document never actually defined.
     components: {
       securitySchemes: {
+        // The Server key is the primary credential of this API, and it is a **bearer** token.
+        // The document offered no bearer scheme at all, so a generated client was left with
+        // HTTP Basic and a provider key: two ways of calling the API, neither of them the one
+        // every other document tells a client to use. The same header carries an OAuth access
+        // token on `/mcp`, which this document does not describe.
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          description:
+            "A Server API key, sent as `Authorization: Bearer sk_…`. The same header carries an OAuth access token on `/mcp`.",
+        },
         basicAuth: {
           type: "http",
           scheme: "basic",
+        },
+        // The Browser key is public by design — the origin allowlist and the daily cap are the
+        // security — and it is what the search route and the embed widget accept.
+        browserKey: {
+          type: "apiKey",
+          in: "header",
+          name: "X-Api-Key",
+          description:
+            "A Browser API key (`pk_…`). Public by design: the key's server-side origin allowlist and daily cap are the security. Search and embed routes only.",
         },
         apiKey: {
           type: "apiKey",
