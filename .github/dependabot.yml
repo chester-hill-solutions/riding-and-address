@@ -4,21 +4,29 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    # TypeScript 7 cannot be linted yet: `typescript-eslint`'s peer range is `>=4.8.4 <6.1.0`,
+    # and no release — stable or prerelease — widens it. A grouped bump that carries it fails
+    # the whole run, and so does a solo one, so the exclusion is at the top level rather than
+    # on the group. Remove this when the linter supports TypeScript 7.
+    ignore:
+      - dependency-name: "typescript"
     groups:
       dev-dependencies:
         dependency-type: development
         patterns:
           - "*"
-        # TypeScript 7 cannot be linted yet: `typescript-eslint`'s peer range is
-        # `>=4.8.4 <6.1.0`, and no release — stable or prerelease — widens it. A grouped
-        # bump that carries it fails the whole run, so the linter's ceiling holds the
-        # compiler back until the linter moves. Remove this when it does.
         exclude-patterns:
           - "typescript"
   - package-ecosystem: bun
     directory: "/portal"
     schedule:
       interval: weekly
+    # The same ceiling as the root, for the same reason: the two packages share a
+    # toolchain, and a version of the compiler that one of them cannot lint is a version
+    # nobody should be on. The portal's own `tsc -b` may well be happy with it — the point
+    # is that the pair moves together, not that either is broken.
+    ignore:
+      - dependency-name: "typescript"
     groups:
       dev-dependencies:
         patterns:
@@ -26,6 +34,7 @@ updates:
         exclude-patterns:
           - "vite"
           - "@cloudflare/vite-plugin"
+          - "typescript"
         update-types:
           - patch
           - minor
