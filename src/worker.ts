@@ -56,8 +56,10 @@ import {
   authorizeLookupRequest,
   extractBearerToken,
   httpStatusForKeyDenial,
+  SERVER_KEY_PREFIX,
   type KeyAuthResult,
 } from './api-keys';
+import { loadCustomer } from './customer';
 import { rateLimitExceededResponse, DEFAULT_RATE_LIMIT, DEFAULT_DEMO_RATE_LIMIT } from './utils';
 import {
   consumeRateWindows,
@@ -68,6 +70,9 @@ import {
   type RateWindow,
 } from './rate-limit';
 import { getAgentQuickstart, createCanCoderMcpHandler } from './mcp';
+import { LOOKUP_SCOPE as MCP_LOOKUP_SCOPE } from './mcp-scopes';
+import { unauthorizedMcpResponse } from './oauth-challenge';
+import { verifyOAuthAccessToken } from './oauth-token';
 import { createUcpProfile } from './ucp-profile';
 import { createServiceTerms } from './service-terms';
 import { EvmRpcChainClient, reconcileReceipts } from './x402-reconcile';
@@ -669,17 +674,55 @@ export default {
           return badRequest('Origin not allowed', 403, 'ORIGIN_NOT_ALLOWED', correlationId);
         }
 
+        const mcpOrigin = routeCtx.url.origin;
         const bearerToken = extractBearerToken(request);
-        if (!bearerToken && (request.headers.has('Authorization') || request.headers.has('X-Api-Key'))) {
-          return badRequest('Use Authorization: Bearer <Server API key> for authenticated MCP calls.', 401, 'KEY_REQUIRED', correlationId);
-        }
         let auth: KeyAuthResult | null = null;
+        // Set when the credential was an OAuth access token rather than a Server key, so the rate
+        // limit can key on the user the token acts for instead of falling back to the address.
+        let oauthSubject: string | null = null;
+
         if (bearerToken) {
-          auth = await authorizeLookupRequest(env, request, false);
-          if (!auth.ok) {
-            const status = auth.reason ? httpStatusForKeyDenial(auth.reason) : 401;
-            return badRequest(auth.message || 'Unauthorized', status, auth.reason || 'UNAUTHORIZED', correlationId);
+          if (bearerToken.startsWith(SERVER_KEY_PREFIX)) {
+            auth = await authorizeLookupRequest(env, request, false);
+            if (!auth.ok) {
+              const status = auth.reason ? httpStatusForKeyDenial(auth.reason) : 401;
+              return badRequest(auth.message || 'Unauthorized', status, auth.reason || 'UNAUTHORIZED', correlationId);
+            }
+          } else {
+            // An OAuth access token. The challenge below is what tells a client to go and get one, so
+            // this is the first point at which a token is actually used rather than advertised.
+            const verified = await verifyOAuthAccessToken(bearerToken, mcpOrigin);
+            if (!verified.ok) {
+              return unauthorizedMcpResponse(
+                mcpOrigin,
+                MCP_LOOKUP_SCOPE,
+                verified.reason === 'no_customer'
+                  ? 'this access token carries no account to bill'
+                  : 'this access token is not usable here'
+              );
+            }
+            // The Customer comes from a claim added at issuance, not a lookup here: PORTAL_DB is
+            // portal-only, and the binding was decided at consent where a person could have seen it.
+            const customer = await loadCustomer(env, verified.claims.customerId);
+            if (!customer) {
+              return unauthorizedMcpResponse(
+                mcpOrigin,
+                MCP_LOOKUP_SCOPE,
+                'the account this access token was issued for no longer exists'
+              );
+            }
+            auth = { ok: true, customer };
+            routeCtx.billing = { customer };
+            oauthSubject = verified.claims.subject || null;
           }
+        } else if (request.headers.has('Authorization') || request.headers.has('X-Api-Key')) {
+          // A header that is not a usable credential. Answered as a challenge rather than as prose,
+          // so a client that has never authorized against us learns how to.
+          return unauthorizedMcpResponse(
+            mcpOrigin,
+            MCP_LOOKUP_SCOPE,
+            'the Authorization header is not a credential this server accepts'
+          );
         }
         // Keyed on the authenticated key when there is one, and on the address only for the keyless
         // demo tier. An authenticated call used to be bucketed by IP like everything else, so an
@@ -691,7 +734,12 @@ export default {
             : String(env.DEMO_RATE_LIMIT || DEFAULT_DEMO_RATE_LIMIT),
           10
         );
-        const identity = rateLimitIdentity(auth);
+        // A Server key is its own identity; an OAuth token acts for a user, and keying it on the
+        // address would reintroduce exactly the problem identity keying exists to fix. A token with
+        // no subject falls back to the address, which is the honest answer.
+        const identity = oauthSubject
+          ? `user:${oauthSubject}`
+          : rateLimitIdentity(auth);
         const windows: RateWindow[] = [{ bucket: rateLimitKey('mcp', request, identity), limit }];
         const customerId = auth?.customer?.id ?? null;
         if (customerId) {
@@ -705,6 +753,20 @@ export default {
         }
         const shard = customerId ? customerRateBucket(customerId) : windows[0].bucket;
         if (!(await consumeRateWindows(env, shard, windows)).allowed) {
+          // Two different refusals, and the difference is what the caller can do about it.
+          //
+          // With a credential, the answer is to slow down: 429, and waiting is the whole remedy.
+          // Without one, the caller has exhausted the demo allowance, and the useful answer is
+          // "authorize" rather than "wait" — a 429 would be advice it cannot act on. That is the
+          // per-operation challenge: it appears here, where a credential would actually change the
+          // outcome, and never in front of the demo tier an agent discovers us through.
+          if (!bearerToken) {
+            return unauthorizedMcpResponse(
+              mcpOrigin,
+              MCP_LOOKUP_SCOPE,
+              'the demo allowance is exhausted; authorize for metered access'
+            );
+          }
           return rateLimitExceededResponse(correlationId);
         }
 

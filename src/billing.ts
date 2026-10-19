@@ -5,7 +5,15 @@ import { utcMonth } from './time';
 import { durableUsageLedger, UsageLedger } from './usage-ledger';
 
 export interface BillableAuthContext {
-  key: ApiKeyRecord;
+  /**
+   * The key that authenticated, when a key did.
+   *
+   * Absent for an OAuth access token: that is a credential resolving to the same Customer without
+   * being an `ApiKeyRecord`. Nothing reads this field — the ledger keys on the Customer — and
+   * inventing a synthetic key for a token would put tokens in the key namespace in anything that
+   * later does read it.
+   */
+  key?: ApiKeyRecord;
   customer: CustomerRecord;
 }
 

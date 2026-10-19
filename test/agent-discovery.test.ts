@@ -68,14 +68,14 @@ describe('auth.md', () => {
     const md = createAuthMd(ORIGIN);
     expect(md.split('\n')[0].toLowerCase()).toContain('auth.md');
 
-    // The boundary moved. The authorization server now exists — the portal registers Better Auth's
-    // `jwt` and `mcp` plugins — so the document names it and its metadata URL, and the old
-    // "there is no OAuth authorization server" assertion is gone with it. What the test guards now
-    // is the part that is still absent: the RFC 9728 protected-resource metadata, which is the
-    // document an MCP client reads first. Pointing at that before it is served is the failure this
-    // was always about.
+    // The boundary has moved twice. First from "there is no OAuth authorization server" to "the
+    // server exists but its protected-resource metadata does not", and now to both existing. What
+    // the assertions guard is unchanged: the document may only name things that answer. The URLs it
+    // names here are checked live by `test/oauth-resource.test.ts`, which serves them.
     expect(md).toContain(`${ORIGIN}/api/auth/.well-known/oauth-authorization-server`);
-    expect(md).toMatch(/protected-resource metadata is not published yet/i);
+    // Published now, and it names where — so a client reading this can check the claim by fetching
+    // the URL rather than taking the document's word for it.
+    expect(md).toContain(`${ORIGIN}/.well-known/oauth-protected-resource`);
 
     // It must still say how to authenticate, and where a key comes from.
     expect(md).toContain('Authorization: Bearer sk_');

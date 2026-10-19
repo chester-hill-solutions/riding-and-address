@@ -1,5 +1,7 @@
 import { auth as createBetterAuth, createSessionReader } from '@chester-hill-solutions/auth-d1';
 import { jwt, mcp } from '@chester-hill-solutions/auth-d1/plugins';
+import { getCustomerContext } from '~/lib/customer.server';
+import { MCP_SCOPES } from '../../../src/mcp-scopes';
 import { drizzleAdapter } from '@better-auth/drizzle-adapter';
 import { createRequireSessionUserId } from '@chester-hill-solutions/auth-react-router';
 import { getDb } from '~/lib/db.server';
@@ -9,14 +11,12 @@ import { sendEmail, escapeHtml } from './email.server';
 import { betterAuthSchema } from '~/db/schema';
 
 /**
- * The scopes this deployment issues, and the vocabulary the consent screen shows.
+ * The scopes this deployment issues.
  *
- * `ridings:area` is separate from `ridings:lookup` on purpose. A lookup is half a cent and an area
- * search can be $8, so one approval should not quietly authorise both — the consent screen is where
- * a person sees the difference. MCP asks a server to treat a broader scope as implying narrower
- * ones, and nothing here implies anything: area search does not grant lookups.
+ * Defined in `src/mcp-scopes.ts` and imported, rather than repeated here, because the protected
+ * resource metadata publishes the same list — and a client told it may request a scope the resource
+ * server does not recognise would only find out at the first tool call, not at consent.
  */
-const OAUTH_SCOPES = ['ridings:lookup', 'ridings:area'] as const;
 
 function buildAuth() {
   const { authSecret, baseUrl, authTrustedOrigins } = env();
@@ -45,7 +45,18 @@ function buildAuth() {
         loginPage: '/login',
         consentPage: '/consent',
         resource: `${baseUrl}/mcp`,
-        scopes: [...OAUTH_SCOPES],
+        scopes: [...MCP_SCOPES],
+        // The token carries the Customer it is billed to, decided once here rather than looked up
+        // per request by the API worker — which would mean reading the portal's database from a
+        // Worker that is deliberately not supposed to. `getCustomerContext` resolves a user to a
+        // single Customer (their first membership), which is the same rule the portal already uses
+        // everywhere else; when a user can be in several workspaces this becomes a choice that
+        // consent should show, and this is the one place it would change.
+        customAccessTokenClaims: async ({ user }) => {
+          if (!user?.id) return {};
+          const context = await getCustomerContext(user.id);
+          return context ? { customer_id: context.billing.customerId } : {};
+        },
       }),
     ],
     emailVerification: {
