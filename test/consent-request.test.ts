@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { makeSignature } from '../portal/node_modules/better-auth/dist/crypto/index.mjs';
+import { makeSignature } from 'better-auth/crypto';
+
 import { readConsentRequest, verifyOAuthQueryParams } from '../portal/app/lib/consent-request';
 
 /**
