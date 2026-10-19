@@ -104,9 +104,18 @@ export async function action({ request }: Route.ActionArgs) {
     }),
   );
 
-  // Better Auth answers with the client redirect itself. Anything else is an error worth surfacing
-  // rather than swallowing into a redirect the user would read as success.
+  // Better Auth does not answer this with a 302. It returns **200 with a JSON envelope** —
+  // `{"redirect":true,"url":"<client callback>?code=…&state=…&iss=…"}` — and leaving the browser on
+  // that JSON is not a redirect at all. The first version of this treated anything that was not a
+  // 3xx as a failure, so a consent that had actually succeeded showed the user an error and the
+  // client never received its code. Found by walking the flow rather than by reading it.
   if (response.status >= 300 && response.status < 400) return response;
+
+  const envelope = (await response.json().catch(() => null)) as
+    | { redirect?: boolean; url?: string }
+    | null;
+  if (envelope?.redirect && envelope.url) return redirect(envelope.url);
+
   return {
     error: accept
       ? 'Could not complete the authorisation. Nothing was granted — start again from the application.'

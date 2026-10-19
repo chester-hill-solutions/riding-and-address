@@ -691,7 +691,7 @@ export default {
           } else {
             // An OAuth access token. The challenge below is what tells a client to go and get one, so
             // this is the first point at which a token is actually used rather than advertised.
-            const verified = await verifyOAuthAccessToken(bearerToken, mcpOrigin);
+            const verified = await verifyOAuthAccessToken(env, bearerToken, mcpOrigin);
             if (!verified.ok) {
               return unauthorizedMcpResponse(
                 mcpOrigin,

@@ -18,7 +18,9 @@
  * A token with no Customer claim is refused rather than billed to nobody. It should be impossible,
  * and "impossible" is exactly the case worth failing closed on.
  */
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
+import { createLocalJWKSet, jwtVerify, type JSONWebKeySet, type JWTPayload } from 'jose';
+
+import type { Env } from './types';
 
 export interface OAuthTokenClaims {
   /** The user the token was issued to. */
@@ -40,26 +42,61 @@ export type OAuthTokenResult =
   | { ok: false; reason: OAuthTokenFailure };
 
 /**
- * One JWKS client per URL, per isolate.
+ * The signing key, read from the portal's `jwks` table rather than fetched over HTTP.
  *
- * `createRemoteJWKSet` does its own caching and cooldown, so this map exists only to avoid rebuilding
- * the client — and its cache — on every request. Keyed by URL because the issuer differs between
- * production and staging, and a request can be served by an isolate that has seen both.
+ * **`createRemoteJWKSet` does not work here, and the reason is not obvious.** This Worker would be
+ * fetching its own hostname, and that subrequest does not come back 200 — jose reports
+ * "Expected 200 OK from the JSON Web Key Set HTTP response" and every token is rejected. Measured
+ * against a live deployment, not assumed.
+ *
+ * Reading the row is also the better answer: the table already holds the key as a JWK, the read is
+ * one indexed row, and it cannot go stale behind a cache the way a fetched copy can.
+ *
+ * **This reads `PORTAL_DB`, which is portal-only by design**, and that is a deliberate, narrow
+ * exception rather than an oversight: one column of one table, holding a *public* signing key that
+ * the authorization server publishes at `/api/auth/jwks` for anyone to read. No tenant data is
+ * touched, and the alternative is machinery to mirror a public key into KV on every rotation.
+ *
+ * Cached for a minute per isolate: keys rotate rarely, and a stale key costs one rejected request
+ * rather than a wrong answer.
  */
-const jwksClients = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+const JWKS_TTL_MS = 60_000;
+let cachedJwks: { client: ReturnType<typeof createLocalJWKSet>; expires: number } | null = null;
 
-function jwksFor(url: string): ReturnType<typeof createRemoteJWKSet> {
-  let client = jwksClients.get(url);
-  if (!client) {
-    client = createRemoteJWKSet(new URL(url));
-    jwksClients.set(url, client);
+async function jwksFor(env: Env): Promise<ReturnType<typeof createLocalJWKSet> | null> {
+  if (cachedJwks && cachedJwks.expires > Date.now()) return cachedJwks.client;
+  if (!env.PORTAL_DB) return null;
+
+  // `id` is the `kid`. It is NOT in the stored JSON, and the token's protected header names it, so
+  // a JWKS built without it has no key jose can match — the failure is "no applicable key found in
+  // the JSON Web Key Set", which says nothing about the missing field. Found by comparing the stored
+  // row against what `/api/auth/jwks` actually publishes.
+  const row = await env.PORTAL_DB.prepare(
+    'SELECT id, public_key, alg FROM jwks ORDER BY created_at DESC LIMIT 1'
+  ).first<{ id: string; public_key: string; alg: string | null }>();
+  if (!row?.public_key) return null;
+
+  let key: Record<string, unknown>;
+  try {
+    key = JSON.parse(row.public_key) as Record<string, unknown>;
+  } catch {
+    console.warn('[oauth] the stored JWKS public key is not JSON');
+    return null;
   }
+
+  // `alg` and the key id live in their own columns, and jose needs both on the key to select a
+  // verifier — `alg` to choose the algorithm, `kid` to match the token's header.
+  const jwks: JSONWebKeySet = {
+    keys: [{ ...key, kid: row.id, ...(row.alg ? { alg: row.alg } : {}), use: 'sig' }],
+  };
+  const client = createLocalJWKSet(jwks);
+  cachedJwks = { client, expires: Date.now() + JWKS_TTL_MS };
   return client;
 }
 
-/** Test seam: drop the cached JWKS clients. */
+/** Test seam: drop the cached signing key. */
 export function clearJwksCache(): void {
-  jwksClients.clear();
+  cachedJwks = null;
 }
 
 function scopesFrom(payload: JWTPayload): string[] {
@@ -76,12 +113,16 @@ function scopesFrom(payload: JWTPayload): string[] {
  * reject every token.
  */
 export async function verifyOAuthAccessToken(
+  env: Env,
   token: string,
   origin: string
 ): Promise<OAuthTokenResult> {
   const issuer = `${origin}/api/auth`;
   try {
-    const { payload } = await jwtVerify(token, jwksFor(`${issuer}/jwks`), {
+    const jwks = await jwksFor(env);
+    if (!jwks) return { ok: false, reason: 'invalid' };
+
+    const { payload } = await jwtVerify(token, jwks, {
       issuer,
       audience: `${origin}/mcp`,
     });
@@ -99,11 +140,17 @@ export async function verifyOAuthAccessToken(
         scopes: scopesFrom(payload),
       },
     };
-  } catch {
+  } catch (error) {
     // Every jose failure — bad signature, wrong issuer, wrong audience, expired, malformed — is the
-    // same answer to a caller: this token is not usable here. The distinction is in the logs, not in
-    // the response, because telling a caller *why* a token failed is a probing oracle.
-    console.warn('[oauth] access token rejected');
+    // same answer to a caller: this token is not usable here. Telling a caller *why* would make this
+    // an oracle for probing tokens.
+    //
+    // The reason goes to the log instead, and it has to: the first version of this logged only
+    // "rejected", so a token that failed for a fixable reason was indistinguishable from one that
+    // was simply invalid. A uniform response is not the same as no diagnosis.
+    console.warn(
+      `[oauth] access token rejected: ${error instanceof Error ? error.message : String(error)}`
+    );
     return { ok: false, reason: 'invalid' };
   }
 }

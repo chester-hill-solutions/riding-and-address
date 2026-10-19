@@ -26,6 +26,12 @@ export interface Env {
   API_KEYS?: KVNamespace;
   /** Per-key daily + per-Customer monthly counters. */
   API_KEY_USAGE?: DurableObjectNamespace;
+  /**
+   * The portal's D1. Portal-only by design — the API worker reads exactly one thing from it, the
+   * public signing key in `jwks`, because the authorization server publishes that key for anyone to
+   * read and fetching it over HTTP from inside this Worker does not work.
+   */
+  PORTAL_DB?: D1Database;
   /** Shared secret for portal → Worker KV projection admin API. */
   PROJECTION_ADMIN_SECRET?: string;
   /** Stripe secret for Billing Meter events (optional until paid checkout). */

@@ -1,6 +1,6 @@
 import { auth as createBetterAuth, createSessionReader } from '@chester-hill-solutions/auth-d1';
 import { jwt, mcp } from '@chester-hill-solutions/auth-d1/plugins';
-import { getCustomerContext } from '~/lib/customer.server';
+import { ensureCustomerForUser, getCustomerContext } from '~/lib/customer.server';
 import { MCP_SCOPES } from '../../../src/mcp-scopes';
 import { drizzleAdapter } from '@better-auth/drizzle-adapter';
 import { createRequireSessionUserId } from '@chester-hill-solutions/auth-react-router';
@@ -54,7 +54,14 @@ function buildAuth() {
         // consent should show, and this is the one place it would change.
         customAccessTokenClaims: async ({ user }) => {
           if (!user?.id) return {};
-          const context = await getCustomerContext(user.id);
+          // Provision on demand, exactly as the portal does on a first visit. Without this a user
+          // who authorised an agent but had never opened the portal has no Customer, the claim is
+          // absent, and `/mcp` refuses their token — which is what the first headless walk found.
+          let context = await getCustomerContext(user.id);
+          if (!context) {
+            await ensureCustomerForUser(user.id, 'My organization');
+            context = await getCustomerContext(user.id);
+          }
           return context ? { customer_id: context.billing.customerId } : {};
         },
       }),
