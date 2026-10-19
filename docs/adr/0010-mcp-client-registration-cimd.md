@@ -1,6 +1,6 @@
 # ADR 0010 — Client registration for MCP: CIMD over `fetch`
 
-**Status:** accepted, implementation pending.
+**Status:** accepted, implemented (#207).
 **Date:** 2026-10-19.
 **Context:** a real MCP client cannot connect to `/mcp` today, and registration is the only thing
 missing. The flow itself is verified end to end — discovery, PKCE, consent, token, tool call.
