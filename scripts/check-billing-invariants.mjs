@@ -259,36 +259,42 @@ for (const relPath of BILLABLE_CALLSITE_FILES) {
   }
 }
 
-// ── Rule: geocode routes in worker.ts stay unbilled ───────────────────────────
+// ── Rule: geocode routes stay unbilled ───────────────────────────────────────
 // /api/geocode, /api/reverse and /api/normalize-address are intentionally NOT Billable units
-// (open pricing decision). If billing appears inside those route blocks, someone made that
-// product call — move this rule, don't delete it silently.
+// (open pricing decision). If billing appears inside those handlers, someone made that product
+// call — move this rule, don't delete it silently.
+//
+// The rule followed the code when the handlers moved out of the Worker's legacy chain into
+// src/oda-handlers.ts. It now reads the handler functions themselves rather than searching for a
+// route branch, because there is no route branch left to search for — and a rule that looks for a
+// string that no longer exists passes vacuously, which is worse than not having it.
 {
-  const workerFile = path.join(ROOT, 'src/worker.ts');
-  const workerLines = readFileSync(workerFile, 'utf8').split('\n');
-  const GEOCODE_ROUTES = ["'/api/geocode'", "'/api/reverse'", "'/api/normalize-address'"];
-  const ROUTE_BLOCK_WINDOW = 15; // geocode route blocks are a handful of lines each
-  for (const route of GEOCODE_ROUTES) {
-    const start = workerLines.findIndex(
-      (line) => line.includes(`pathname === ${route}`) && !line.includes('demoPath')
-    );
+  const handlersFile = path.join(ROOT, 'src/oda-handlers.ts');
+  const handlersLines = readFileSync(handlersFile, 'utf8').split('\n');
+  const GEOCODE_HANDLERS = ['handleGeocodeRoute', 'handleReverseRoute', 'handleNormalizeAddressRoute'];
+  for (const handler of GEOCODE_HANDLERS) {
+    const start = handlersLines.findIndex((line) => line.includes(`export async function ${handler}(`));
     if (start === -1) {
       fail(
-        'geocode-route-missing',
-        workerFile,
+        'geocode-handler-missing',
+        handlersFile,
         1,
-        `Expected a ${route} route in src/worker.ts — Billable-unit coverage check cannot verify it`
+        `Expected ${handler} in src/oda-handlers.ts — the Billable-unit coverage check cannot verify it`
       );
       continue;
     }
-    const block = workerLines.slice(start, start + ROUTE_BLOCK_WINDOW);
+    // The handler's body: from its declaration to the next top-level export.
+    const rest = handlersLines.slice(start + 1);
+    const nextExport = rest.findIndex((line) => /^export\s/.test(line));
+    const end = nextExport === -1 ? handlersLines.length : start + 1 + nextExport;
+    const block = handlersLines.slice(start, end);
     const hit = block.findIndex((line) => BILLABLE_CALL_RE.test(line));
     if (hit !== -1) {
       fail(
         'geocode-route-billed',
-        workerFile,
+        handlersFile,
         start + hit + 1,
-        `${route} must not call recordSuccessfulBillable — geocode routes are unbilled pending a pricing decision`
+        `${handler} must not call recordSuccessfulBillable — geocode routes are unbilled pending a pricing decision`
       );
     }
   }

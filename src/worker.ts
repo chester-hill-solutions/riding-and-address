@@ -5,13 +5,6 @@ import type { AuthInfo } from '@modelcontextprotocol/server';
 import {
   Env
 } from './types';
-import {
-  handleGeocodeRoute,
-  handleReverseRoute,
-  handleNormalizeAddressRoute,
-  handleSearchRoute,
-} from './oda-handlers';
-import { isOdaSuggestEnabled } from './oda-config';
 import { performCacheWarming } from './cache-warming';
 import { geocodingCircuitBreaker, initializeCircuitBreakers, r2CircuitBreaker } from './circuit-breaker';
 import { incrementMetric, recordTiming } from './metrics';
@@ -495,30 +488,6 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
   // Portal → Worker KV projection. The Bearer gate (auth: 'projection') runs in the prelude.
   if (pathname.startsWith('/admin/projection/')) {
     return handleProjectionRequest(routeCtx);
-  }
-
-  // ODA geolocation endpoints. Rate-limited and key-authed like the /api catch-all below, but
-  // intentionally NOT billed: only 200 lookup/search responses are Billable units today.
-  if (pathname === '/api/geocode' && request.method === 'GET') {
-    return handleGeocodeRoute(routeCtx);
-  }
-
-  if (pathname === '/api/reverse' && request.method === 'GET') {
-    return handleReverseRoute(routeCtx);
-  }
-
-  if (pathname === '/api/normalize-address' && request.method === 'GET') {
-    return handleNormalizeAddressRoute(routeCtx);
-  }
-
-  // Address autocomplete. Must stay above the /api catch-all below, which rejects
-  // unregistered lookup paths. Disabled autocomplete therefore returns 404.
-  if (
-    pathname === '/api/search' &&
-    request.method === 'GET' &&
-    isOdaSuggestEnabled(env)
-  ) {
-    return handleSearchRoute(routeCtx);
   }
 
   // Main lookup endpoint. The key gate (auth: 'key') ran in the prelude, which filled `billing`.
