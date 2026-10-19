@@ -17,6 +17,39 @@ status of that plan, as re-derived from the tree on 2026-10-19:
 
 ---
 
+## Status — where each wave landed
+
+Executed on `chore/code-health-remediation`, one commit per wave.
+
+| Wave | Outcome | Evidence |
+|---|---|---|
+| 0 — session liveness | **done** | `src/oauth-token.ts` consults the session; ADR-0011; the consent screen now says the truth |
+| 1 — coverage on the money path | **done** | `projection-handlers.ts` 13.5% → 98.5%, `billing.ts` 70% → 100%, `customer.ts` 70% → 100%; the ratchet is `scripts/check-coverage-ratchet.mjs` |
+| 2 — the portal suite | **done** | `portal/test/helpers/portal-db.ts` runs the real migrations on `node:sqlite`; 8 tests in 3 files → 22 in 5 |
+| 3 — the import cycles | **done** | **0** runtime cycles, from 2; `scripts/check-import-cycles.mjs` keeps it at 0 |
+| 4 — the strangler migration | **done** | **32 legacy entries → 0**; `src/worker.ts` 876 → 184 lines |
+| 5 — hygiene | **done, except the rotation** | the credential gate, ADR-0010's status, the last wildcard CORS literal |
+
+**Two things this plan could not do, and why.**
+
+- **The demo browser key was not rotated.** Moving it out of `portal/wrangler.jsonc` into the
+  Cloudflare secret store needs credentials this environment does not have, and removing the
+  literal *before* the secret is set would break the try-it widget on the next deploy. The
+  procedure is written down in `docs/ops/demo-browser-key-rotation.md`, and the literal is a
+  named, reviewed exception in `scripts/secret-allowlist.json` until someone with credentials runs
+  it.
+- **Nothing was deployed.** Every wave ends green locally and on CI, but the deploy is the
+  operator's: the plan's ground rule is "CI green **and deployed**", and the second half needs
+  Cloudflare access.
+
+**One correction the plan itself carried.** The review that produced this plan counted four
+import cycles because it counted type-only imports as edges. Type-only imports are erased at
+compile time and cannot close a runtime loop; over value imports and value re-exports there were
+**two**, and `scripts/check-import-cycles.mjs` reproduces that count. The plan's Wave 3 is scoped
+to what the gate can actually see.
+
+---
+
 ## Ground rules (every wave)
 
 - **CI green + deployed** at the end of each wave. `bun audit --audit-level=high` stays clean.
