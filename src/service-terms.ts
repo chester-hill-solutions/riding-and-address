@@ -57,7 +57,13 @@ export interface ServiceTerms {
   service: string;
   description: string;
   url: string;
-  docs: { guide: string; openapi: string; reference: string };
+  docs: {
+    guide: string;
+    openapi: string;
+    reference: string;
+    /** How to authenticate — the credentials, the authorization server and the scopes. */
+    auth: string;
+  };
   capabilities: ServiceCapability[];
   pricing: {
     currency: string;
@@ -140,6 +146,9 @@ export function createServiceTerms(origin: string, payment?: PaymentTermsInput |
       guide: `${origin}/docs/agents.md`,
       openapi: `${origin}/api/docs`,
       reference: `${origin}/docs`,
+      // The authentication document. The `auth` block below says what the credentials are; this
+      // is where a client goes to find out how to get one that needs no key.
+      auth: `${origin}/auth.md`,
     },
     capabilities: [
       {

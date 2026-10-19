@@ -119,6 +119,12 @@ describe('machine-readable service terms', () => {
 
     // And the consent: a person approves the grant once, and the terms say where.
     expect(oauth.use).toContain(`${ORIGIN}/consent`);
+
+    // The `docs` block named the guide, the OpenAPI description and the interactive reference
+    // — and not the authentication document, which is the one a client reads to find out how to
+    // authenticate. The `auth` block says what the credentials are; this is where a client goes
+    // to find out how to get one that needs no key.
+    expect(terms().docs.auth).toBe(`${ORIGIN}/auth.md`);
   });
 
   it('claims no payment capability when the rail is not configured', () => {
