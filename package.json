@@ -44,7 +44,7 @@
     "validate": "bun run lint && bun run typecheck && bun run check:billing-invariants && bun run check:secrets && bun run check:import-cycles && bun run check:coverage",
     "check:billing-invariants": "bun scripts/check-billing-invariants.mjs",
     "check:secrets": "node scripts/check-secrets.mjs",
-    "check:coverage": "node scripts/check-coverage-ratchet.mjs",
+    "check:coverage": "node scripts/check-coverage-ratchet.mjs --only=root",
     "check:coverage:update": "node scripts/check-coverage-ratchet.mjs --update",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -66,7 +66,8 @@
     "keys": "tsx scripts/manage-keys.ts",
     "prepare": "husky",
     "check:import-cycles": "node scripts/check-import-cycles.mjs",
-    "check:import-cycles:update": "node scripts/check-import-cycles.mjs --update"
+    "check:import-cycles:update": "node scripts/check-import-cycles.mjs --update",
+    "check:coverage:all": "node scripts/check-coverage-ratchet.mjs"
   },
   "packageManager": "bun@1.4.3",
   "keywords": [],

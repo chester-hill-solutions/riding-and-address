@@ -27,6 +27,19 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const UPDATE = process.argv.includes('--update');
 
 /**
+ * Which package to measure.
+ *
+ * Each package runs its own gate, in its own CI job, because each installs its own dependencies.
+ * The root job does not have the portal's `node_modules`, so a root job that ran the portal's
+ * tests would fail on `Cannot find package 'stripe'` — which is what happened the first time
+ * this ran on CI.
+ *
+ * With no `--only`, both are measured; that is the local `bun run validate` behaviour, where both
+ * packages' dependencies are installed side by side.
+ */
+const ONLY = (process.argv.find((arg) => arg.startsWith('--only=')) ?? '').slice('--only='.length);
+
+/**
  * The two packages that are measured.
  *
  * The portal is a separate package with its own vitest config and its own node_modules, so it is
@@ -101,6 +114,7 @@ const stale = [];
 const summaries = [];
 
 for (const target of TARGETS) {
+  if (ONLY && target.name !== ONLY) continue;
   const summary = runCoverage(target);
   summaries.push({ target, summary });
   const current = floorsFrom(summary, target);
