@@ -1,6 +1,6 @@
 {
   "name": "@chester-hill-solutions/auth-d1",
-  "version": "0.6.0",
+  "version": "0.7.1",
   "description": "Cloudflare D1 (SQLite) auth provider \u2014 auth() factory, session reader, workspace invitations, feature permissions (Better Auth)",
   "type": "module",
   "license": "MIT",
@@ -27,9 +27,24 @@
       "default": "./dist/schema.js"
     },
     "./plugins": {
-      "types": "./dist/plugins.d.ts",
-      "import": "./dist/plugins.js",
-      "default": "./dist/plugins.js"
+      "types": "./dist/plugins/index.d.ts",
+      "import": "./dist/plugins/index.js",
+      "default": "./dist/plugins/index.js"
+    },
+    "./plugins/mcp": {
+      "types": "./dist/plugins/mcp.d.ts",
+      "import": "./dist/plugins/mcp.js",
+      "default": "./dist/plugins/mcp.js"
+    },
+    "./plugins/oauth-provider": {
+      "types": "./dist/plugins/oauth-provider.d.ts",
+      "import": "./dist/plugins/oauth-provider.js",
+      "default": "./dist/plugins/oauth-provider.js"
+    },
+    "./plugins/cimd": {
+      "types": "./dist/plugins/cimd.d.ts",
+      "import": "./dist/plugins/cimd.js",
+      "default": "./dist/plugins/cimd.js"
     },
     "./drizzle-adapter": {
       "types": "./dist/drizzle-adapter.d.ts",
