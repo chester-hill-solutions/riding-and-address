@@ -93,6 +93,14 @@ export async function action({ request }: Route.ActionArgs) {
   const oauthQuery = String(form.get('oauth_query') ?? '');
   const origin = new URL(request.url).origin;
   const cookie = request.headers.get('cookie');
+  // Better Auth's CSRF check runs on any request that carries a cookie, and it needs to know
+  // where the request came from. The browser sends `Origin` (and `Referer`); this inner request
+  // is built by hand, so without forwarding them the check refuses the consent with
+  // `MISSING_OR_NULL_ORIGIN` — and the user is told "Nothing was granted" for a consent that
+  // never had a chance. A request with no cookie is exempt, which is why the token endpoint is
+  // fine for a native client and this one was not.
+  const originHeader = request.headers.get('origin');
+  const referer = request.headers.get('referer');
 
   const response = await getAuth().handler(
     new Request(new URL('/api/auth/oauth2/consent', origin), {
@@ -100,6 +108,8 @@ export async function action({ request }: Route.ActionArgs) {
       headers: {
         'content-type': 'application/json',
         ...(cookie ? { cookie } : {}),
+        ...(originHeader ? { origin: originHeader } : {}),
+        ...(referer ? { referer } : {}),
       },
       body: JSON.stringify({ accept, oauth_query: oauthQuery }),
     }),
