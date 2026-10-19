@@ -98,3 +98,62 @@ jobs:
         timeout-minutes: 2
         working-directory: portal
         run: bun run test:runtime
+
+  # Production deploy, from the repository rather than from the dashboard's Workers Build.
+  #
+  # Why here: the dashboard's build/deploy commands are configuration that lives nowhere in the
+  # repository, cannot be reviewed in a diff, and — as of #197 — do not apply migrations. That is
+  # how an authorization server reached production with no tables behind it: the metadata endpoint
+  # answered 200 (Better Auth validates the drizzle schema OBJECT, not the database) while every
+  # authorization returned 500. Nothing in the repo connected the two.
+  #
+  # Here the migration and the code that needs it ship in one reviewed step, and the migration runs
+  # FIRST: a deploy that cannot migrate must not put code in front of a schema it does not have.
+  #
+  # The deploy itself matches what the dashboard did — `bun run build` at the root writes
+  # .wrangler/deploy/config.json pointing at the portal build output, and wrangler finds it from
+  # there. Changing this must not change that, or the deploy silently targets nothing.
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [validate, portal]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+
+      - name: Install root dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install portal dependencies
+        working-directory: portal
+        run: bun install --frozen-lockfile
+
+      - name: Apply D1 migrations
+        working-directory: portal
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ad5ec479b9a421faa2ed06c3d1c2b23a
+        run: bunx wrangler d1 migrations apply PORTAL_DB --remote
+
+      - name: Build
+        run: bun run build
+
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ad5ec479b9a421faa2ed06c3d1c2b23a
+        run: npx wrangler deploy
