@@ -14,8 +14,11 @@ import {
   type NormalizedAddressContext,
 } from './lookup-expansion';
 import { cachedLookupRiding } from './riding-lookup';
-import type { RouteContext } from './route-context';
+import { jsonHeaders, type RouteContext } from './route-context';
 import * as queueClient from './queue-client';
+import { recordSuccessfulBillable } from './billing';
+import { safeParseBatchLookupRequests } from './validation';
+import { badRequest, internalErrorResponse } from './utils';
 
 export const BATCH_CONFIG = {
   DEFAULT_BATCH_SIZE: 10,
@@ -263,3 +266,99 @@ export function updateBatchJobStatus(
   return updatedJob;
 }
 
+
+/**
+ * `POST /batch` — the Enterprise batch surface.
+ *
+ * **Ported out of the Worker's legacy chain.** The behaviour did not change: the same body limit,
+ * the same validation, the same Billable-unit accounting, and the same refusal shape.
+ *
+ * ## The fuse and the batch
+ *
+ * A batch is a hundred lookups, and the fuse is a Customer's monthly ceiling. So the fuse can be
+ * crossed *inside* one request: the first few items are allowed, and then the fuse denies.
+ *
+ * The denial is applied by **redacting** the item that was refused and every item after it, so
+ * the caller never receives work that was not paid for. Returning the results anyway and billing
+ * them later would be the alternative, and it is the reason this loop exists.
+ *
+ * The Customer comes from `ctx.billing`, which the route table's `batch` auth dialect filled. It is
+ * null for an operator credential, which is not billed — the operator's own work is not a Billable
+ * unit.
+ */
+export async function handleBatchRoute(ctx: RouteContext): Promise<Response> {
+  const { request, env, correlationId } = ctx;
+
+  // Check request body size (limit to 10MB)
+  const contentLength = request.headers.get('content-length');
+  if (contentLength && parseInt(contentLength, 10) > MAX_REQUEST_BODY_SIZE) {
+    return badRequest('Request body too large. Maximum size is 10MB', 413);
+  }
+
+  let body: { requests?: unknown };
+  try {
+    body = (await request.json()) as { requests?: unknown };
+  } catch (error) {
+    return internalErrorResponse(error, 'Batch processing failed', correlationId);
+  }
+  if (!body.requests || !Array.isArray(body.requests)) {
+    return badRequest("Invalid request body. Expected 'requests' array.", 400);
+  }
+
+  const parsedRequests = safeParseBatchLookupRequests(body.requests);
+  if (!parsedRequests.success) {
+    return badRequest(
+      parsedRequests.error.issues.map((e) => e.message).join('; '),
+      400,
+      'INVALID_BATCH_REQUEST'
+    );
+  }
+
+  try {
+    const results = await processBatchLookupWithBatchGeocoding(ctx, parsedRequests.data);
+
+    // Same Billable unit as realtime: each successful item without error. Once the fuse denies an
+    // increment, redact that item and all remaining successes so results are not returned free
+    // past the hard fuse. The denial body comes from the one billing shaper, so batch speaks the
+    // same dialect.
+    const batchBilling = ctx.billing;
+    if (batchBilling) {
+      let fuseDenial: Record<string, unknown> | null = null;
+      for (const item of results) {
+        if (item.error) continue;
+        if (fuseDenial) {
+          redactFuseDeniedResult(item, fuseDenial);
+          continue;
+        }
+        const billed = await recordSuccessfulBillable(env, batchBilling, {
+          waitUntil: ctx.deferTask,
+        });
+        if (!billed.allowed) {
+          fuseDenial = ctx.billableDenialBody(billed);
+          redactFuseDeniedResult(item, fuseDenial);
+        }
+      }
+    }
+
+    return new Response(JSON.stringify({ results }), { headers: jsonHeaders(ctx) });
+  } catch (error) {
+    return internalErrorResponse(error, 'Batch processing failed', correlationId);
+  }
+}
+
+/**
+ * `GET /batch/:id` — the status of one batch job.
+ *
+ * The id is the segment after `/batch/`, which is what the legacy chain read. Reading it the same
+ * way keeps the answer the same for every path the old branch answered.
+ */
+export async function handleBatchStatusRoute(ctx: RouteContext): Promise<Response> {
+  const { env, correlationId } = ctx;
+  const batchId = ctx.url.pathname.split('/')[2] ?? '';
+  try {
+    const status = await getBatchStatus(env, batchId);
+    return new Response(JSON.stringify(status), { headers: jsonHeaders(ctx) });
+  } catch (error) {
+    return internalErrorResponse(error, 'Failed to get batch status', correlationId);
+  }
+}

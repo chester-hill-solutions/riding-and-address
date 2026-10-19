@@ -30,8 +30,8 @@
       "branches": 94.28
     },
     "src/batch.ts": {
-      "statements": 55.07,
-      "branches": 48.38
+      "statements": 71.42,
+      "branches": 66.66
     },
     "src/billing.ts": {
       "statements": 100,
@@ -290,8 +290,8 @@
       "branches": 50
     },
     "src/route-context.ts": {
-      "statements": 90,
-      "branches": 50
+      "statements": 100,
+      "branches": 75
     },
     "src/routes.ts": {
       "statements": 89.22,
@@ -335,7 +335,7 @@
     },
     "src/utils.ts": {
       "statements": 95.41,
-      "branches": 87.62
+      "branches": 88.65
     },
     "src/validation.ts": {
       "statements": 79.36,
@@ -350,8 +350,8 @@
       "branches": 26
     },
     "src/worker.ts": {
-      "statements": 42.71,
-      "branches": 45.98
+      "statements": 43.43,
+      "branches": 46.28
     },
     "src/x402-receipts.ts": {
       "statements": 97.61,

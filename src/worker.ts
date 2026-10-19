@@ -30,8 +30,6 @@ import {
   cleanupWebhookData
 } from './webhooks';
 import {
-  processBatchLookupWithBatchGeocoding,
-  redactFuseDeniedResult,
   submitBatchToQueue,
   getBatchStatus,
   processQueueJobs
@@ -46,7 +44,6 @@ import { handleProjectionRequest } from './projection-handlers';
 import { getStats as getQueueStats } from './queue-client';
 import { cachedLookupRiding as lookupRiding, loadGeo } from './riding-lookup';
 import { r2DatasetSource } from './dataset-source';
-import { recordSuccessfulBillable } from './billing';
 import {
   authorizeLookupRequest,
   extractBearerToken,
@@ -319,75 +316,6 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
       }
     }
     return badRequest("Method not allowed", 405);
-  }
-
-  // Batch processing. The Enterprise gate is declared on the table (auth: 'batch') and run by the
-  // prelude, which also resolves the Billable Customer onto `ctx.billing`; this branch only reads
-  // and processes the request.
-  if (pathname.startsWith('/batch')) {
-    const batchBilling = routeCtx.billing;
-
-    if (pathname === '/batch' && request.method === 'POST') {
-      try {
-        // Check request body size (limit to 10MB)
-        const contentLength = request.headers.get('content-length');
-        if (contentLength && parseInt(contentLength, 10) > 10 * 1024 * 1024) {
-          return badRequest('Request body too large. Maximum size is 10MB', 413);
-        }
-
-        const body = await request.json() as { requests?: unknown };
-        if (!body.requests || !Array.isArray(body.requests)) {
-          return badRequest("Invalid request body. Expected 'requests' array.", 400);
-        }
-
-        const parsedRequests = safeParseBatchLookupRequests(body.requests);
-        if (!parsedRequests.success) {
-          return badRequest(
-            parsedRequests.error.issues.map((e) => e.message).join('; '),
-            400,
-            'INVALID_BATCH_REQUEST'
-          );
-        }
-
-        const results = await processBatchLookupWithBatchGeocoding(routeCtx, parsedRequests.data);
-
-        // Same Billable unit as realtime: each successful item without error. Once the fuse
-        // denies an increment, redact that item and all remaining successes so results are not
-        // returned free past the hard fuse. The denial body comes from the one billing shaper, so
-        // batch speaks the same dialect.
-        if (batchBilling) {
-          let fuseDenial: Record<string, unknown> | null = null;
-          for (const item of results) {
-            if (item.error) continue;
-            if (fuseDenial) {
-              redactFuseDeniedResult(item, fuseDenial);
-              continue;
-            }
-            const billed = await recordSuccessfulBillable(env, batchBilling, {
-              waitUntil: routeCtx.deferTask,
-            });
-            if (!billed.allowed) {
-              fuseDenial = routeCtx.billableDenialBody(billed);
-              redactFuseDeniedResult(item, fuseDenial);
-            }
-          }
-        }
-
-        return new Response(JSON.stringify({ results }), { headers: jsonHeaders(routeCtx) });
-      } catch (error) {
-        return internalErrorResponse(error, 'Batch processing failed', correlationId);
-      }
-    }
-
-    if (pathname.startsWith('/batch/') && request.method === 'GET') {
-      const batchId = pathname.split('/')[2];
-      try {
-        const status = await getBatchStatus(env, batchId);
-        return new Response(JSON.stringify(status), { headers: jsonHeaders(routeCtx) });
-      } catch (error) {
-        return internalErrorResponse(error, 'Failed to get batch status', correlationId);
-      }
-    }
   }
 
   // Queue surfaces. Auth is declared per entry and run by the prelude.
