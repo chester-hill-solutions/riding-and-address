@@ -251,19 +251,24 @@ describe('paid rail rate-limit bucket', () => {
 
 describe('declared policy is enforced', () => {
   /**
-   * The queue submit route is the example here because it is still a legacy entry, and the point
-   * of these three is the legacy ones: ~30 entries used to declare `auth`/`rateLimit` that nothing
-   * read, because `runPrelude` returned early for `handler: legacy`.
+   * Every entry carries a real handler.
    *
-   * The ported entries are covered by the same property — the prelude runs for every entry — and
-   * the ported admin surfaces (`/api/cache/warm`, `/api/database/init`) are asserted in
-   * `test/ported-oda-routes.test.ts`.
+   * The strangler migration is finished: the table used to declare ~30 entries with
+   * `handler: legacy`, and the Worker answered them from a second dispatch path — the old `fetch`
+   * guard-chain — where the declared `auth` and `rateLimit` were read by nothing. The property
+   * that mattered was never "the entry says admin"; it was "an admin entry 401s without
+   * credentials", and that only held for the ported ones.
+   *
+   * Now there is one dispatch path, so the declaration and the enforcement are the same thing.
    */
-  const LEGACY_ADMIN_PATH = '/api/queue/submit';
+  it('has no entry left without a handler', () => {
+    const withoutHandler = ROUTES.filter((entry) => entry.handler === legacy);
+    expect(withoutHandler.map((entry) => entry.path)).toEqual([]);
+  });
 
-  it('401s an admin-only legacy entry without credentials (fail closed)', async () => {
-    const entry = entryWithPath(LEGACY_ADMIN_PATH);
-    expect(entry.handler).toBe(legacy);
+  it('401s an admin-only entry without credentials (fail closed)', async () => {
+    const entry = entryWithPath('/api/queue/submit');
+    expect(entry.handler).not.toBe(legacy);
 
     const ctx = contextFor(
       {} as Env,
@@ -275,8 +280,8 @@ describe('declared policy is enforced', () => {
     expect(ctx.isAdmin).toBe(false);
   });
 
-  it('admits an admin-only legacy entry with the operator credential', async () => {
-    const entry = entryWithPath(LEGACY_ADMIN_PATH);
+  it('admits an admin-only entry with the operator credential', async () => {
+    const entry = entryWithPath('/api/queue/submit');
     const env = { BASIC_AUTH: 'admin:secret' } as Env;
     const request = new Request('https://lookup.test/api/queue/submit', {
       method: 'POST',
@@ -288,15 +293,15 @@ describe('declared policy is enforced', () => {
     expect(ctx.isAdmin).toBe(true);
   });
 
-  it('gates that legacy entry through the real worker + dispatch path', async () => {
+  it('gates that entry through the real worker + dispatch path', async () => {
     const response = await fetchLookup(createLookupTestEnv(), '/api/queue/submit', { method: 'POST' });
     expect(response.status).toBe(401);
   });
 
   it('fails closed for a ported admin surface too', async () => {
-    // The prelude runs for every entry, legacy or ported, so a ported admin surface is gated the
-    // same way. This is the property that matters; the legacy assertion above is about the class
-    // of entry that used to bypass it.
+    // The prelude runs for every entry, so a ported admin surface is gated the same way. This is
+    // the property that matters; the legacy assertion above is about the class of entry that
+    // used to bypass it.
     const entry = entryWithPath('/api/cache/warm');
     expect(entry.handler).not.toBe(legacy);
 

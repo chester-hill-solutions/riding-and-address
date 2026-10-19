@@ -6,8 +6,8 @@
       "branches": 72.85
     },
     "src/agent-discovery.ts": {
-      "statements": 100,
-      "branches": 100
+      "statements": 87.3,
+      "branches": 84.28
     },
     "src/api-key-usage-do.ts": {
       "statements": 92.03,
@@ -30,8 +30,8 @@
       "branches": 94.28
     },
     "src/batch.ts": {
-      "statements": 71.42,
-      "branches": 66.66
+      "statements": 51.02,
+      "branches": 46.57
     },
     "src/billing.ts": {
       "statements": 100,
@@ -160,6 +160,10 @@
     "src/markdown-for-agents.ts": {
       "statements": 95.55,
       "branches": 72.41
+    },
+    "src/mcp-handler.ts": {
+      "statements": 75.51,
+      "branches": 69.23
     },
     "src/mcp-purchase.ts": {
       "statements": 100,
@@ -294,7 +298,7 @@
       "branches": 75
     },
     "src/routes.ts": {
-      "statements": 89.22,
+      "statements": 88.69,
       "branches": 84.32
     },
     "src/service-terms.ts": {
@@ -354,8 +358,8 @@
       "branches": 26
     },
     "src/worker.ts": {
-      "statements": 56.09,
-      "branches": 63.81
+      "statements": 46.66,
+      "branches": 55.55
     },
     "src/x402-receipts.ts": {
       "statements": 97.61,

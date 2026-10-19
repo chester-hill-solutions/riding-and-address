@@ -9,7 +9,15 @@
  */
 
 import { getAgentQuickstart } from './mcp';
+import { createLlmsTxt, createLlmsFullTxt } from './llms-txt';
+import { createServiceTerms } from './service-terms';
+import { createUcpProfile } from './ucp-profile';
+import { X402_VERSION, x402ConfigFromEnv } from './x402';
+import { payerDailyCapUsd } from './x402-spend';
+import { Env } from './types';
 import { getAllProvincialPaths } from './datasets';
+import type { RouteContext } from './route-context';
+import { isLoopbackHost } from './utils';
 
 /** The canonical identity used across the discovery documents. */
 function did(origin: string): string {
@@ -264,3 +272,125 @@ export async function createAgentSkillsIndex(origin: string): Promise<unknown> {
 
 /** Kept so the module owns everything it advertises. */
 export { getAgentQuickstart };
+
+// ── The discovery surface ──────────────────────────────────────────────────────
+
+export function configuredPublicOrigins(env: Env): string[] {
+  const values = [
+    ...(env.PUBLIC_API_HOSTS || '').split(',').map((value) => value.trim()).filter(Boolean),
+    env.PUBLIC_API_BASE_URL,
+    env.BASE_URL,
+    'https://riding-lookup.chester-hill-solutions.workers.dev',
+  ];
+  return values.flatMap((value) => {
+    if (!value) return [];
+    try {
+      const url = new URL(value.includes('://') ? value : `https://${value}`);
+      return url.protocol === 'https:' || url.hostname === 'localhost' ? [url.origin.toLowerCase()] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+export function discoveryOrigin(request: Request, env: Env): string {
+  const url = new URL(request.url);
+  const origin = url.origin.toLowerCase();
+  const local = isLoopbackHost(url.hostname);
+  return local || configuredPublicOrigins(env).includes(origin)
+    ? url.origin
+    : configuredPublicOrigins(env)[0] || 'https://riding-lookup.chester-hill-solutions.workers.dev';
+}
+
+/**
+ * The agent-discovery documents.
+ *
+ * **Moved out of `src/worker.ts` so the route table can own them.**
+ *
+ * These were answered before the dispatcher ran, so the table's entry for them was a placeholder
+ * that no handler ever reached. Now the entry carries a real handler and the table says what it
+ * serves.
+ *
+ * The documents are public and origin-agnostic by design — they are what an agent reads to find
+ * out that this service exists — so most of them answer with a wildcard CORS policy of their own.
+ */
+export async function handleDiscoveryRoute(ctx: RouteContext): Promise<Response> {
+  const { request, env, url } = ctx;
+  const origin = discoveryOrigin(request, env);
+  const pathname = url.pathname;
+  if (pathname === '/docs/agents.md' && request.method === 'GET') {
+    return new Response(getAgentQuickstart(origin), { headers: { ...ctx.corsHeaders(request.headers.get('Origin')), 'content-type': 'text/markdown; charset=utf-8' } });
+  }
+  if (pathname === '/robots.txt' && request.method === 'GET') {
+    const disallow = ['Disallow: /app/', 'Disallow: /api/auth/', 'Disallow: /api/stripe/', 'Disallow: /api/database/', 'Disallow: /api/cache/', 'Disallow: /admin/', 'Disallow: /metrics', 'Disallow: /webhooks', 'Disallow: /queue/', 'Disallow: /batch'];
+    const body = [
+      'User-agent: *', 'Allow: /', ...disallow, '',
+      'User-agent: OAI-SearchBot', 'Allow: /', ...disallow, '',
+      'User-agent: Claude-SearchBot', 'Allow: /', ...disallow, '',
+      'User-agent: PerplexityBot', 'Allow: /', ...disallow, '',
+      'User-agent: GPTBot', 'Disallow: /', '',
+      'User-agent: ClaudeBot', 'Disallow: /', '',
+      'User-agent: Google-Extended', 'Disallow: /', '',
+      'Content-Signal: ai-train=no, search=yes, ai-input=yes',
+      `Agentmap: ${origin}/.well-known/ai-catalog.json`,
+      `Sitemap: ${origin}/sitemap.xml`, '',
+    ].join('\n');
+    return new Response(body, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+  }
+  if (pathname === '/sitemap.xml' && request.method === 'GET') {
+    const paths = ['/', '/docs', '/docs/embed', '/docs/agents.md', '/api/docs'];
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${paths.map((path) => `<url><loc>${origin}${path}</loc></url>`).join('')}</urlset>`;
+    return new Response(xml, { headers: { 'content-type': 'application/xml; charset=utf-8' } });
+  }
+  if (pathname === '/llms.txt' && request.method === 'GET') {
+    return new Response(createLlmsTxt(origin), { headers: { 'content-type': 'text/plain; charset=utf-8', ...ctx.corsHeaders(request.headers.get('Origin')) } });
+  }
+  if (pathname === '/llms-full.txt' && request.method === 'GET') {
+    return new Response(createLlmsFullTxt(origin), { headers: { 'content-type': 'text/plain; charset=utf-8', ...ctx.corsHeaders(request.headers.get('Origin')) } });
+  }
+  if (pathname === '/.well-known/cancoder.json' && request.method === 'GET') {
+    // Publish payment only if this deployment can actually take it: the block is built from the same
+    // environment the accept path settles with, so the document cannot claim a capability the Worker
+    // does not have — nor stay silent about one it does.
+    const rail = x402ConfigFromEnv(env);
+    const payment = rail
+      ? {
+          protocol: 'x402',
+          version: X402_VERSION,
+          scheme: 'exact',
+          network: rail.network,
+          asset: rail.asset,
+          perPayerDailyCapUsd: payerDailyCapUsd(env),
+        }
+      : null;
+    return Response.json(createServiceTerms(origin, payment), { headers: { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*' } });
+  }
+  if (pathname === '/.well-known/ucp' && request.method === 'GET') {
+    return Response.json(createUcpProfile(origin), { headers: { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*' } });
+  }
+  if (pathname === '/.well-known/api-catalog' && request.method === 'GET') {
+    return Response.json({ linkset: [
+      { anchor: `${origin}/api`, 'service-desc': [`${origin}/api/docs`, `${origin}/.well-known/cancoder.json`], 'service-doc': [`${origin}/docs`], status: [`${origin}/health`] },
+      { anchor: `${origin}/mcp`, 'service-doc': [`${origin}/docs/agents.md`], status: [`${origin}/health`] },
+    ] }, { headers: { 'content-type': 'application/linkset+json; charset=utf-8', 'access-control-allow-origin': '*' } });
+  }
+  if (pathname === '/auth.md' && request.method === 'GET') {
+    return new Response(createAuthMd(origin), { headers: { 'content-type': 'text/markdown; charset=utf-8', ...ctx.corsHeaders(request.headers.get('Origin')) } });
+  }
+  if (pathname === '/.well-known/mcp/server-card.json' && request.method === 'GET') {
+    return Response.json(createMcpServerCard(origin), { headers: { 'access-control-allow-origin': '*' } });
+  }
+  if (pathname === '/.well-known/agent-skills/index.json' && request.method === 'GET') {
+    return Response.json(await createAgentSkillsIndex(origin), { headers: { 'access-control-allow-origin': '*' } });
+  }
+  if (pathname === ridingLookupSkillPath() && request.method === 'GET') {
+    return new Response(createRidingLookupSkill(origin), { headers: { 'content-type': 'text/markdown; charset=utf-8', ...ctx.corsHeaders(request.headers.get('Origin')) } });
+  }
+  if (pathname === '/.well-known/ai-catalog.json' && request.method === 'GET') {
+    return Response.json(createAiCatalog(origin), { headers: { 'access-control-allow-origin': '*' } });
+  }
+  // The table routes only the discovery paths here, so this is unreachable in practice — but a
+  // handler that could answer "nothing" is not a handler, and the answer has to be a Response.
+  return new Response('Not found', { status: 404 });
+}
+
