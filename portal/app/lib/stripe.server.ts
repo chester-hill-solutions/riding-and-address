@@ -1,10 +1,22 @@
 import Stripe from 'stripe';
 import { env } from '~/lib/env.server';
 
+/**
+ * The Stripe API version this deployment talks.
+ *
+ * Pinned deliberately, and it is not decoration. Constructed as `new Stripe(key)`, the SDK sends
+ * whatever API version *it* defaults to — so a Dependabot bump of `stripe` silently moves the wire
+ * version for every call, and the SDK's types cannot catch that: the response shapes, the Checkout
+ * Session fields and the webhook payloads all change underneath a green typecheck. `18.5.0` defaults
+ * to this value, so pinning it is behaviour-preserving today, and from here an API version change is
+ * a decision someone makes rather than a side effect of a version bump.
+ */
+const STRIPE_API_VERSION = '2025-08-27.basil';
+
 export function getStripe(): Stripe | null {
   const { stripeSecretKey } = env();
   if (!stripeSecretKey) return null;
-  return new Stripe(stripeSecretKey);
+  return new Stripe(stripeSecretKey, { apiVersion: STRIPE_API_VERSION });
 }
 
 export async function createBillingPortalSession(stripeCustomerId: string, returnUrl: string) {
