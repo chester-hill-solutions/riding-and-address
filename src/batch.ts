@@ -362,3 +362,105 @@ export async function handleBatchStatusRoute(ctx: RouteContext): Promise<Respons
     return internalErrorResponse(error, 'Failed to get batch status', correlationId);
   }
 }
+
+/**
+ * The queue surfaces.
+ *
+ * **Ported out of the Worker's legacy chain.** The behaviour did not change: the same methods,
+ * the same body limit, the same validation, and the same refusal shapes.
+ *
+ * The queue is the asynchronous half of the Enterprise surface: `/api/queue/submit` takes a batch
+ * and hands it to the queue Durable Object, `/api/queue/process` drains jobs, and
+ * `/api/queue/status` and `/api/queue/stats` report on it. Every one of them is an operator
+ * surface, and the route table declares them so.
+ */
+
+/** `POST /api/queue/submit` — hand a batch to the queue. */
+export async function handleQueueSubmitRoute(ctx: RouteContext): Promise<Response> {
+  const { request, env, correlationId } = ctx;
+  if (request.method !== 'POST') {
+    return badRequest('Only POST supported for queue submit', 405);
+  }
+
+  try {
+    // Check request body size (limit to 10MB)
+    const contentLength = request.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > MAX_REQUEST_BODY_SIZE) {
+      return badRequest('Request body too large. Maximum size is 10MB', 413);
+    }
+
+    const body = (await request.json()) as { requests?: unknown };
+    if (!body.requests || !Array.isArray(body.requests)) {
+      return badRequest("Invalid request body. Expected 'requests' array.", 400);
+    }
+
+    const parsedRequests = safeParseBatchLookupRequests(body.requests);
+    if (!parsedRequests.success) {
+      return badRequest(
+        parsedRequests.error.issues.map((e) => e.message).join('; '),
+        400,
+        'INVALID_BATCH_REQUEST'
+      );
+    }
+
+    const result = await submitBatchToQueue(env, parsedRequests.data);
+    return new Response(JSON.stringify(result), { headers: jsonHeaders(ctx) });
+  } catch (error) {
+    return internalErrorResponse(error, 'Failed to submit batch to queue', correlationId);
+  }
+}
+
+/** `GET /api/queue/status` — the state of one queued batch. */
+export async function handleQueueStatusRoute(ctx: RouteContext): Promise<Response> {
+  const { env, correlationId } = ctx;
+  if (ctx.request.method !== 'GET') {
+    return badRequest('Only GET supported for status check', 405);
+  }
+
+  const batchId = ctx.url.searchParams.get('batchId');
+  if (!batchId) {
+    return badRequest('Missing required parameter: batchId', 400);
+  }
+
+  try {
+    const result = await getBatchStatus(env, batchId);
+    return new Response(JSON.stringify(result), { headers: jsonHeaders(ctx) });
+  } catch (error) {
+    return internalErrorResponse(error, 'Failed to get batch status', correlationId);
+  }
+}
+
+/**
+ * `POST /api/queue/process` and `POST /queue/process` — drain jobs from the queue.
+ *
+ * Two paths, one behaviour: the legacy chain answered both from the same branch, and the second
+ * is the older spelling. They are kept apart here only so each entry can declare its own method.
+ */
+export async function handleQueueProcessRoute(ctx: RouteContext): Promise<Response> {
+  const { request, env, correlationId } = ctx;
+  try {
+    const body = (await request.json()) as { maxJobs?: number };
+    const result = await processQueueJobs(env, body.maxJobs || 10);
+    return new Response(JSON.stringify(result), { headers: jsonHeaders(ctx) });
+  } catch (error) {
+    return internalErrorResponse(error, 'Failed to process queue jobs', correlationId);
+  }
+}
+
+/** `GET /api/queue/stats` — what the queue manager is holding. */
+export async function handleQueueStatsRoute(ctx: RouteContext): Promise<Response> {
+  const { env, correlationId } = ctx;
+  if (ctx.request.method !== 'GET') {
+    return badRequest('Only GET supported for queue stats', 405);
+  }
+
+  try {
+    if (!env.QUEUE_MANAGER) {
+      return badRequest('Queue manager not configured', 503);
+    }
+    const stats = await queueClient.getStats(env);
+    return new Response(JSON.stringify(stats), { headers: jsonHeaders(ctx) });
+  } catch (error) {
+    return internalErrorResponse(error, 'Failed to get queue stats', correlationId);
+  }
+}

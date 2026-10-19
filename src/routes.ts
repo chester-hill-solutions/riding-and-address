@@ -6,10 +6,15 @@
  *   2. the portal's forwarding decision reads `ownerOf(pathname)`,
  *   3. the docs coverage test asserts the OpenAPI spec equals the public API entries.
  *
- * The table is declared in full on day 1 (strangler migration). Entries not yet ported carry
- * `handler: legacy`, which the Worker maps to its old `fetch` guard-chain; ported entries carry a
- * real handler and their old branch is deleted. Specificity is computed, not positional: static
- * beats `:param` beats `*`, longer wins, declaration order breaks remaining ties.
+ * The table was declared in full on day 1 (strangler migration), with the entries not yet ported
+ * carrying `handler: legacy` and the Worker answering them from its old `fetch` guard-chain.
+ *
+ * **That migration is finished: every entry carries a real handler, and the guard-chain is gone.**
+ * An entry marked `legacy` now means a mistake — the dispatcher answers it with a 404 rather than
+ * falling through to a second dispatch path, because one dispatch path is the whole point.
+ *
+ * Specificity is computed, not positional: static beats `:param` beats `*`, longer wins,
+ * declaration order breaks remaining ties.
  *
  * Handler implementations live beside their concerns (`ops-handlers.ts`, `docs.ts`, `embed.ts`,
  * `lookup-handler.ts`, `oda-handlers.ts`, …) and import `RouteContext` from the leaf
@@ -28,8 +33,17 @@ import {
 import { handleWebhookAdmin } from './webhook-admin';
 import { getAllProvincialPaths } from './datasets';
 import { handleDemoRoute, handleLookupRequest } from './lookup-handler';
+import { handleDiscoveryRoute } from './agent-discovery';
+import { handleMcpRoute } from './mcp-handler';
 import { handleQuoteRequest, handleAcceptRequest, handleAreaRequest } from './offers';
-import { handleBatchRoute, handleBatchStatusRoute } from './batch';
+import {
+  handleBatchRoute,
+  handleBatchStatusRoute,
+  handleQueueSubmitRoute,
+  handleQueueStatusRoute,
+  handleQueueProcessRoute,
+  handleQueueStatsRoute,
+} from './batch';
 import {
   handleDatabaseRoute,
   handleBoundariesRoute,
@@ -40,7 +54,7 @@ import { handleReceiptsRequest } from './x402-receipts';
 import { handleReconcileRequest } from './x402-reconcile';
 import { handleOdaInit, handleOdaStats, handleGeocodeRoute, handleReverseRoute, handleNormalizeAddressRoute, handleSuggestRoute } from './oda-handlers';
 import { handleProtectedResourceMetadata, protectedResourceMetadataPaths } from './oauth-metadata';
-import { checkProjectionAuth, projectionUnauthorizedResponse } from './projection-handlers';
+import { handleProjectionRequest, checkProjectionAuth, projectionUnauthorizedResponse } from './projection-handlers';
 import type { RouteContext } from './route-context';
 import {
   badRequest,
@@ -112,7 +126,16 @@ export type RateLimitBucket =
 
 export type RouteHandler = (ctx: RouteContext) => Promise<Response> | Response;
 
-/** Sentinel marking an entry that still runs the old `fetch` if-chain. */
+/**
+ * Sentinel marking an entry that has no handler.
+ *
+ * **No entry carries it any more.** The strangler migration is finished: every route has a real
+ * handler and the Worker's legacy guard-chain is deleted.
+ *
+ * It is kept because a table entry without a handler is a mistake someone can still make, and
+ * this is what the mistake looks like — the dispatcher answers it with a 404 rather than
+ * reaching for a fallback that no longer exists.
+ */
 export const legacy = Symbol('legacy');
 export type RouteHandlerOrLegacy = RouteHandler | typeof legacy;
 
@@ -145,8 +168,8 @@ const LOOKUP_PATHS = ['/api', '/api/federal', '/api/combined', ...getAllProvinci
 
 export const ROUTES: readonly RouteEntry[] = [
   // Agent discovery resources are public and served by the API Worker on both public hosts.
-  { path: ['/robots.txt', '/sitemap.xml', '/llms.txt', '/llms-full.txt', '/auth.md', '/.well-known/api-catalog', '/.well-known/ai-catalog.json', '/.well-known/ucp', '/.well-known/cancoder.json', '/.well-known/mcp/server-card.json', '/.well-known/agent-skills/index.json', '/.well-known/agent-skills/cancoder-riding-lookup/SKILL.md', '/docs/agents.md'], methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/mcp', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
+  { path: ['/robots.txt', '/sitemap.xml', '/llms.txt', '/llms-full.txt', '/auth.md', '/.well-known/api-catalog', '/.well-known/ai-catalog.json', '/.well-known/ucp', '/.well-known/cancoder.json', '/.well-known/mcp/server-card.json', '/.well-known/agent-skills/index.json', '/.well-known/agent-skills/cancoder-riding-lookup/SKILL.md', '/docs/agents.md'], methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleDiscoveryRoute },
+  { path: '/mcp', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleMcpRoute },
   // RFC 9728 protected-resource metadata. Served from the resource server, which is what RFC 9728
   // asks for and what the MCP plugin's own challenge points at — the plugin advertises this URL but
   // does not serve it. `internal` matches the other discovery documents in this table.
@@ -199,20 +222,20 @@ export const ROUTES: readonly RouteEntry[] = [
   { path: '/api/oda/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleOdaInit },
   { path: '/api/oda/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleOdaStats },
 
-  // Batch / queue — the batch surface is ported; the queue routes are not yet.
+  // Batch / queue — ported.
   { path: '/batch', methods: ['POST'], owner: 'api', visibility: 'public', auth: 'batch', rateLimit: 'batch', handler: handleBatchRoute },
   { path: '/batch/:id', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'batch', rateLimit: 'batch', handler: handleBatchStatusRoute },
   { path: '/batch/*', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'batch', rateLimit: 'batch', handler: handleBatchStatusRoute },
-  { path: '/api/queue/submit', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/api/queue/status', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/api/queue/process', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/api/queue/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  // Anything else under /api/queue falls through to the /api lookup catch-all in the legacy chain,
-  // so its real gate is the lookup key, not admin.
-  { path: '/api/queue/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'key', rateLimit: 'lookup', handler: legacy },
-  { path: '/queue/process', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
+  { path: '/api/queue/submit', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueSubmitRoute },
+  { path: '/api/queue/status', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueStatusRoute },
+  { path: '/api/queue/process', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueProcessRoute },
+  { path: '/api/queue/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueStatsRoute },
+  // Anything else under /api/queue falls through to the /api lookup catch-all, so its real gate is
+  // the lookup key, not admin.
+  { path: '/api/queue/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'key', rateLimit: 'lookup', handler: handleLookupRequest },
+  { path: '/queue/process', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueProcessRoute },
   // Unclaimed: the legacy chain answers 404 with no credential, so the catch-all is public.
-  { path: '/queue/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
+  { path: '/queue/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleLookupRequest },
 
   // Operator surfaces — the spatial database and boundary reads. Ported.
   { path: '/api/database/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleDatabaseRoute },
@@ -230,14 +253,14 @@ export const ROUTES: readonly RouteEntry[] = [
   { path: '/api/cache/warm', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleCacheWarm },
   // `/api/oda/*` is not a surface: only the two admin entries above exist, and any other
   // `/api/oda/…` path is served by the `/api/*` lookup catch-all (key auth), not admin.
-  { path: '/admin/projection/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'projection', rateLimit: 'none', handler: legacy },
+  { path: '/admin/projection/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'projection', rateLimit: 'none', handler: handleProjectionRequest },
   // Unclaimed /admin paths answer 404 with no credential; the projection and circuit-breaker
   // entries above are the real surfaces.
-  { path: '/admin/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
+  { path: '/admin/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleNotFound },
 
   // Ownership catches that preserve today's prefix decisions.
-  { path: '/docs/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/api/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'key', rateLimit: 'lookup', handler: legacy },
+  { path: '/docs/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleNotFound },
+  { path: '/api/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'key', rateLimit: 'lookup', handler: handleLookupRequest },
 ];
 
 // ── Pattern grammar + specificity ───────────────────────────────────────────
@@ -620,13 +643,15 @@ async function authorizeRoute(entry: RouteEntry, ctx: RouteContext): Promise<Res
 
 /**
  * Resolves the request against the API-owned table, runs the one shared prelude, then the handler.
- * Unclaimed paths (and portal-owned paths, which never reach the API worker in the combined deploy)
- * return the Worker's not-found response.
+ *
+ * **There is no legacy fallback any more.** Every entry carries a real handler, so the dispatcher
+ * has exactly one place a request can be answered from. An entry that somehow carried the `legacy`
+ * sentinel would be a 404 rather than a silent fall-through to a second dispatch path.
+ *
+ * Unclaimed paths (and portal-owned paths, which never reach the API worker in the combined
+ * deploy) return the Worker's not-found response.
  */
-export async function dispatch(
-  ctx: RouteContext,
-  legacyHandler: RouteHandler
-): Promise<Response> {
+export async function dispatch(ctx: RouteContext): Promise<Response> {
   const match = matchRoute(ctx.request.method, ctx.url.pathname);
 
   if (!match || match.entry.owner !== 'api') {
@@ -639,9 +664,21 @@ export async function dispatch(
   const denial = await runPrelude(match.entry, routeCtx);
   if (denial) return denial;
 
-  const handler = match.entry.handler === legacy ? legacyHandler : match.entry.handler;
-  if (!handler) {
+  const handler = match.entry.handler;
+  if (!handler || handler === legacy) {
     return badRequest('Not found', 404, 'NOT_FOUND', routeCtx.correlationId);
   }
   return handler(routeCtx);
+}
+
+/**
+ * A path that is not one of the known surfaces.
+ *
+ * The catch-all entries — `/admin/*` and `/docs/*` — exist so a request under them is answered
+ * rather than falling off the end of the table. The answer is the same 404 the dispatcher gives
+ * for an unclaimed path, and it is the same body: a caller that guesses at a path learns nothing
+ * about what is behind it.
+ */
+function handleNotFound(ctx: RouteContext): Response {
+  return badRequest('Not found', 404, 'NOT_FOUND', ctx.correlationId);
 }
