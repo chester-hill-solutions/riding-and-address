@@ -119,6 +119,19 @@ describe('auth.md', () => {
   });
 });
 
+describe('the riding-lookup skill', () => {
+  it('offers the OAuth route, not only the Server key', () => {
+    const skill = createRidingLookupSkill(ORIGIN);
+
+    // The skill's Cost section said "Metered calls need a Server API key". This is the document
+    // an agent loads *as a skill*, so it is the one most likely to be read — and it sent the
+    // reader to a human-created key for a route that needs no key at all.
+    expect(skill).toContain('Server API key');
+    expect(skill).toContain('OAuth');
+    expect(skill).toContain(`${ORIGIN}/auth.md`);
+  });
+});
+
 describe('the agent quickstart', () => {
   it('offers the OAuth route, not only the Server key', () => {
     const guide = getAgentQuickstart(ORIGIN);

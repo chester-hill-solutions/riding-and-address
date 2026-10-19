@@ -8,6 +8,7 @@ import { DEFAULT_FREE_MONTHLY_ALLOWANCE } from '../src/customer';
 import { UPLOAD_ROW_PRICE_USD } from '../src/upload-sheet';
 import { DEFAULT_DEMO_RATE_LIMIT, DEFAULT_RATE_LIMIT } from '../src/utils';
 import { ROUTES } from '../src/routes';
+import { MCP_SCOPES } from '../src/mcp-scopes';
 import { createLookupTestEnv, fetchLookup } from './helpers/lookup-test-env';
 
 /**
@@ -90,6 +91,34 @@ describe('machine-readable service terms', () => {
     for (const entry of published) {
       expect(entry.httpStatus).toBe(httpStatusForKeyDenial(entry.code));
     }
+  });
+
+  it('publishes the authorization server, not only the key methods', () => {
+    const oauth = terms().auth.oauth;
+
+    // The `auth` block listed a Server key, a browser key and the demo tier — so a client that
+    // wanted a *scoped* token rather than a Customer-wide key had nothing to act on, and the
+    // authorization server this deployment runs went unmentioned. Every field here is one a
+    // client acts on.
+    expect(oauth.issuer).toBe(`${ORIGIN}/api/auth`);
+    expect(oauth.metadata).toBe(`${ORIGIN}/api/auth/.well-known/oauth-authorization-server`);
+    // The path-suffixed form is the one the 401 challenge names, so it is the one a client
+    // will be sent to.
+    expect(oauth.protectedResource).toBe(`${ORIGIN}/.well-known/oauth-protected-resource/mcp`);
+    expect(oauth.grantType).toBe('authorization_code');
+    expect(oauth.pkce).toBe('S256');
+
+    // The scopes come from the one list both ends read — the authorization server publishes it
+    // as `scopes_supported` and the protected-resource metadata as what a token may carry — so
+    // the terms cannot name a scope the resource server does not recognise.
+    expect(oauth.scopes).toEqual([...MCP_SCOPES]);
+
+    // Both ways of identifying a client, because only one of them works without help.
+    expect(oauth.clientIdentification).toContain('client-id-metadata-document');
+    expect(oauth.clientIdentification).toContain('pre-registration');
+
+    // And the consent: a person approves the grant once, and the terms say where.
+    expect(oauth.use).toContain(`${ORIGIN}/consent`);
   });
 
   it('claims no payment capability when the rail is not configured', () => {

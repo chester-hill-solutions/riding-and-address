@@ -23,13 +23,14 @@ export function createLlmsTxt(origin: string): string {
 > code, street address, or coordinate pair to a federal, provincial, or combined riding.
 
 CanCoder is a metered HTTP API and a remote MCP server. There is a keyless demo tier, and metered
-Server API keys for production. Coverage is federal plus all 13 provincial and territorial riding
-boundaries, with address geocoding from Statistics Canada's Open Database of Addresses and National
-Address Register.
+Server API keys — or scoped OAuth access tokens — for production. Coverage is federal plus all 13
+provincial and territorial riding boundaries, with address geocoding from Statistics Canada's Open
+Database of Addresses and National Address Register.
 
 ## Documentation
 
 - [Agent guide](${origin}/docs/agents.md): connect over MCP and make a first lookup.
+- [Authentication](${origin}/auth.md): the credentials, the OAuth authorization server, and the scopes.
 - [API reference](${origin}/docs): interactive reference for every route.
 - [OpenAPI description](${origin}/api/docs): machine-readable API description.
 - [Embed widget](${origin}/docs/embed): drop-in address lookup for a web form.

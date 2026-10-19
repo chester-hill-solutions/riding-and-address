@@ -218,9 +218,12 @@ it as unresolved and ask for a more complete address or coordinates.
 
 ## Cost
 
-A keyless demo is available without a key. Metered calls need a Server API key. To price a lookup
-before paying, request a free, expiring offer from \`${origin}/api/quote\` (or the \`quote_lookup\`
-MCP tool); requesting a quote consumes no billable usage.
+A keyless demo is available without a key. Metered calls need a Server API key — or an OAuth
+access token, because this server is an OAuth 2.1 authorization server: a client can get a
+**scoped** token instead of a key, with a person approving the grant once at \`${origin}/consent\`.
+\`${origin}/auth.md\` has the endpoints, how a client identifies itself, and the scopes. To price a
+lookup before paying, request a free, expiring offer from \`${origin}/api/quote\` (or the
+\`quote_lookup\` MCP tool); requesting a quote consumes no billable usage.
 
 See ${origin}/docs/agents.md for the full agent guide.
 `;
