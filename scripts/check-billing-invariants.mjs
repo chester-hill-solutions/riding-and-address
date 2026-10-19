@@ -21,6 +21,10 @@ const FILE_RE = /\.(tsx?|jsx?|mjs|cjs|md)$/;
 const SKIP_DIRS = new Set([
   'node_modules',
   'dist',
+  // Generated output. The portal's build lands in `portal/build`, and a bundle is not
+  // source: the minifier bakes the interpolated constants in, so a rule written for the
+  // source trips on the built file instead. `dist` is skipped for the same reason.
+  'build',
   '.git',
   '.wrangler',
   'coverage',
