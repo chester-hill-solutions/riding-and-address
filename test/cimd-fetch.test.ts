@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   CIMD_MAX_BYTES,
+  CIMD_MAX_RESOURCE_BYTES,
   fetchClientMetadataResource,
   isSpecialUseHost,
 } from '../src/cimd-fetch';
@@ -87,25 +88,77 @@ describe('fetchClientMetadataResource', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('tells fetch to refuse redirects rather than following one', async () => {
+  it('tells fetch not to follow redirects, and refuses one if it comes back', async () => {
     // Following a redirect would let the document arrive from somewhere other than the URL that
     // identifies the client — and the URL *is* the identity.
+    //
+    // `manual` rather than `error` because the Workers runtime REJECTS `error` outright: it throws
+    // "Invalid redirect value" before the request leaves the isolate, so every fetch failed and the
+    // library reported a network error. Bun accepts `error`, so only a live deployment showed it.
     await fetchClientMetadataResource('https://client.example/metadata.json');
-    expect(calls[0]?.init?.redirect).toBe('error');
+    expect(calls[0]?.init?.redirect).toBe('manual');
   });
 
-  it('refuses a document over the cap rather than reading it', async () => {
+  it('refuses a response that is a redirect', async () => {
     globalThis.fetch = (async () =>
-      new Response('x'.repeat(CIMD_MAX_BYTES + 1))) as typeof fetch;
+      new Response(null, { status: 302, headers: { location: 'https://169.254.169.254/' } })) as typeof fetch;
+    await expect(
+      fetchClientMetadataResource('https://client.example/metadata.json')
+    ).rejects.toThrow(/redirect/);
+  });
+
+  it('refuses a JSON document over the cap the draft sets, rather than reading it', async () => {
+    globalThis.fetch = (async () =>
+      new Response('x'.repeat(CIMD_MAX_BYTES + 1), {
+        headers: { 'content-type': 'application/json' },
+      })) as typeof fetch;
     await expect(fetchClientMetadataResource('https://client.example/big.json')).rejects.toThrow(
       /exceeds/
     );
   });
 
   it('accepts a document exactly at the cap', async () => {
-    globalThis.fetch = (async () => new Response('x'.repeat(CIMD_MAX_BYTES))) as typeof fetch;
+    globalThis.fetch = (async () =>
+      new Response('x'.repeat(CIMD_MAX_BYTES), {
+        headers: { 'content-type': 'application/json' },
+      })) as typeof fetch;
     const response = await fetchClientMetadataResource('https://client.example/big.json');
     expect((await response.text()).length).toBe(CIMD_MAX_BYTES);
+  });
+
+  it('does NOT apply the document cap to the other resources the library fetches', async () => {
+    // The bug a real client found. The draft's 5 KB is the limit for the metadata DOCUMENT; the
+    // library uses one transport for that and for the resources it names. Applying the document's cap
+    // to everything refused OpenCode's 7 KB logo and failed the whole client resolution — with a
+    // message about a network error, which says nothing about a size limit.
+    globalThis.fetch = (async () =>
+      new Response('x'.repeat(CIMD_MAX_BYTES + 1), {
+        headers: { 'content-type': 'image/png' },
+      })) as typeof fetch;
+    const response = await fetchClientMetadataResource('https://client.example/logo.png');
+    expect((await response.text()).length).toBe(CIMD_MAX_BYTES + 1);
+  });
+
+  it('still bounds a resource that is not a document', async () => {
+    // A bound, not a policy: these are client-controlled too.
+    globalThis.fetch = (async () =>
+      new Response('x'.repeat(CIMD_MAX_RESOURCE_BYTES + 1), {
+        headers: { 'content-type': 'image/png' },
+      })) as typeof fetch;
+    await expect(fetchClientMetadataResource('https://client.example/huge.png')).rejects.toThrow(
+      /exceeds/
+    );
+  });
+
+  it('treats an AS-defined +json content type as a document', async () => {
+    // The draft allows a more specific type, and it is still the document.
+    globalThis.fetch = (async () =>
+      new Response('x'.repeat(CIMD_MAX_BYTES + 1), {
+        headers: { 'content-type': 'application/client-metadata+json' },
+      })) as typeof fetch;
+    await expect(fetchClientMetadataResource('https://client.example/meta')).rejects.toThrow(
+      /exceeds/
+    );
   });
 
   it('fails closed when the fetch itself fails', async () => {

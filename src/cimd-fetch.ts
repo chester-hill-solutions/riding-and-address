@@ -27,8 +27,24 @@ export type ClientMetadataResourceFetch = (
   init?: RequestInit
 ) => Response | Promise<Response>;
 
-/** The read cap the CIMD draft recommends. The document is client-controlled and unbounded. */
+/**
+ * The read cap the CIMD draft recommends, **for the metadata document**.
+ *
+ * The draft says this about the Client ID Metadata Document specifically, and the library uses one
+ * transport for that document *and* for the other resources it names. Applying the document's cap to
+ * those was a real bug: OpenCode's `logo_uri` is a 7 KB PNG, so the whole client resolution failed
+ * with "network error or redirect blocked" — on the first real client that has a logo, which is every
+ * real client. The cap is chosen per response, below.
+ */
 export const CIMD_MAX_BYTES = 5 * 1024;
+
+/**
+ * The bound for everything that is not the document — an icon, a JWKS.
+ *
+ * Still a bound rather than a policy: these are client-controlled too, and the point is not to buffer
+ * something unbounded. 256 KB is comfortably above a logo and far below anything that would matter.
+ */
+export const CIMD_MAX_RESOURCE_BYTES = 256 * 1024;
 
 /** Bounded so a slow or hostile host cannot hold an authorization request open. */
 export const CIMD_TIMEOUT_MS = 5_000;
@@ -100,16 +116,43 @@ export const fetchClientMetadataResource: ClientMetadataResourceFetch = async (i
   // `redirect: 'error'` is the contract's "refuse redirects". Following one would let a document
   // arrive from somewhere other than the URL that identifies the client — and the URL *is* the
   // client's identity here.
-  const response = await fetch(url, {
-    ...init,
-    redirect: 'error',
-    signal: AbortSignal.timeout(CIMD_TIMEOUT_MS),
-  });
+  let response: Response;
+  try {
+    // `redirect: 'manual'`, NOT `'error'`. The Workers runtime rejects `'error'` outright — "Invalid
+    // redirect value" — so every fetch threw before it left the isolate, and the library reported it
+    // as "network error or redirect blocked", which is true and useless. Bun accepts `'error'`, so
+    // this passed every local test and failed only against a live deployment.
+    //
+    // `'manual'` returns the redirect instead of following it, which is what refusing one actually
+    // means: the status is checked below and a 3xx is refused.
+    response = await fetch(url, {
+      ...init,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(CIMD_TIMEOUT_MS),
+    });
+  } catch (error) {
+    // The library reports every failure with the same sentence — "network error or redirect blocked"
+    // — which says nothing about which check refused or which resource. Logging the reason here is
+    // what turned a two-deploy mystery into a one-line answer.
+    console.warn(
+      `[cimd] fetch failed for ${url}: ${error instanceof Error ? error.message : String(error)}`
+    );
+    throw error;
+  }
+  // The redirect refusal, now that the runtime will let us see one.
+  if (response.status >= 300 && response.status < 400) {
+    throw new Error(`cimd: refusing a ${response.status} redirect from ${url}`);
+  }
   if (!response.ok || !response.body) return response;
 
-  // Read at most the cap. The document is client-controlled and the server cannot bound its size, so
-  // the read is bounded instead: stopping at the cap and refusing is the draft's own recommendation,
-  // and it is also what stops a 10 GB "document" from being buffered.
+  // Read at most the cap, chosen for what came back rather than applied to everything. The document
+  // is JSON and gets the draft's limit; anything else the library fetches — a logo, a JWKS — gets a
+  // bound that is generous but still finite. A single cap for both is what broke on the first client
+  // with an icon.
+  const contentType = response.headers.get('content-type') ?? '';
+  const isDocument = /\bjson\b/i.test(contentType);
+  const cap = isDocument ? CIMD_MAX_BYTES : CIMD_MAX_RESOURCE_BYTES;
+
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -118,9 +161,11 @@ export const fetchClientMetadataResource: ClientMetadataResourceFetch = async (i
     if (done) break;
     if (!value) continue;
     total += value.byteLength;
-    if (total > CIMD_MAX_BYTES) {
+    if (total > cap) {
       await reader.cancel();
-      throw new Error(`cimd: metadata document exceeds ${CIMD_MAX_BYTES} bytes`);
+      throw new Error(
+        `cimd: ${isDocument ? 'metadata document' : `resource (${contentType || 'no content-type'})`} exceeds ${cap} bytes`
+      );
     }
     chunks.push(value);
   }
