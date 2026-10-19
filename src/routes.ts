@@ -32,6 +32,7 @@ import { handleQuoteRequest, handleAcceptRequest, handleAreaRequest } from './of
 import { handleReceiptsRequest } from './x402-receipts';
 import { handleReconcileRequest } from './x402-reconcile';
 import { handleOdaInit, handleOdaStats } from './oda-handlers';
+import { handleProtectedResourceMetadata, protectedResourceMetadataPaths } from './oauth-metadata';
 import { checkProjectionAuth, projectionUnauthorizedResponse } from './projection-handlers';
 import type { RouteContext } from './route-context';
 import {
@@ -138,6 +139,10 @@ export const ROUTES: readonly RouteEntry[] = [
   // Agent discovery resources are public and served by the API Worker on both public hosts.
   { path: ['/robots.txt', '/sitemap.xml', '/llms.txt', '/llms-full.txt', '/auth.md', '/.well-known/api-catalog', '/.well-known/ai-catalog.json', '/.well-known/ucp', '/.well-known/cancoder.json', '/.well-known/mcp/server-card.json', '/.well-known/agent-skills/index.json', '/.well-known/agent-skills/cancoder-riding-lookup/SKILL.md', '/docs/agents.md'], methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
   { path: '/mcp', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
+  // RFC 9728 protected-resource metadata. Served from the resource server, which is what RFC 9728
+  // asks for and what the MCP plugin's own challenge points at — the plugin advertises this URL but
+  // does not serve it. `internal` matches the other discovery documents in this table.
+  { path: protectedResourceMetadataPaths(), methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleProtectedResourceMetadata },
   // Portal-owned (the portal entry decides with `ownerOf`).
   { path: '/', methods: ALL_METHODS, owner: 'portal', visibility: 'internal', auth: 'public', rateLimit: 'none' },
   { path: ['/login', '/signup'], methods: ALL_METHODS, owner: 'portal', visibility: 'internal', auth: 'public', rateLimit: 'none' },

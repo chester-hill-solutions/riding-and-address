@@ -89,11 +89,9 @@ export function createMcpServerCard(origin: string): unknown {
 /**
  * `/auth.md` — how an agent authenticates.
  *
- * An OAuth 2.1 authorization server now exists (the portal registers Better Auth's `jwt` and `mcp`
- * plugins), so the old claim that there is none had to go. What replaces it says exactly how far it
- * goes: the authorization server metadata is published, and the RFC 9728 protected-resource
- * metadata — the document an MCP client reads first — is not. Nothing here points at a document
- * that does not exist.
+ * It documents an OAuth 2.1 authorization server that exists, protected-resource metadata that is
+ * served, and access tokens that are accepted on `/mcp`. Every one of those was absent a day ago, and
+ * each claim here is one that can be checked by fetching the URL it names.
  */
 export function createAuthMd(origin: string): string {
   return `# auth.md
@@ -134,10 +132,20 @@ flow with PKCE (S256 only), binds access tokens to the MCP server as their audie
 publishes signing keys at \`${origin}/api/auth/jwks\`. Client registration is by pre-registration
 only: dynamic registration is not enabled, and there is no self-registration endpoint.
 
-**The RFC 9728 protected-resource metadata is not published yet.** That document is what an MCP
-client reads first, so a client cannot discover this server on its own today — it would have to be
-given the issuer directly. Read this as a statement of what exists, not as a discovery path. Server
-keys remain the supported way for an agent to authenticate.
+**The RFC 9728 protected-resource metadata is published** at
+\`${origin}/.well-known/oauth-protected-resource\` (and at the resource-path alias
+\`/.well-known/oauth-protected-resource/mcp\`, which is the URL the 401 challenge names). That is the
+document an MCP client reads first, so a client can now discover this server on its own: fetch the
+metadata, find the issuer, authorize, and send the resulting access token as
+\`Authorization: Bearer\`.
+
+**Access tokens are accepted on \`/mcp\`**, and are billed against the Customer the token was issued
+for. A Server key still works there and on the REST routes.
+
+The demo tier is unchanged: \`/mcp\` and \`/api/demo/*\` still answer without any credential. What is
+new is what happens when the demo allowance runs out — instead of a 429 that a client can only wait
+out, \`/mcp\` answers **401 with a \`WWW-Authenticate\` challenge** naming the resource metadata and
+the scope needed, which is an instruction the client can act on.
 
 ## Credential use
 

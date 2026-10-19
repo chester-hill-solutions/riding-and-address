@@ -67,23 +67,26 @@ emitted.** The portal registers Better Auth's `jwt` and `mcp` plugins, so:
 | --- | --- |
 | Authorization server metadata (RFC 8414) | **emitted**, at the issuer-relative path `/api/auth/.well-known/oauth-authorization-server` |
 | Signing keys (`jwks_uri`) | **emitted**, at `/api/auth/jwks` |
-| Protected resource metadata (RFC 9728) | **not emitted** |
+| Protected resource metadata (RFC 9728) | **emitted**, at `/.well-known/oauth-protected-resource` and the resource-path alias `/.well-known/oauth-protected-resource/mcp` |
 | Dynamic client registration | **not enabled**, deliberately — pre-registration only |
 | OIDC discovery (`/.well-known/openid-configuration`) | **not emitted** |
 
 The issuer is `${origin}/api/auth`, not the origin root, because Better Auth's base path is part of
-it. The resource-server half — the RFC 9728 document, and the `WWW-Authenticate` challenge on `/mcp`
-that points at it — is the part still missing, and **it is the document an MCP client reads first**.
-So a client cannot discover this server on its own today; it would have to be handed the issuer.
+it. The resource-server half is now served too: the RFC 9728 document is published, `/mcp` accepts an
+access token and bills it against the Customer the token was issued for, and a request that has
+exhausted the demo allowance is answered with a **401 `WWW-Authenticate` challenge** naming the
+metadata and the scope, rather than a 429 a client can only wait out. **A client can now discover
+this server on its own.**
 
 `/auth.md` *is* published and now says exactly that: the authorization server and its metadata URL,
 and that the protected-resource metadata is not published yet. It still documents the demo tier and
 the human-provisioned Server key.
 
 **The rule that got us here still holds: a discovery document must not point at something that is not
-there.** It is why PRM is absent rather than present-and-empty, and why `/auth.md` hedges rather than
-advertises a flow a client cannot complete. The remaining work — PRM, the `/mcp` challenge, and the
-consent screen's place in the flow — is in
+there.** It is why PRM was absent rather than present-and-empty, and why it was published only once
+access tokens were actually accepted on `/mcp` — the metadata is what sends a client to authorize, and
+advertising it before a token could be used would have recreated the production break in a new place.
+The design and what remains are in
 [`docs/plans/oauth-authorization-server.md`](../plans/oauth-authorization-server.md).
 
 Browser tool registration through **WebMCP** is also not implemented; it would need a real
