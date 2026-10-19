@@ -74,6 +74,7 @@ import {
 import { getAgentQuickstart, createCanCoderMcpHandler } from './mcp';
 import { LOOKUP_SCOPE as MCP_LOOKUP_SCOPE } from './mcp-scopes';
 import { unauthorizedMcpResponse } from './oauth-challenge';
+import { corsHeaders, NO_CORS_MARKER, withVaryOrigin, withoutCors } from './http-headers';
 import { resourceMetadataUrl } from './oauth-metadata';
 import { verifyOAuthAccessToken } from './oauth-token';
 import { createUcpProfile } from './ucp-profile';
@@ -633,8 +634,62 @@ async function discoveryResponse(routeCtx: RouteContext): Promise<Response | nul
   return null;
 }
 
+/**
+ * Apply the CORS policy to a response, at the one boundary every response passes through.
+ *
+ * **Why this is at the boundary and not in each error helper.** The success path had CORS
+ * headers and the error paths had none, so a browser caller could read a successful lookup and
+ * could not read the error that told it what had gone wrong. That is a per-call-site omission
+ * waiting to happen again, and there are dozens of call sites. One boundary is the only place
+ * the answer cannot drift.
+ *
+ * A response that already carries an `Access-Control-Allow-Origin` keeps it: the public
+ * discovery documents and the MCP surface have their own, stricter policies, and clobbering
+ * them with the general one would loosen them.
+ */
+function applyCorsPolicy(response: Response, env: Env, request: Request): Response {
+  const headers = new Headers(response.headers);
+  // A refusal on origin grounds opts out: echoing the rejected origin back would let the
+  // offending page read the response and would undercut the check that just failed.
+  const optedOut = headers.get(NO_CORS_MARKER) !== null;
+  headers.delete(NO_CORS_MARKER);
+  withVaryOrigin(headers);
+  if (!optedOut && !headers.has('access-control-allow-origin')) {
+    for (const [name, value] of Object.entries(corsHeaders(env, request.headers.get('Origin')))) {
+      headers.set(name, value);
+    }
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const response = await handleRequest(request, env, ctx);
+    return applyCorsPolicy(response, env, request);
+  },
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Initialize circuit breakers with environment (for Durable Object support)
+    // This is needed because scheduled events can fire before any HTTP request
+    if (!geocodingCircuitBreaker || !r2CircuitBreaker) {
+      initializeCircuitBreakers(env);
+    }
+
+    await handleScheduled(event, env, ctx);
+  }
+};
+
+/**
+ * The request, answered.
+ *
+ * A separate function from `fetch` so that `fetch` can be the one place the response's headers
+ * are decided. Everything below returns a response; `fetch` gives all of them the same CORS
+ * policy.
+ */
+async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const startTime = Date.now();
     const correlationId = getCorrelationId(request);
     incrementMetric('requestCount');
@@ -674,7 +729,11 @@ export default {
         }
         const origin = request.headers.get('Origin');
         if (origin && !localHost && origin.toLowerCase() !== requestOrigin) {
-          return badRequest('Origin not allowed', 403, 'ORIGIN_NOT_ALLOWED', correlationId);
+          // A refusal on origin grounds: no CORS headers, so the offending page cannot read why
+          // it was refused.
+          return withoutCors(
+            badRequest('Origin not allowed', 403, 'ORIGIN_NOT_ALLOWED', correlationId)
+          );
         }
 
         const mcpOrigin = routeCtx.url.origin;
@@ -808,17 +867,7 @@ export default {
       // reach clients. The real error is logged with the correlation ID for tracing.
       return internalErrorResponse(err, 'Unexpected error', correlationId, 'UNEXPECTED_ERROR');
     }
-  },
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    // Initialize circuit breakers with environment (for Durable Object support)
-    // This is needed because scheduled events can fire before any HTTP request
-    if (!geocodingCircuitBreaker || !r2CircuitBreaker) {
-      initializeCircuitBreakers(env);
-    }
-    
-    await handleScheduled(event, env, ctx);
-  }
-};
+}
 
 // Export Durable Objects
 export { QueueManagerDO };
