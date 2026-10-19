@@ -87,6 +87,13 @@ jobs:
         working-directory: portal
         run: bun run typecheck
 
+      # The portal's own unit tests. The runtime smoke below exercises the built Worker; these
+      # are the ones that can say what a single value is — the Stripe wire version, the price a
+      # customer is shown, the bucket an address is counted under.
+      - name: Portal unit tests
+        working-directory: portal
+        run: bun run test
+
       - name: Portal build + Worker dry-run
         working-directory: portal
         env:

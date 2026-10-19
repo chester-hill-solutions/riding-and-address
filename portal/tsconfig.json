@@ -1,6 +1,10 @@
 {
   "files": [],
-  "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.cloudflare.json" }],
+  "references": [
+    { "path": "./tsconfig.node.json" },
+    { "path": "./tsconfig.cloudflare.json" },
+    { "path": "./tsconfig.test.json" }
+  ],
   "compilerOptions": {
     // Off (unlike a from-scratch RR app) because tsconfig.cloudflare.json's program also spans
     // ../src/** (the API worker, imported by workers/app.ts), which predates and isn't written

@@ -103,6 +103,10 @@ for (const file of files) {
 const PRICE_RE = /\$0\.005\b/;
 const PRICE_ALLOW = [
   /^portal\/app\/lib\/pricing\.ts$/,
+  // A test may state the price it is asserting on. The root's own tests may too, for the
+  // same reason: the rule is about source that *charges*, not about source that *checks*.
+  /^portal\/test\//,
+  /^test\//,
   /^docs\//,
   /^scripts\/check-billing-invariants\.mjs$/,
   /^docs\/reviews\//,

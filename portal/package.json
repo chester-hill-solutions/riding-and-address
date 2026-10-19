@@ -16,7 +16,8 @@
     "db:migrate:staging": "wrangler d1 migrations apply PORTAL_DB --env staging --remote",
     "test:runtime": "node scripts/test-runtime.mjs",
     "db:status": "wrangler d1 migrations list PORTAL_DB --remote",
-    "db:status:staging": "wrangler d1 migrations list PORTAL_DB --env staging --remote"
+    "db:status:staging": "wrangler d1 migrations list PORTAL_DB --env staging --remote",
+    "test": "vitest run"
   },
   "packageManager": "bun@1.4.3",
   "dependencies": {
@@ -55,7 +56,8 @@
     "typescript": "^5.9.3",
     "vite": "^8.3.4",
     "vite-tsconfig-paths": "^6.1.1",
-    "wrangler": "^4.105.0"
+    "wrangler": "^4.105.0",
+    "vitest": "^5.0.5"
   },
   "overrides": {
     "sharp": "^0.35.5",
