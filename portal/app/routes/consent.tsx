@@ -2,6 +2,7 @@ import { Button } from '~/components/ui/button';
 import { Form, redirect } from 'react-router';
 import type { Route } from './+types/consent';
 import { getAuth, getSession } from '~/lib/auth.server';
+import { CONSENT_DURATION_COPY } from '~/lib/consent-copy';
 import { AuthLayout } from '~/components/AuthLayout';
 
 export function meta(): Route.MetaDescriptors {
@@ -161,10 +162,7 @@ export default function Consent({ loaderData, actionData }: Route.ComponentProps
         ))}
       </ul>
 
-      <p className="muted">
-        It will act as you until you revoke it. Revoking is in the portal, under settings, and takes
-        effect without the application's cooperation.
-      </p>
+      <p className="muted">{CONSENT_DURATION_COPY}</p>
 
       <Form method="post">
         <input type="hidden" name="oauth_query" value={oauthQuery} />
