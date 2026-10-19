@@ -22,6 +22,11 @@
     "app/**/.server/**/*",
     "app/**/.client/**/*",
     "workers/**/*",
-    "../src/**/*"
+    "../src/**/*",
+    // The one shared test helper the portal reaches for: the fake Durable Object namespace, which
+    // is the same class the API worker's tests use. Listed by file rather than by directory — the
+    // root's whole test tree is typechecked by the root's own project, under Node's DOM types, and
+    // pulling it in here would typecheck the same files twice under two different type worlds.
+    "../test/helpers/fake-usage-do.ts"
   ]
 }

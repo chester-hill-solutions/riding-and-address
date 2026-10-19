@@ -14,7 +14,17 @@ function fakeState() {
   const store = new Map<string, unknown>();
   const storage = {
     get: async (key: string) => store.get(key),
-    put: async (key: string, value: unknown) => { store.set(key, value); },
+    // Durable Object storage takes either one entry or a map of them. The upload jobs use the map
+    // form — a job row, the active-upload pointer and the credit balance are written together, and
+    // they have to be written together — so a fake that only understands the single form stores
+    // the whole map under one key, and every later read misses.
+    put: async (key: string | Record<string, unknown>, value?: unknown) => {
+      if (typeof key === 'object' && key !== null) {
+        for (const [entryKey, entryValue] of Object.entries(key)) store.set(entryKey, entryValue);
+        return;
+      }
+      store.set(key, value);
+    },
     delete: async (key: string) => { store.delete(key); },
     list: async ({ prefix }: { prefix?: string } = {}) => {
       const out = new Map<string, unknown>();
@@ -23,6 +33,12 @@ function fakeState() {
     },
     // The DO wraps its read-modify-write in a transaction; the fake runs it inline.
     transaction: async (fn: (txn: unknown) => Promise<unknown>) => fn(storage),
+    // The upload jobs set an alarm when they are created and when they are released. The fake
+    // storage has no scheduler, so the alarm is a no-op — but it has to *exist*, because the
+    // Durable Object code calls it inside the transaction, and a missing method is a TypeError
+    // that reads as "the upload cannot be created" rather than "the fake is incomplete".
+    setAlarm: async () => {},
+    deleteAlarm: async () => {},
   };
   return { storage, store } as unknown as DurableObjectState & { store: Map<string, unknown> };
 }
