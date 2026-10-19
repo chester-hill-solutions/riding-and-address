@@ -1,5 +1,9 @@
 import { auth as createBetterAuth, createSessionReader } from '@chester-hill-solutions/auth-d1';
-import { jwt, mcp } from '@chester-hill-solutions/auth-d1/plugins';
+import { jwt } from '@chester-hill-solutions/auth-d1/plugins';
+// `mcp` sits behind its own subpath: the adapter's OAuth plugins come from three `@better-auth/*`
+// packages that are optional peers, so re-exporting them from `./plugins` would make them mandatory
+// for every consumer. See portal/vendor/README.md.
+import { mcp } from '@chester-hill-solutions/auth-d1/plugins/mcp';
 import { cimd } from '@better-auth/cimd';
 import { fetchClientMetadataResource } from '../../../src/cimd-fetch';
 import { ensureCustomerForUser, getCustomerContext } from '~/lib/customer.server';
