@@ -18,7 +18,10 @@
     "module": "ES2022",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "baseUrl": ".",
+    // No baseUrl. TypeScript 6 deprecates it and TypeScript 7 stops honouring it, and
+    // `paths` has been resolved relative to the file that declares them since 5.0 —
+    // every entry below is already relative to this file's own directory, which is
+    // what baseUrl: "." meant.
     "rootDirs": [".", "./.react-router/types"],
     "paths": {
       "~/*": ["./app/*"],
@@ -26,7 +29,22 @@
       // otherwise resolve drizzle-orm from their own workspace node_modules,
       // producing structurally-identical but nominally-distinct types.
       "drizzle-orm": ["./node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["./node_modules/drizzle-orm/*"]
+      "drizzle-orm/*": ["./node_modules/drizzle-orm/*"],
+      // The same for the vendored CHS auth packages. `auth-d1` carries its own nested
+      // copy of `auth`, and a second copy of a type is a second type: the inferred
+      // return type of `getSession` could not be named in the emitted declarations.
+      //
+      // This was load-bearing by accident. `baseUrl: "."` made TypeScript look in the
+      // project directory before walking up from the importing file, so the top-level
+      // copy won and there was one identity. TypeScript 6 deprecates baseUrl and
+      // TypeScript 7 stops honouring it, so the property is stated here instead of
+      // inherited from a lookup order.
+      "@chester-hill-solutions/auth": ["./vendor/@chester-hill-solutions/auth"],
+      "@chester-hill-solutions/auth/*": ["./vendor/@chester-hill-solutions/auth/*"],
+      "@chester-hill-solutions/auth-d1": ["./vendor/@chester-hill-solutions/auth-d1"],
+      "@chester-hill-solutions/auth-d1/*": ["./vendor/@chester-hill-solutions/auth-d1/*"],
+      "@chester-hill-solutions/auth-react-router": ["./vendor/@chester-hill-solutions/auth-react-router"],
+      "@chester-hill-solutions/auth-react-router/*": ["./vendor/@chester-hill-solutions/auth-react-router/*"]
     },
     "esModuleInterop": true,
     "resolveJsonModule": true
