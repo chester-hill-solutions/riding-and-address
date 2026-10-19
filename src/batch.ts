@@ -349,12 +349,13 @@ export async function handleBatchRoute(ctx: RouteContext): Promise<Response> {
 /**
  * `GET /batch/:id` — the status of one batch job.
  *
- * The id is the segment after `/batch/`, which is what the legacy chain read. Reading it the same
- * way keeps the answer the same for every path the old branch answered.
+ * The id is the parameter the route table matched, so the handler does not re-parse the pathname:
+ * the table compiled the pattern once and extracted it, and reading it twice would be two places
+ * that have to agree about what an id is.
  */
 export async function handleBatchStatusRoute(ctx: RouteContext): Promise<Response> {
   const { env, correlationId } = ctx;
-  const batchId = ctx.url.pathname.split('/')[2] ?? '';
+  const batchId = ctx.params.id ?? '';
   try {
     const status = await getBatchStatus(env, batchId);
     return new Response(JSON.stringify(status), { headers: jsonHeaders(ctx) });
@@ -438,6 +439,9 @@ export async function handleQueueStatusRoute(ctx: RouteContext): Promise<Respons
  */
 export async function handleQueueProcessRoute(ctx: RouteContext): Promise<Response> {
   const { request, env, correlationId } = ctx;
+  if (request.method !== 'POST') {
+    return badRequest('Only POST supported for queue processing', 405);
+  }
   try {
     const body = (await request.json()) as { maxJobs?: number };
     const result = await processQueueJobs(env, body.maxJobs || 10);

@@ -45,8 +45,15 @@ import {
   handleQueueStatsRoute,
 } from './batch';
 import {
-  handleDatabaseRoute,
-  handleBoundariesRoute,
+  handleDatabaseInit,
+  handleDatabaseSync,
+  handleDatabaseStats,
+  handleDatabaseQuery,
+  handleDatabaseNotFound,
+  handleBoundariesLookup,
+  handleBoundariesAll,
+  handleBoundariesConfig,
+  handleBoundariesNotFound,
   handleGeocodingBatchStatus,
   handleCacheWarm,
 } from './spatial-handlers';
@@ -126,31 +133,36 @@ export type RateLimitBucket =
 
 export type RouteHandler = (ctx: RouteContext) => Promise<Response> | Response;
 
-/**
- * Sentinel marking an entry that has no handler.
- *
- * **No entry carries it any more.** The strangler migration is finished: every route has a real
- * handler and the Worker's legacy guard-chain is deleted.
- *
- * It is kept because a table entry without a handler is a mistake someone can still make, and
- * this is what the mistake looks like — the dispatcher answers it with a 404 rather than
- * reaching for a fallback that no longer exists.
- */
-export const legacy = Symbol('legacy');
-export type RouteHandlerOrLegacy = RouteHandler | typeof legacy;
-
 export type RouteEntry = {
   path: string | string[];
+  /**
+   * The methods this entry is *for*.
+   *
+   * A route that implements one method and answers 405 for the others declares `ALL_METHODS` and
+   * narrows inside its handler — the shape `/webhooks` uses. A route that implements several
+   * methods declares them all. Either way the table is the only place that says which methods a
+   * path serves, and the handler never re-derives it from the request.
+   */
   methods: readonly string[];
   owner: RouteOwner;
   visibility: RouteVisibility;
   auth: RouteAuth;
   rateLimit: RateLimitBucket;
-  /** Only API entries carry a handler. */
-  handler?: RouteHandlerOrLegacy;
+  /** Only API entries carry a handler; a portal-owned entry is answered by the portal. */
+  handler?: RouteHandler;
 };
 
-/** Routes above never inspect the method themselves, so they accept every one. */
+/**
+ * Every method.
+ *
+ * Two uses, and the difference matters:
+ *
+ * - A route that **implements** several methods — `/api/quote` answers a GET and a POST, and
+ *   `/webhooks` dispatches internally. The handler branches on the method.
+ * - A route that **implements one** method and answers 405 for the rest. It claims the path for
+ *   every method so the 405 is a statement about the method rather than a 404 that claims the
+ *   path does not exist.
+ */
 export const ALL_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
 
 const DEMO_PATHS = [
@@ -225,11 +237,10 @@ export const ROUTES: readonly RouteEntry[] = [
   // Batch / queue — ported.
   { path: '/batch', methods: ['POST'], owner: 'api', visibility: 'public', auth: 'batch', rateLimit: 'batch', handler: handleBatchRoute },
   { path: '/batch/:id', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'batch', rateLimit: 'batch', handler: handleBatchStatusRoute },
-  { path: '/batch/*', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'batch', rateLimit: 'batch', handler: handleBatchStatusRoute },
-  { path: '/api/queue/submit', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueSubmitRoute },
-  { path: '/api/queue/status', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueStatusRoute },
-  { path: '/api/queue/process', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueProcessRoute },
-  { path: '/api/queue/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueStatsRoute },
+  { path: '/api/queue/submit', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueSubmitRoute },
+  { path: '/api/queue/status', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueStatusRoute },
+  { path: '/api/queue/process', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueProcessRoute },
+  { path: '/api/queue/stats', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueStatsRoute },
   // Anything else under /api/queue falls through to the /api lookup catch-all, so its real gate is
   // the lookup key, not admin.
   { path: '/api/queue/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'key', rateLimit: 'lookup', handler: handleLookupRequest },
@@ -238,19 +249,19 @@ export const ROUTES: readonly RouteEntry[] = [
   { path: '/queue/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleLookupRequest },
 
   // Operator surfaces — the spatial database and boundary reads. Ported.
-  { path: '/api/database/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleDatabaseRoute },
-  { path: '/api/database/sync', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleDatabaseRoute },
-  { path: '/api/database/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleDatabaseRoute },
-  { path: '/api/database/query', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleDatabaseRoute },
+  { path: '/api/database/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleDatabaseInit },
+  { path: '/api/database/sync', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleDatabaseSync },
+  { path: '/api/database/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleDatabaseStats },
+  { path: '/api/database/query', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleDatabaseQuery },
   // Unknown database sub-paths are a 404 with no credential — not the admin gate the old table
   // implied. The specific admin entries above carry their own declaration.
-  { path: '/api/database/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleDatabaseRoute },
-  { path: '/api/boundaries/lookup', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleBoundariesRoute },
-  { path: '/api/boundaries/all', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleBoundariesRoute },
-  { path: '/api/boundaries/config', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleBoundariesRoute },
-  { path: '/api/boundaries/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleBoundariesRoute },
-  { path: '/api/geocoding/batch/status', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleGeocodingBatchStatus },
-  { path: '/api/cache/warm', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleCacheWarm },
+  { path: '/api/database/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleDatabaseNotFound },
+  { path: '/api/boundaries/lookup', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleBoundariesLookup },
+  { path: '/api/boundaries/all', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleBoundariesAll },
+  { path: '/api/boundaries/config', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleBoundariesConfig },
+  { path: '/api/boundaries/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleBoundariesNotFound },
+  { path: '/api/geocoding/batch/status', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleGeocodingBatchStatus },
+  { path: '/api/cache/warm', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleCacheWarm },
   // `/api/oda/*` is not a surface: only the two admin entries above exist, and any other
   // `/api/oda/…` path is served by the `/api/*` lookup catch-all (key auth), not admin.
   { path: '/admin/projection/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'projection', rateLimit: 'none', handler: handleProjectionRequest },
@@ -659,13 +670,18 @@ export async function dispatch(ctx: RouteContext): Promise<Response> {
   }
 
   // Shallow copy: the prelude fills auth/rate-limit outcome without mutating the caller's context.
-  const routeCtx: RouteContext = { ...ctx };
+  // The path parameters the table matched ride along, so a handler reads `ctx.params.id` rather
+  // than re-parsing the pathname.
+  const routeCtx: RouteContext = { ...ctx, params: match.params };
 
   const denial = await runPrelude(match.entry, routeCtx);
   if (denial) return denial;
 
   const handler = match.entry.handler;
-  if (!handler || handler === legacy) {
+  if (!handler) {
+    // Only a portal-owned entry has no handler, and those never reach the API dispatcher. An
+    // API entry without one is a mistake, and the answer for it is the same 404 as an unknown
+    // path — there is no second dispatch path to fall through to any more.
     return badRequest('Not found', 404, 'NOT_FOUND', routeCtx.correlationId);
   }
   return handler(routeCtx);

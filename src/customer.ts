@@ -2,7 +2,15 @@ import { z } from 'zod';
 import { Env } from './types';
 import { readJsonEntry, writeJsonEntry, deleteEntry } from './kv-cache';
 
-export type CustomerPlan = 'free' | 'metered' | 'enterprise';
+/**
+ * The plans a Customer can be on.
+ *
+ * One definition, and the TypeScript type is derived from it. It used to be a hand-written union
+ * beside a zod enum — two places that had to agree about which plans exist, and the projection's
+ * own copy of the enum was a third.
+ */
+export const CustomerPlanSchema = z.enum(['free', 'metered', 'enterprise']);
+export type CustomerPlan = z.infer<typeof CustomerPlanSchema>;
 
 /**
  * Shape check for a Customer read out of KV. `id`, `plan` and `fuseLimit` are required because the
@@ -11,7 +19,7 @@ export type CustomerPlan = 'free' | 'metered' | 'enterprise';
  */
 export const CustomerRecordSchema = z.object({
   id: z.string(),
-  plan: z.enum(['free', 'metered', 'enterprise']),
+  plan: CustomerPlanSchema,
   fuseLimit: z.number(),
   fuseSoftWarn: z.boolean().optional(),
   batchEnabled: z.boolean().optional(),
