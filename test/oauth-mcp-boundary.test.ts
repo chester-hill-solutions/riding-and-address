@@ -4,7 +4,7 @@ import { SignJWT, exportJWK, generateKeyPair } from 'jose';
 import { clearApiKeyCache, putServerKey } from '../src/api-keys';
 import { geoCacheLRU, spatialIndexCacheLRU } from '../src/cache';
 import { clearCustomerCache, putCustomer, type CustomerPlan } from '../src/customer';
-import { clearJwksCache } from '../src/oauth-token';
+import { clearJwksCache, clearSessionVerdictCache } from '../src/oauth-token';
 import { fakeUsageNamespace } from './helpers/fake-usage-do';
 import { createLookupTestEnv, TORONTO_LAT, TORONTO_LON } from './helpers/lookup-test-env';
 import type { Env } from '../src/types';
@@ -49,6 +49,7 @@ beforeEach(() => {
   clearApiKeyCache();
   clearCustomerCache();
   clearJwksCache();
+  clearSessionVerdictCache();
   // The dataset caches are module-level, so a lookup in one test can otherwise answer from an
   // index another test's environment built. The integration test clears them for the same reason.
   geoCacheLRU.clear();
@@ -80,7 +81,13 @@ function memoryKv(): KVNamespace {
 }
 
 async function makeEnv(
-  options: { plan?: CustomerPlan; fuseLimit?: number; stripe?: boolean } = {}
+  options: {
+    plan?: CustomerPlan;
+    fuseLimit?: number;
+    stripe?: boolean;
+    /** Session rows the portal database holds, keyed by session id. */
+    sessions?: Map<string, { expires_at: number }>;
+  } = {}
 ): Promise<Env> {
   const env = createLookupTestEnv() as Env;
   env.API_KEYS = memoryKv();
@@ -90,10 +97,23 @@ async function makeEnv(
   env.DEMO_RATE_LIMIT = '10000';
   env.FREE_MONTHLY_ALLOWANCE = '1000';
   if (options.stripe) env.STRIPE_SECRET_KEY = 'sk_test_meter';
+  const sessions = options.sessions ?? new Map<string, { expires_at: number }>();
   env.PORTAL_DB = {
-    prepare: () => ({
-      first: async () => ({ id: 'test', public_key: JSON.stringify(publicJwk), alg: 'RS256' }),
-    }),
+    prepare: (sql: string) => {
+      // Two queries reach this database: the signing key, and the session an access token was
+      // minted for. They answer differently, so the stub has to tell them apart.
+      if (sql.includes('FROM session')) {
+        return {
+          bind: (...params: unknown[]) => ({
+            first: async () => {
+              const row = sessions.get(String(params[0]));
+              return row ? { expires_at: row.expires_at } : null;
+            },
+          }),
+        };
+      }
+      return { first: async () => ({ id: 'test', public_key: JSON.stringify(publicJwk), alg: 'RS256' }) };
+    },
   } as unknown as D1Database;
 
   await putCustomer(env, {
@@ -105,9 +125,10 @@ async function makeEnv(
   return env;
 }
 
-function token(overrides: { scope?: string | null } = {}): Promise<string> {
+function token(overrides: { scope?: string | null; sid?: string } = {}): Promise<string> {
   const claims: Record<string, unknown> = { customer_id: CUSTOMER_ID, client_id: 'client_test' };
   if (overrides.scope !== null) claims.scope = overrides.scope ?? 'ridings:lookup';
+  if (overrides.sid) claims.sid = overrides.sid;
   return new SignJWT(claims)
     .setProtectedHeader({ alg: 'RS256', kid: 'test' })
     .setIssuer(ISSUER)
@@ -349,5 +370,45 @@ describe('the OAuth path enforces the token\'s scopes (#206)', () => {
     );
     expect(response.status).toBe(200);
     expect(parseRpc(await response.text()).result?.structuredContent?.ok).toBe(true);
+  });
+});
+
+/**
+ * Session liveness at the Worker boundary (ADR-0011).
+ *
+ * The unit tests in `test/oauth-token.test.ts` say the verifier consults the session. These say the
+ * *Worker* does, and — more importantly — that a caller cannot tell a dead session from a bad
+ * signature. A refusal that named which one it was would be an oracle: it would tell a prober
+ * which tokens are genuine, and how many of the accounts they can walk.
+ */
+describe('the OAuth path honours the session an access token was minted for', () => {
+  it('runs the lookup when the session is alive', async () => {
+    const env = await makeEnv({
+      sessions: new Map([['sess_live', { expires_at: Date.now() + 60 * 60 * 1000 }]]),
+    });
+    const { response } = await callMcp(env, { authorization: `Bearer ${await token({ sid: 'sess_live' })}` });
+    expect(response.status).toBe(200);
+    expect(parseRpc(await response.text()).result?.structuredContent?.ok).toBe(true);
+  });
+
+  it('refuses a token whose session has ended, with the standard challenge', async () => {
+    const env = await makeEnv({ sessions: new Map() });
+    const { response } = await callMcp(env, { authorization: `Bearer ${await token({ sid: 'sess_gone' })}` });
+    expect(response.status).toBe(401);
+    expect(response.headers.get('www-authenticate')).toContain(`resource_metadata="${PRM_URL}"`);
+  });
+
+  it('answers a dead session exactly as it answers a bad signature', async () => {
+    // The refusal body and headers must be identical. If they differ, the difference is a probe.
+    const env = await makeEnv({ sessions: new Map() });
+
+    const deadSession = await callMcp(env, { authorization: `Bearer ${await token({ sid: 'sess_gone' })}` });
+    const badSignature = await callMcp(env, { authorization: 'Bearer not.a.jwt' });
+
+    expect(deadSession.response.status).toBe(badSignature.response.status);
+    expect(deadSession.response.headers.get('www-authenticate')).toBe(
+      badSignature.response.headers.get('www-authenticate')
+    );
+    expect(await deadSession.response.text()).toBe(await badSignature.response.text());
   });
 });

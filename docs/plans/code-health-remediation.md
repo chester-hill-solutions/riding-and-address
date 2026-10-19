@@ -480,9 +480,9 @@ as the witness. Do not batch.
 
 ### 5.1 — Rotate the committed demo browser key
 
-`portal/wrangler.jsonc:157` commits a production-bound browser key, `pk_live_…`,
-bound to the **production** `API_KEYS` KV namespace (`2d0152b0958c48fab4a98b3046e0c08e`; staging
-uses a different id). Introduced in `789b31e` and never removed.
+`portal/wrangler.jsonc:157` commits a production-bound browser key, `pk_live_…`, bound to the
+**production** `API_KEYS` KV namespace (`2d0152b0…`; staging uses a different id). Introduced in
+`789b31e` and never removed.
 
 Both the wrangler comment and `src/api-keys.ts:6-8` state that browser keys are **public
 identifiers by design** — origin-allowlisted with a daily cap. So this is **not** a secret leak and
