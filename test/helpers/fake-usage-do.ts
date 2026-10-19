@@ -49,17 +49,6 @@ export function newUsageDO(): ApiKeyUsageDO {
 }
 
 /**
- * A DO instance with in-memory storage, and the storage itself.
- *
- * The store is handed back so a test can assert on what a sweep removed — which is the only way
- * to say "the sweep deleted the old rows and kept the recent ones" rather than "the sweep ran".
- */
-export function newUsageDOWithStore(): { instance: ApiKeyUsageDO; store: Map<string, unknown> } {
-  const state = fakeState();
-  return { instance: new ApiKeyUsageDO(state, {} as Env), store: state.store };
-}
-
-/**
  * A DO instance whose housekeeping sweeps always run.
  *
  * The sweeps are guarded by `shouldSweep()`, which is true about one time in a hundred — the right

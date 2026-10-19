@@ -78,7 +78,7 @@
       "branches": 100
     },
     "src/dataset-cache.ts": {
-      "statements": 90.41,
+      "statements": 95.65,
       "branches": 83.33
     },
     "src/dataset-source.ts": {
@@ -130,8 +130,8 @@
       "branches": 51.89
     },
     "src/geometry.ts": {
-      "statements": 45.79,
-      "branches": 57.81
+      "statements": 95.31,
+      "branches": 89.58
     },
     "src/http-headers.ts": {
       "statements": 95.65,
@@ -314,8 +314,8 @@
       "branches": 56.25
     },
     "src/spatial.ts": {
-      "statements": 66.03,
-      "branches": 52.14
+      "statements": 64.42,
+      "branches": 50.31
     },
     "src/time.ts": {
       "statements": 100,

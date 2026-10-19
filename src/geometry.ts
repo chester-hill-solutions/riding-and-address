@@ -125,115 +125,44 @@ export function ringContains(point: number[], ring: number[][]): boolean {
 }
 
 // Geometry simplification
-export function simplifyGeometry(geometry: GeoJSONGeometry, tolerance: number, maxVertices: number): GeoJSONGeometry {
-  // Handle Point geometry (no simplification needed)
-  if (geometry.type === 'Point') {
-    return geometry;
-  }
-  
-  // Handle LineString geometry
-  if (geometry.type === 'LineString') {
-    return {
-      type: 'LineString',
-      coordinates: simplifyLineString(geometry.coordinates as number[][], tolerance, maxVertices)
-    };
-  }
-  
-  // Handle Polygon geometry
-  if (geometry.type === 'Polygon') {
-    return {
-      type: 'Polygon',
-      coordinates: (geometry.coordinates as number[][][]).map((ring: number[][]) => 
-        simplifyLineString(ring, tolerance, maxVertices)
-      )
-    };
-  }
-  
-  // Handle MultiPolygon geometry
-  if (geometry.type === 'MultiPolygon') {
-    return {
-      type: 'MultiPolygon',
-      coordinates: (geometry.coordinates as number[][][][]).map((polygon: number[][][]) =>
-        polygon.map((ring: number[][]) => 
-          simplifyLineString(ring, tolerance, maxVertices)
-        )
-      )
-    };
-  }
-  
-  // Return original geometry if type is not supported
-  return geometry;
-}
 
+/**
+ * Line simplification, by decimation.
+ *
+ * **This is the simplifier the spatial path uses, and it is now the only one.**
+ *
+ * There were two functions with this name and this signature in the codebase — one here (a real
+ * Douglas-Peucker that honours `tolerance`) and one in `spatial.ts` (a decimation that ignores
+ * it). Only the second was ever called, and only the second was tested; the first was dead code
+ * that happened to be the better algorithm.
+ *
+ * The live behaviour is kept: the spatial path simplifies polygon rings with a tolerance of 0 and
+ * relies on `maxVertices`, which decimation honours. Swapping in the other algorithm would
+ * change the shape of every simplified boundary, and that is a change worth measuring rather than
+ * folding into a refactor.
+ */
 export function simplifyLineString(coordinates: number[][], tolerance: number, maxVertices: number): number[][] {
   if (coordinates.length <= 2) {
     return coordinates;
   }
-  
-  // Simple Douglas-Peucker algorithm implementation
+
+  // If we're already under the max vertices, return as is
+  if (coordinates.length <= maxVertices) {
+    return coordinates;
+  }
+
+  // Simple decimation for now - take every nth point
+  const step = Math.ceil(coordinates.length / maxVertices);
   const simplified: number[][] = [];
-  const start = coordinates[0];
-  const end = coordinates[coordinates.length - 1];
-  
-  simplified.push(start);
-  
-  let maxDistance = 0;
-  let maxIndex = 0;
-  
-  for (let i = 1; i < coordinates.length - 1; i++) {
-    const distance = pointToLineDistance(coordinates[i], start, end);
-    if (distance > maxDistance) {
-      maxDistance = distance;
-      maxIndex = i;
-    }
+
+  for (let i = 0; i < coordinates.length; i += step) {
+    simplified.push(coordinates[i]);
   }
-  
-  if (maxDistance > tolerance && simplified.length < maxVertices) {
-    const left = coordinates.slice(0, maxIndex + 1);
-    const right = coordinates.slice(maxIndex);
-    
-    const leftSimplified = simplifyLineString(left, tolerance, maxVertices);
-    const rightSimplified = simplifyLineString(right, tolerance, maxVertices);
-    
-    simplified.push(...leftSimplified.slice(1, -1));
-    simplified.push(...rightSimplified.slice(1));
-  } else {
-    simplified.push(end);
+
+  // Always include the last point
+  if (simplified[simplified.length - 1] !== coordinates[coordinates.length - 1]) {
+    simplified.push(coordinates[coordinates.length - 1]);
   }
-  
+
   return simplified;
 }
-
-function pointToLineDistance(point: number[], lineStart: number[], lineEnd: number[]): number {
-  const A = point[0] - lineStart[0];
-  const B = point[1] - lineStart[1];
-  const C = lineEnd[0] - lineStart[0];
-  const D = lineEnd[1] - lineStart[1];
-  
-  const dot = A * C + B * D;
-  const lenSq = C * C + D * D;
-  
-  if (lenSq === 0) {
-    return Math.sqrt(A * A + B * B);
-  }
-  
-  const param = dot / lenSq;
-  
-  let xx, yy;
-  if (param < 0) {
-    xx = lineStart[0];
-    yy = lineStart[1];
-  } else if (param > 1) {
-    xx = lineEnd[0];
-    yy = lineEnd[1];
-  } else {
-    xx = lineStart[0] + param * C;
-    yy = lineStart[1] + param * D;
-  }
-  
-  const dx = point[0] - xx;
-  const dy = point[1] - yy;
-  
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
