@@ -514,9 +514,14 @@ Add this remote MCP server URL to your MCP client:
 The server exposes three tools. \`lookup_riding\` maps a location to a riding — read-only, and free
 without a key on the demo tier (${DEFAULT_DEMO_RATE_LIMIT} requests per minute per IP). \`quote_lookup\`
 and \`quote_area\` return free, expiring offers for a paid lookup or an area search, without consuming
-usage. For metered production calls, create a CanCoder Server API key and configure your MCP client
-to send it as \`Authorization: Bearer <server-key>\`. Never paste a live key into a prompt or a
-public conversation.
+usage.
+
+For metered production calls there are two routes. Create a CanCoder Server API key and send it as
+\`Authorization: Bearer <server-key>\` — never paste a live key into a prompt or a public
+conversation. Or use the OAuth flow: this server is an OAuth 2.1 authorization server, so a client
+can get a **scoped** access token instead of a key, with a person approving it once at
+\`${publicOrigin}/consent\`. Start at \`${publicOrigin}/auth.md\` — it has the endpoints, how a
+client identifies itself, and the scopes.
 
 ## Example requests
 
