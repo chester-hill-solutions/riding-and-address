@@ -1,5 +1,7 @@
 import { auth as createBetterAuth, createSessionReader } from '@chester-hill-solutions/auth-d1';
 import { jwt, mcp } from '@chester-hill-solutions/auth-d1/plugins';
+import { cimd } from '@better-auth/cimd';
+import { fetchClientMetadataResource } from '../../../src/cimd-fetch';
 import { ensureCustomerForUser, getCustomerContext } from '~/lib/customer.server';
 import { MCP_SCOPES } from '../../../src/mcp-scopes';
 import { drizzleAdapter } from '@better-auth/drizzle-adapter';
@@ -64,6 +66,18 @@ function buildAuth() {
           }
           return context ? { customer_id: context.billing.customerId } : {};
         },
+      }),
+      // Client ID Metadata Documents — the registration path a real MCP client uses, since it has no
+      // session here to register through and DCR is deliberately off.
+      //
+      // The transport is ours because the address checks are the application's responsibility; see
+      // `src/cimd-fetch.ts` and ADR 0010 for what it enforces and the one requirement it cannot.
+      // `mcp-2026-07-28` is the profile MCP pins, and it is stricter than draft-02: it requires
+      // `client_name` and `redirect_uris`, because a consent screen with neither cannot tell a user
+      // what they are approving.
+      cimd({
+        fetchClientMetadataResource,
+        metadataProfile: 'mcp-2026-07-28',
       }),
     ],
     emailVerification: {
