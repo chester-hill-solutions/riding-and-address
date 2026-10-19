@@ -250,13 +250,24 @@ describe('paid rail rate-limit bucket', () => {
 });
 
 describe('declared policy is enforced', () => {
+  /**
+   * The queue submit route is the example here because it is still a legacy entry, and the point
+   * of these three is the legacy ones: ~30 entries used to declare `auth`/`rateLimit` that nothing
+   * read, because `runPrelude` returned early for `handler: legacy`.
+   *
+   * The ported entries are covered by the same property — the prelude runs for every entry — and
+   * the ported admin surfaces (`/api/cache/warm`, `/api/database/init`) are asserted in
+   * `test/ported-oda-routes.test.ts`.
+   */
+  const LEGACY_ADMIN_PATH = '/api/queue/submit';
+
   it('401s an admin-only legacy entry without credentials (fail closed)', async () => {
-    const entry = entryWithPath('/api/cache/warm');
+    const entry = entryWithPath(LEGACY_ADMIN_PATH);
     expect(entry.handler).toBe(legacy);
 
     const ctx = contextFor(
       {} as Env,
-      new Request('https://lookup.test/api/cache/warm', { method: 'POST' })
+      new Request('https://lookup.test/api/queue/submit', { method: 'POST' })
     );
     const denial = await runPrelude(entry, ctx);
 
@@ -265,9 +276,9 @@ describe('declared policy is enforced', () => {
   });
 
   it('admits an admin-only legacy entry with the operator credential', async () => {
-    const entry = entryWithPath('/api/cache/warm');
+    const entry = entryWithPath(LEGACY_ADMIN_PATH);
     const env = { BASIC_AUTH: 'admin:secret' } as Env;
-    const request = new Request('https://lookup.test/api/cache/warm', {
+    const request = new Request('https://lookup.test/api/queue/submit', {
       method: 'POST',
       headers: { Authorization: `Basic ${btoa('admin:secret')}` },
     });
@@ -278,8 +289,25 @@ describe('declared policy is enforced', () => {
   });
 
   it('gates that legacy entry through the real worker + dispatch path', async () => {
-    const response = await fetchLookup(createLookupTestEnv(), '/api/cache/warm', { method: 'POST' });
+    const response = await fetchLookup(createLookupTestEnv(), '/api/queue/submit', { method: 'POST' });
     expect(response.status).toBe(401);
+  });
+
+  it('fails closed for a ported admin surface too', async () => {
+    // The prelude runs for every entry, legacy or ported, so a ported admin surface is gated the
+    // same way. This is the property that matters; the legacy assertion above is about the class
+    // of entry that used to bypass it.
+    const entry = entryWithPath('/api/cache/warm');
+    expect(entry.handler).not.toBe(legacy);
+
+    const ctx = contextFor(
+      {} as Env,
+      new Request('https://lookup.test/api/cache/warm', { method: 'POST' })
+    );
+    const denial = await runPrelude(entry, ctx);
+
+    expect(denial?.status).toBe(401);
+    expect(ctx.isAdmin).toBe(false);
   });
 
   it('applies the search bucket exactly once per request', async () => {

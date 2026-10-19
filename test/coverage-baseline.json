@@ -305,9 +305,13 @@
       "statements": 100,
       "branches": 100
     },
+    "src/spatial-handlers.ts": {
+      "statements": 63.29,
+      "branches": 66.66
+    },
     "src/spatial.ts": {
-      "statements": 64.9,
-      "branches": 50.3
+      "statements": 66.03,
+      "branches": 52.14
     },
     "src/time.ts": {
       "statements": 100,
@@ -350,8 +354,8 @@
       "branches": 26
     },
     "src/worker.ts": {
-      "statements": 43.43,
-      "branches": 46.28
+      "statements": 56.09,
+      "branches": 63.81
     },
     "src/x402-receipts.ts": {
       "statements": 97.61,

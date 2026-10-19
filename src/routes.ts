@@ -30,6 +30,12 @@ import { getAllProvincialPaths } from './datasets';
 import { handleDemoRoute, handleLookupRequest } from './lookup-handler';
 import { handleQuoteRequest, handleAcceptRequest, handleAreaRequest } from './offers';
 import { handleBatchRoute, handleBatchStatusRoute } from './batch';
+import {
+  handleDatabaseRoute,
+  handleBoundariesRoute,
+  handleGeocodingBatchStatus,
+  handleCacheWarm,
+} from './spatial-handlers';
 import { handleReceiptsRequest } from './x402-receipts';
 import { handleReconcileRequest } from './x402-reconcile';
 import { handleOdaInit, handleOdaStats, handleGeocodeRoute, handleReverseRoute, handleNormalizeAddressRoute, handleSuggestRoute } from './oda-handlers';
@@ -208,20 +214,20 @@ export const ROUTES: readonly RouteEntry[] = [
   // Unclaimed: the legacy chain answers 404 with no credential, so the catch-all is public.
   { path: '/queue/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
 
-  // Operator surfaces — declared, still legacy.
-  { path: '/api/database/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/api/database/sync', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/api/database/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/api/database/query', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
+  // Operator surfaces — the spatial database and boundary reads. Ported.
+  { path: '/api/database/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleDatabaseRoute },
+  { path: '/api/database/sync', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleDatabaseRoute },
+  { path: '/api/database/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleDatabaseRoute },
+  { path: '/api/database/query', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleDatabaseRoute },
   // Unknown database sub-paths are a 404 with no credential — not the admin gate the old table
   // implied. The specific admin entries above carry their own declaration.
-  { path: '/api/database/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/api/boundaries/lookup', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/api/boundaries/all', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/api/boundaries/config', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/api/boundaries/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/api/geocoding/batch/status', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/api/cache/warm', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
+  { path: '/api/database/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleDatabaseRoute },
+  { path: '/api/boundaries/lookup', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleBoundariesRoute },
+  { path: '/api/boundaries/all', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleBoundariesRoute },
+  { path: '/api/boundaries/config', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleBoundariesRoute },
+  { path: '/api/boundaries/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleBoundariesRoute },
+  { path: '/api/geocoding/batch/status', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleGeocodingBatchStatus },
+  { path: '/api/cache/warm', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleCacheWarm },
   // `/api/oda/*` is not a surface: only the two admin entries above exist, and any other
   // `/api/oda/…` path is served by the `/api/*` lookup catch-all (key auth), not admin.
   { path: '/admin/projection/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'projection', rateLimit: 'none', handler: legacy },
