@@ -31,7 +31,7 @@ import { handleDemoRoute, handleLookupRequest } from './lookup-handler';
 import { handleQuoteRequest, handleAcceptRequest, handleAreaRequest } from './offers';
 import { handleReceiptsRequest } from './x402-receipts';
 import { handleReconcileRequest } from './x402-reconcile';
-import { handleOdaInit, handleOdaStats } from './oda-handlers';
+import { handleOdaInit, handleOdaStats, handleGeocodeRoute, handleReverseRoute, handleNormalizeAddressRoute, handleSuggestRoute } from './oda-handlers';
 import { handleProtectedResourceMetadata, protectedResourceMetadataPaths } from './oauth-metadata';
 import { checkProjectionAuth, projectionUnauthorizedResponse } from './projection-handlers';
 import type { RouteContext } from './route-context';
@@ -180,12 +180,15 @@ export const ROUTES: readonly RouteEntry[] = [
   // Run x402 reconciliation on demand: confirm stored settlements against the chain.
   { path: '/api/x402/reconcile', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleReconcileRequest },
 
-  // ODA geocoding surface — geocode/reverse/normalize stay legacy (see billing-invariants gate);
-  // the admin pair is ported.
-  { path: '/api/geocode', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: legacy },
-  { path: '/api/reverse', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: legacy },
-  { path: '/api/normalize-address', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: legacy },
-  { path: '/api/search', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'search', rateLimit: 'search', handler: legacy },
+  // ODA geocoding surface — ported. The three geocode routes are intentionally NOT billed:
+  // only 200 lookup/search responses are Billable units today. The billing-invariants gate
+  // enforces that, and it now looks for these handlers where they live.
+  { path: '/api/geocode', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: handleGeocodeRoute },
+  { path: '/api/reverse', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: handleReverseRoute },
+  { path: '/api/normalize-address', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: handleNormalizeAddressRoute },
+  // Address autocomplete. A disabled suggest index means the route is not there, which is a 404 —
+  // see handleSuggestRoute. Search 200s *are* billable, unlike the geocode routes above.
+  { path: '/api/search', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'search', rateLimit: 'search', handler: handleSuggestRoute },
   { path: '/api/oda/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleOdaInit },
   { path: '/api/oda/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleOdaStats },
 

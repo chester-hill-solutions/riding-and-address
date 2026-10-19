@@ -218,8 +218,8 @@
       "branches": 74.5
     },
     "src/oda-handlers.ts": {
-      "statements": 81.1,
-      "branches": 66.34
+      "statements": 81.53,
+      "branches": 66.98
     },
     "src/oda-import.ts": {
       "statements": 62.06,
@@ -350,8 +350,8 @@
       "branches": 26
     },
     "src/worker.ts": {
-      "statements": 44.16,
-      "branches": 48.78
+      "statements": 42.71,
+      "branches": 45.98
     },
     "src/x402-receipts.ts": {
       "statements": 97.61,
