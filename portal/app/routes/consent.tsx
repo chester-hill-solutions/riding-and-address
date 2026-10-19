@@ -3,6 +3,8 @@ import { Form, redirect } from 'react-router';
 import type { Route } from './+types/consent';
 import { getAuth, getSession } from '~/lib/auth.server';
 import { CONSENT_DURATION_COPY } from '~/lib/consent-copy';
+import { readConsentRequest } from '~/lib/consent-request';
+import { env } from '~/lib/env.server';
 import { AuthLayout } from '~/components/AuthLayout';
 
 export function meta(): Route.MetaDescriptors {
@@ -35,16 +37,19 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
 
 export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
-  const clientId = url.searchParams.get('client_id');
-  const code = url.searchParams.get('code');
+  const oauthQuery = url.search;
 
-  // Better Auth only sends `code` when the authorization request itself was valid, so its absence
-  // means there is nothing to consent to rather than something to guess at.
-  if (!clientId || !code) {
+  // The consent link carries the authorization request's own parameters, signed — and no
+  // `code`, because the code is issued after the consent is accepted. This used to require a
+  // `code` and so refused every real link: a person following their agent's link was told
+  // "Nothing to authorise" and the agent could never be authorised. The signature is verified
+  // instead, so the client name and the scopes on the screen are the ones the provider signed.
+  const consent = await readConsentRequest(oauthQuery, env().authSecret);
+  if (!consent) {
     return {
       state: 'invalid' as const,
       invalid:
-        'This authorisation link is incomplete. Ask the application to start the connection again.',
+        'This authorisation link is no longer valid. Ask the application to start the connection again.',
     };
   }
 
@@ -61,7 +66,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   let clientName: string | null = null;
   try {
     const client = await getAuth().api.getOAuthClientPublic({
-      query: { client_id: clientId },
+      query: { client_id: consent.clientId },
       headers: request.headers,
     });
     const name = (client as { name?: string | null } | null)?.name;
@@ -72,10 +77,10 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   return {
     state: 'ready' as const,
-    clientId,
+    clientId: consent.clientId,
     clientName,
-    scopes: (url.searchParams.get('scope') ?? '').split(' ').filter(Boolean),
-    oauthQuery: url.search,
+    scopes: consent.scopes,
+    oauthQuery,
   };
 }
 
