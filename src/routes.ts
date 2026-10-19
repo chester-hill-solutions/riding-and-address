@@ -29,6 +29,7 @@ import { handleWebhookAdmin } from './webhook-admin';
 import { getAllProvincialPaths } from './datasets';
 import { handleDemoRoute, handleLookupRequest } from './lookup-handler';
 import { handleQuoteRequest, handleAcceptRequest, handleAreaRequest } from './offers';
+import { handleBatchRoute, handleBatchStatusRoute } from './batch';
 import { handleReceiptsRequest } from './x402-receipts';
 import { handleReconcileRequest } from './x402-reconcile';
 import { handleOdaInit, handleOdaStats, handleGeocodeRoute, handleReverseRoute, handleNormalizeAddressRoute, handleSuggestRoute } from './oda-handlers';
@@ -192,10 +193,10 @@ export const ROUTES: readonly RouteEntry[] = [
   { path: '/api/oda/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleOdaInit },
   { path: '/api/oda/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleOdaStats },
 
-  // Batch / queue — declared, still legacy.
-  { path: '/batch', methods: ['POST'], owner: 'api', visibility: 'public', auth: 'batch', rateLimit: 'batch', handler: legacy },
-  { path: '/batch/:id', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'batch', rateLimit: 'batch', handler: legacy },
-  { path: '/batch/*', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'batch', rateLimit: 'batch', handler: legacy },
+  // Batch / queue — the batch surface is ported; the queue routes are not yet.
+  { path: '/batch', methods: ['POST'], owner: 'api', visibility: 'public', auth: 'batch', rateLimit: 'batch', handler: handleBatchRoute },
+  { path: '/batch/:id', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'batch', rateLimit: 'batch', handler: handleBatchStatusRoute },
+  { path: '/batch/*', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'batch', rateLimit: 'batch', handler: handleBatchStatusRoute },
   { path: '/api/queue/submit', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
   { path: '/api/queue/status', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
   { path: '/api/queue/process', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
