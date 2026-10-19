@@ -1,0 +1,27 @@
+{
+  // The portal's unit tests, typechecked.
+  //
+  // A test that does not compile is a test that does not run, and a suite whose types are never
+  // checked is a suite that can drift from the modules it exercises without anything noticing.
+  // The root's tests are typechecked by the root's `tsc`; this is the same thing for the portal.
+  //
+  // It extends the Cloudflare project rather than the base one, because that is where the `~/*`
+  // path alias and the vendored-package mappings live — the same mappings the app itself
+  // resolves through, so a test imports the modules exactly as the app does.
+  //
+  // The `types` are inherited deliberately. Adding Node's globals here changes how the app's own
+  // files typecheck — `URLSearchParams.get` returns `string` under the Workers types and
+  // `string | undefined` under Node's — and the app is written against the Workers types. The
+  // tests import Node modules by name (`node:http`), which resolve without Node's globals
+  // being installed, so nothing here needs them.
+  "extends": "./tsconfig.cloudflare.json",
+  "include": [
+    "test/**/*",
+    ".react-router/types/**/*",
+    "app/**/*",
+    "app/**/.server/**/*",
+    "app/**/.client/**/*",
+    "workers/**/*",
+    "../src/**/*"
+  ]
+}
