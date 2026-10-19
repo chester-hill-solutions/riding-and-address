@@ -63,6 +63,7 @@ import {
   type RateWindow,
 } from './rate-limit';
 import type { BillableAuthContext } from './billing';
+import { withoutCors } from './http-headers';
 import { isOdaSuggestEnabled } from './oda-config';
 
 export type RouteOwner = 'api' | 'portal';
@@ -356,7 +357,16 @@ export function ownerOf(pathname: string): RouteOwner | null {
 
 function keyAuthFailureResponse(auth: KeyAuthResult, correlationId: string): Response {
   const status = auth.reason ? httpStatusForKeyDenial(auth.reason) : 401;
-  return badRequest(auth.message || 'Unauthorized', status, auth.reason || 'UNAUTHORIZED', correlationId);
+  const response = badRequest(
+    auth.message || 'Unauthorized',
+    status,
+    auth.reason || 'UNAUTHORIZED',
+    correlationId
+  );
+  // A refusal on origin grounds opts out of the CORS policy: echoing the rejected origin back
+  // would let the offending page read the response, and would undercut the check that just
+  // failed. Every other refusal does carry the policy, so a browser can read what went wrong.
+  return auth.reason === 'ORIGIN_NOT_ALLOWED' ? withoutCors(response) : response;
 }
 
 /** The Billable Customer a successful key auth resolves to; null for public/operator requests. */

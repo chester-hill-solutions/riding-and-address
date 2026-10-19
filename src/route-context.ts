@@ -12,7 +12,7 @@
 import type { DeferTaskFn, Env } from './types';
 import type { KeyAuthResult } from './api-keys';
 import type { LookupRidingFn } from './lookup-expansion';
-import { resolveCorsOrigin, securityHeaders } from './http-headers';
+import { corsHeaders, securityHeaders } from './http-headers';
 import { billableDenialResponse, type BillableAuthContext } from './billing';
 
 /**
@@ -82,15 +82,8 @@ function responseHeaderPolicy(
   correlationId: string
 ): (origin?: string | null) => Record<string, string> {
   return (origin?: string | null) => {
-    const cors = resolveCorsOrigin(env, origin);
     return {
-      'Access-Control-Allow-Origin': cors.allowOrigin,
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers':
-        'Accept, Content-Type, Authorization, X-Api-Key, X-Google-API-Key, X-Correlation-ID, X-Request-ID, Mcp-Method, Mcp-Name, Mcp-Protocol-Version',
-      'Access-Control-Max-Age': '86400',
-      // Credentials only for an origin explicitly matched against the configured allowlist.
-      ...(cors.allowCredentials ? { 'Access-Control-Allow-Credentials': 'true' } : {}),
+      ...corsHeaders(env, origin),
       'X-Correlation-ID': correlationId,
       ...securityHeaders(),
     };
