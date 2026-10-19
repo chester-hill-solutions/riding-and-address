@@ -14,17 +14,7 @@ import {
   getCorrelationId,
   isLoopbackHost,
 } from './utils';
-import { getAllR2Keys } from './datasets';
 import { handleLookupRequest } from './lookup-handler';
-import { resolveLookupPath } from './return-selector';
-import {
-  initializeSpatialDatabase,
-  getAllFeaturesFromDatabase,
-  getSpatialDatabaseStats,
-  syncGeoJSONToDatabase,
-  getSpatialDbConfig,
-  queryRidingFromDatabase
-} from './spatial';
 import { 
   processWebhookEvents,
   cleanupWebhookData
@@ -42,8 +32,7 @@ import { createRouteContext, jsonHeaders, type RouteContext } from './route-cont
 import { dispatch } from './routes';
 import { handleProjectionRequest } from './projection-handlers';
 import { getStats as getQueueStats } from './queue-client';
-import { cachedLookupRiding as lookupRiding, loadGeo } from './riding-lookup';
-import { r2DatasetSource } from './dataset-source';
+import { cachedLookupRiding as lookupRiding } from './riding-lookup';
 import {
   authorizeLookupRequest,
   extractBearerToken,
@@ -159,164 +148,6 @@ async function legacyFetch(routeCtx: RouteContext): Promise<Response> {
   const { request, env, url } = routeCtx;
   const pathname = url.pathname;
   const correlationId = routeCtx.correlationId;
-
-  // Spatial database endpoints. The admin gate on init/sync/stats is declared on the table and run
-  // by the prelude; `/api/database/query` is public and unknown sub-paths are a bare 404.
-  if (pathname.startsWith('/api/database')) {
-    if (pathname === '/api/database/init' && request.method === 'POST') {
-      try {
-        const success = await initializeSpatialDatabase(env);
-        return new Response(JSON.stringify({
-          success,
-          message: success ? "Database initialized successfully" : "Database initialization failed"
-        }), { headers: jsonHeaders(routeCtx) });
-      } catch (error) {
-        return internalErrorResponse(error, 'Database initialization failed', correlationId);
-      }
-    }
-
-    if (pathname === '/api/database/sync' && request.method === 'POST') {
-      try {
-        const body = await request.json() as { dataset?: string };
-        const dataset = body.dataset || 'federalridings-2024.geojson';
-
-        const result = await syncGeoJSONToDatabase(env, dataset, r2DatasetSource(env));
-        return new Response(JSON.stringify({
-          success: result.success,
-          inserted: result.inserted,
-          failed: result.failed,
-          message: result.success
-            ? `Database synced for ${dataset}`
-            : `Database sync incomplete for ${dataset}`,
-          dataset
-        }), { headers: jsonHeaders(routeCtx) });
-      } catch (error) {
-        return internalErrorResponse(error, 'Database sync failed', correlationId);
-      }
-    }
-
-    if (pathname === '/api/database/stats' && request.method === 'GET') {
-      try {
-        const stats = await getSpatialDatabaseStats(env);
-        return new Response(JSON.stringify({
-          enabled: stats !== null,
-          status: stats !== null ? "active" : "disabled",
-          // Real D1 counts only — no placeholder fields when the database is disabled.
-          ...(stats !== null ? { features: stats.features, lastSync: stats.lastSync } : {})
-        }), { headers: jsonHeaders(routeCtx) });
-      } catch (error) {
-        return internalErrorResponse(error, 'Failed to get database stats', correlationId);
-      }
-    }
-
-    if (pathname === '/api/database/query' && request.method === 'GET') {
-      const lat = parseFloat(url.searchParams.get('lat') || '');
-      const lon = parseFloat(url.searchParams.get('lon') || '');
-      const dataset = url.searchParams.get('dataset') || 'federalridings-2024.geojson';
-
-      if (isNaN(lat) || isNaN(lon)) {
-        return badRequest('Invalid lat/lon parameters', 400);
-      }
-
-      try {
-        const result = await queryRidingFromDatabase(env, dataset, lon, lat);
-        return new Response(JSON.stringify(result), { headers: jsonHeaders(routeCtx) });
-      } catch (error) {
-        return internalErrorResponse(error, 'Database query failed', correlationId);
-      }
-    }
-
-    return badRequest("Database endpoint not found", 404);
-  }
-
-  // Boundary read endpoints (public).
-  if (pathname.startsWith('/api/boundaries')) {
-    if (pathname === '/api/boundaries/lookup' && request.method === 'GET') {
-      const lat = parseFloat(url.searchParams.get('lat') || '');
-      const lon = parseFloat(url.searchParams.get('lon') || '');
-
-      if (isNaN(lat) || isNaN(lon)) {
-        return badRequest('Invalid lat/lon parameters', 400);
-      }
-
-      try {
-        const result = await lookupRiding(env, resolveLookupPath('/api').datasetPath, lon, lat);
-        return new Response(JSON.stringify(result), { headers: jsonHeaders(routeCtx) });
-      } catch (error) {
-        return internalErrorResponse(error, 'Boundaries lookup failed', correlationId);
-      }
-    }
-
-    if (pathname === '/api/boundaries/all' && request.method === 'GET') {
-      const dataset = url.searchParams.get('dataset') || 'federalridings-2024.geojson';
-      const limit = parseInt(url.searchParams.get('limit') || '100', 10);
-      const offset = parseInt(url.searchParams.get('offset') || '0', 10);
-
-      try {
-        const dbConfig = getSpatialDbConfig(env);
-        if (dbConfig.ENABLED && env.RIDING_DB) {
-          const result = await getAllFeaturesFromDatabase(env, dataset, limit, offset);
-          return new Response(JSON.stringify(result), { headers: jsonHeaders(routeCtx) });
-        }
-        return badRequest('Spatial database not enabled', 503);
-      } catch (error) {
-        return internalErrorResponse(error, 'Failed to get boundaries', correlationId);
-      }
-    }
-
-    if (pathname === '/api/boundaries/config' && request.method === 'GET') {
-      const dbConfig = getSpatialDbConfig(env);
-      return new Response(JSON.stringify({
-        enabled: dbConfig.ENABLED,
-        useRtreeIndex: dbConfig.USE_RTREE_INDEX,
-        batchInsertSize: dbConfig.BATCH_INSERT_SIZE,
-        datasets: getAllR2Keys()
-      }), { headers: jsonHeaders(routeCtx) });
-    }
-
-    return badRequest("Boundaries endpoint not found", 404);
-  }
-
-  if (pathname === "/api/geocoding/batch/status") {
-    if (request.method === "GET") {
-      return new Response(JSON.stringify({
-        enabled: true,
-        maxBatchSize: 10,
-        timeout: 30000,
-        retryAttempts: 3,
-        fallbackToIndividual: true,
-        hasGoogleApiKey: !!(env.GOOGLE_MAPS_KEY),
-        timestamp: Date.now()
-      }), { headers: jsonHeaders(routeCtx) });
-    }
-    return badRequest("Method not allowed", 405);
-  }
-
-  if (pathname === "/api/cache/warm") {
-    if (request.method === "POST") {
-      try {
-        const body = await request.json() as { locations?: Array<{ lat: number; lon: number; postal?: string }> };
-        const locations = body.locations || [];
-
-        for (const location of locations) {
-          if (location.lat && location.lon) {
-            await loadGeo(env, 'federalridings-2024.geojson');
-          }
-          // Postal-only entries have never warmed anything here; geocoding them first
-          // would be required, and that work belongs to performCacheWarming.
-        }
-
-        return new Response(JSON.stringify({
-          message: "Cache warming initiated",
-          locations: locations.length,
-          timestamp: Date.now()
-        }), { headers: jsonHeaders(routeCtx) });
-      } catch (error) {
-        return internalErrorResponse(error, 'Cache warming failed', correlationId);
-      }
-    }
-    return badRequest("Method not allowed", 405);
-  }
 
   // Queue surfaces. Auth is declared per entry and run by the prelude.
   if (pathname === "/api/queue/submit") {
