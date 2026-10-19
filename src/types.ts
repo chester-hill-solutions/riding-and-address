@@ -27,11 +27,21 @@ export interface Env {
   /** Per-key daily + per-Customer monthly counters. */
   API_KEY_USAGE?: DurableObjectNamespace;
   /**
-   * The portal's D1. Portal-only by design — the API worker reads exactly one thing from it, the
-   * public signing key in `jwks`, because the authorization server publishes that key for anyone to
-   * read and fetching it over HTTP from inside this Worker does not work.
+   * The portal's D1. Portal-only by design — the API worker reads two things from it: the public
+   * signing key in `jwks`, because the authorization server publishes that key for anyone to read
+   * and fetching it over HTTP from inside this Worker does not work; and the `session` row an
+   * OAuth access token was minted for, because that is how a sign-out stops an agent (ADR-0011).
+   * Neither is tenant data.
    */
   PORTAL_DB?: D1Database;
+  /**
+   * Whether an OAuth access token is checked against the session it was minted for.
+   *
+   * `off` disables the check; anything else — including an unset value — enables it, so a typo
+   * cannot silently turn it off. It exists so a deployment that turns out to be wrong can be
+   * reversed without shipping code. See ADR-0011.
+   */
+  OAUTH_SESSION_CHECK?: string;
   /** Shared secret for portal → Worker KV projection admin API. */
   PROJECTION_ADMIN_SECRET?: string;
   /** Stripe secret for Billing Meter events (optional until paid checkout). */
