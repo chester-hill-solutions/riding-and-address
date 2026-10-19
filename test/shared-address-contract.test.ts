@@ -4,7 +4,7 @@ import { normalizePostalCode, normalizeProvince } from '../src/oda-normalize';
 import { formatCanadaPostAddress } from '../src/canada-post-format';
 import { createLookupTestEnv, fetchLookup } from './helpers/lookup-test-env';
 import { createOdaFixtureEnv } from './helpers/oda-memory-db';
-import { validatePostalCode } from '../src/utils';
+import { validatePostalCode } from '../src/input-validation';
 
 describe('shared Canadian address contract', () => {
   it.each(canadianAddressFixtures)('formats $postal / $province consistently with CHS consumers', (fixture) => {

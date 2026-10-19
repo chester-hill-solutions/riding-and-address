@@ -1,7 +1,7 @@
 import { Env, GeoJSONFeatureCollection, SpatialIndex } from './types';
-import { CACHE_CONFIG, LRUCache, geoCacheLRU, spatialIndexCacheLRU } from './cache';
+import { CACHE_CONFIG, LRUCache, geoCacheLRU, spatialIndexCacheLRU } from './dataset-cache';
 import { createSpatialIndex, getSpatialDbConfig, queryRidingFromDatabase } from './spatial';
-import { withRetry } from './utils';
+import { withRetry } from './retry';
 import { getRetryConfig } from './config';
 import { incrementMetric, recordTiming } from './metrics';
 import { CircuitBreakerOpenError, r2CircuitBreaker } from './circuit-breaker';

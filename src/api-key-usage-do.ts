@@ -262,48 +262,9 @@ function dayBefore(day: string, days: number): string {
   return utcDay(ms);
 }
 
-export interface UsageResult {
-  allowed: boolean;
-  count: number;
-  limit: number;
-  day: string;
-  month?: string;
-}
-
 function monthBefore(month: string, months: number): string {
   const [y, m] = month.split('-').map(Number);
   const d = new Date(Date.UTC(y, m - 1 - months, 1));
   return d.toISOString().slice(0, 7);
 }
 
-/**
- * Count one request against a key's daily cap.
- *
- * Fails OPEN when the DO is unavailable: the cap protects against cost, and a counter outage
- * should degrade billing accuracy, not take the whole search endpoint down. The origin allowlist
- * is still enforced regardless.
- */
-export async function consumeDailyQuota(
-  env: Env,
-  keyId: string,
-  dailyLimit: number,
-  nowMs: number = Date.now()
-): Promise<UsageResult> {
-  const day = utcDay(nowMs);
-  if (!env.API_KEY_USAGE || dailyLimit <= 0) {
-    return { allowed: true, count: 0, limit: dailyLimit, day };
-  }
-
-  try {
-    const id = env.API_KEY_USAGE.idFromName(keyId);
-    const stub = env.API_KEY_USAGE.get(id);
-    const response = await stub.fetch(
-      `https://usage/consume?day=${day}&limit=${dailyLimit}`,
-      { method: 'POST' }
-    );
-    return (await response.json()) as UsageResult;
-  } catch (error) {
-    console.warn(`[ApiKeyUsage] counter unavailable for ${keyId}:`, error);
-    return { allowed: true, count: 0, limit: dailyLimit, day };
-  }
-}

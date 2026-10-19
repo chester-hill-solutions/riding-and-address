@@ -19,7 +19,7 @@
  */
 
 import { calculateBoundingBox } from './spatial';
-import { isPointInPolygon } from './utils';
+import { isPointInPolygon } from './geometry';
 import type { AddressRecord, AddressStore } from './address-store';
 import type { GeoJSONGeometry } from './types';
 

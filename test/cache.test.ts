@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { LRUCache } from '../src/cache';
+import { LRUCache } from '../src/dataset-cache';
 
 describe('LRUCache', () => {
   beforeEach(() => {
