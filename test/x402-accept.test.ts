@@ -3,6 +3,7 @@ import { handleAcceptRequest, handleQuoteRequest } from '../src/offers';
 import { createRouteContext, type RouteContext } from '../src/route-context';
 import { createLookupTestEnv, TORONTO_LAT, TORONTO_LON } from './helpers/lookup-test-env';
 import { fakeUsageNamespace } from './helpers/fake-usage-do';
+import { createMemoryKv } from './helpers/memory-kv';
 import { PAYMENT_REQUIRED_HEADER, PAYMENT_RESPONSE_HEADER, PAYMENT_SIGNATURE_HEADER } from '../src/x402';
 import type { Env } from '../src/types';
 
@@ -28,41 +29,13 @@ const MOCK_CTX = {
 } as unknown as ExecutionContext;
 
 /** Minimal KV double for the receipt store. */
-function fakeKv(): KVNamespace {
-  const store = new Map<string, string>();
-  return {
-    get: async (key: string, type?: string) => {
-      const value = store.get(key);
-      if (value === undefined) return null;
-      return type === 'json' ? JSON.parse(value) : value;
-    },
-    put: async (key: string, value: string) => {
-      // KV limits a key to 512 bytes. A fake that does not enforce it cannot catch a key that is too
-      // long — which is how a 549-byte receipt key shipped with every write failing in production.
-      if (new TextEncoder().encode(key).length > 512) {
-        throw new Error(`KV key too long: ${key.length} chars`);
-      }
-      store.set(key, value);
-    },
-    delete: async (key: string) => {
-      store.delete(key);
-    },
-    list: async ({ prefix }: { prefix?: string } = {}) => ({
-      keys: [...store.keys()]
-        .filter((name) => !prefix || name.startsWith(prefix))
-        .map((name) => ({ name })),
-      list_complete: true,
-      cacheStatus: null,
-    }),
-  } as unknown as KVNamespace;
-}
 
 function baseEnv(overrides: Partial<Env> = {}): Env {
   return {
     ...createLookupTestEnv(),
     OFFER_SIGNING_SECRET: SECRET,
     ...X402_ENV,
-    X402_RECEIPTS: fakeKv(),
+    X402_RECEIPTS: createMemoryKv(),
     // The spend cap fails closed, so the paid path needs this binding to reach settlement at all.
     API_KEY_USAGE: fakeUsageNamespace(),
     ...overrides,

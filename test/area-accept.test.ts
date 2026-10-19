@@ -4,6 +4,7 @@ import { createD1Shim, createOdaSqlite, seedOdaRows } from './helpers/oda-sqlite
 import { fakeUsageNamespace } from './helpers/fake-usage-do';
 import { createLookupTestEnv, fetchLookup, TORONTO_LAT, TORONTO_LON } from './helpers/lookup-test-env';
 import type { OdaMemoryAddressRow } from './helpers/oda-memory-db';
+import { createMemoryKv } from './helpers/memory-kv';
 import { PAYMENT_SIGNATURE_HEADER } from '../src/x402';
 import type { Env } from '../src/types';
 
@@ -39,27 +40,6 @@ function row(id: number): OdaMemoryAddressRow {
   };
 }
 
-function fakeKv(): KVNamespace {
-  const store = new Map<string, string>();
-  return {
-    get: async (key: string, type?: string) => {
-      const value = store.get(key);
-      if (value === undefined) return null;
-      return type === 'json' ? JSON.parse(value) : value;
-    },
-    put: async (key: string, value: string) => {
-      store.set(key, value);
-    },
-    delete: async (key: string) => {
-      store.delete(key);
-    },
-    list: async ({ prefix }: { prefix?: string } = {}) => ({
-      keys: [...store.keys()].filter((name) => !prefix || name.startsWith(prefix)).map((name) => ({ name })),
-      list_complete: true,
-      cacheStatus: null,
-    }),
-  } as unknown as KVNamespace;
-}
 
 /** 260 rows: more than one 250-record page, so paging is genuinely exercised. */
 function envWithRows(count = 260): Env {
@@ -75,7 +55,7 @@ function envWithRows(count = 260): Env {
     X402_NETWORK: 'eip155:84532',
     X402_ASSET: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
     X402_FACILITATOR_URL: 'https://facilitator.test',
-    X402_RECEIPTS: fakeKv(),
+    X402_RECEIPTS: createMemoryKv(),
     // The spend cap fails closed, so the paid path needs the counter bound.
     API_KEY_USAGE: fakeUsageNamespace(),
   } as unknown as Env;

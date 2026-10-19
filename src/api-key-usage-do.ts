@@ -63,7 +63,7 @@ export class ApiKeyUsageDO {
           await txn.put(spendKey, next);
           return { allowed: true, spent: next, cap, day };
         });
-        if (result.allowed) await this.pruneOldSpend(day);
+        if (result.allowed && this.shouldSweep()) await this.pruneOldSpend(day);
         return json(result);
       }
 
@@ -120,7 +120,7 @@ export class ApiKeyUsageDO {
 
       const next = counts.map((count) => (count ?? 0) + 1);
       await Promise.all(keys.map((key, i) => this.state.storage.put(key, next[i])));
-      await this.pruneOldRateWindows(minute);
+      if (this.shouldSweep()) await this.pruneOldRateWindows(minute);
 
       return json({ minute, allowed: true, count: next[0], limit: limits[0] });
     }
@@ -156,10 +156,12 @@ export class ApiKeyUsageDO {
 
     const next = current + 1;
     await this.state.storage.put(storageKey, next);
-    if (prefix === 'count') {
-      await this.pruneOldDays(period);
-    } else {
-      await this.pruneOldMonths(period);
+    if (this.shouldSweep()) {
+      if (prefix === 'count') {
+        await this.pruneOldDays(period);
+      } else {
+        await this.pruneOldMonths(period);
+      }
     }
 
     return json({ day: period, month: period, count: next, limit, allowed: true });
@@ -167,9 +169,24 @@ export class ApiKeyUsageDO {
 
   async alarm(): Promise<void> { await this.uploads.alarm(); }
 
+  /**
+   * Whether to run the housekeeping sweeps on this request.
+   *
+   * The sweeps are cheap but not free, and they do not need to happen on every request — so the
+   * *decision* to sweep is probabilistic.
+   *
+   * It is deliberately the only random thing in this file. The sweep itself used to carry the
+   * guard, which meant its body ran one time in a hundred: untested in practice, and a coverage
+   * number that was a coin flip between two runs of the same suite. Keeping the randomness in one
+   * overridable place makes the sweeps deterministic, so a test can drive them and a bug in them
+   * cannot hide behind the odds.
+   */
+  protected shouldSweep(): boolean {
+    return Math.random() <= 0.01;
+  }
+
   /** Keep a short window for spend; without this the object accretes a row per payer-day forever. */
   private async pruneOldSpend(currentDay: string): Promise<void> {
-    if (Math.random() > 0.01) return;
     try {
       const entries = await this.state.storage.list<number>({ prefix: 'spend:' });
       const cutoff = utcDay(Date.parse(`${currentDay}T00:00:00Z`) - 7 * 86_400_000);
@@ -184,19 +201,11 @@ export class ApiKeyUsageDO {
   /**
    * Keep only a few minutes of rate windows.
    *
-   * The counter is written once per minute per bucket, so without this an idle identity would keep
-   * a row per minute for as long as it exists. Five minutes is enough for the clock to roll over
-   * during a request without the previous window disappearing underneath it.
-   */
-  /**
-   * Keep only a few minutes of rate windows.
-   *
    * A row is written once per minute per bucket, so without this an idle shard would keep one per
    * minute for as long as it exists. Five minutes is enough for the clock to roll over mid-request
    * without the window disappearing underneath it.
    */
   private async pruneOldRateWindows(currentMinute: string): Promise<void> {
-    if (Math.random() > 0.01) return;
     try {
       const entries = await this.state.storage.list<number>({ prefix: 'rate:' });
       const cutoff = utcMinute(Date.parse(`${currentMinute}:00Z`) - 5 * 60_000);
@@ -214,8 +223,7 @@ export class ApiKeyUsageDO {
 
   /** Keep only a short window; without this every key accretes a row per day forever. */
   private async pruneOldDays(currentDay: string): Promise<void> {
-    // Cheap guard: only sweep occasionally rather than on every request.
-    if (Math.random() > 0.01) return;    try {
+    try {
       const entries = await this.state.storage.list<number>({ prefix: 'count:' });
       const cutoff = dayBefore(currentDay, 7);
       for (const key of entries.keys()) {
@@ -229,7 +237,6 @@ export class ApiKeyUsageDO {
   }
 
   private async pruneOldMonths(currentMonth: string): Promise<void> {
-    if (Math.random() > 0.01) return;
     try {
       const entries = await this.state.storage.list<number>({ prefix: 'month:' });
       for (const key of entries.keys()) {

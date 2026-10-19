@@ -1,3 +1,4 @@
+import { createMemoryKv } from './helpers/memory-kv';
 import { describe, it, expect } from 'vitest';
 import { handleReconcileRequest, reconcileReceipts, type ChainClient } from '../src/x402-reconcile';
 import { recordReceipt, listReceipts, type X402Receipt } from '../src/x402-receipts';
@@ -9,29 +10,6 @@ import type { Env } from '../src/types';
  * This job is the difference, and its report is what an operator acts on.
  */
 
-function fakeKv(): KVNamespace {
-  const store = new Map<string, string>();
-  return {
-    get: async (key: string, type?: string) => {
-      const value = store.get(key);
-      if (value === undefined) return null;
-      return type === 'json' ? JSON.parse(value) : value;
-    },
-    put: async (key: string, value: string) => {
-      store.set(key, value);
-    },
-    delete: async (key: string) => {
-      store.delete(key);
-    },
-    list: async ({ prefix }: { prefix?: string } = {}) => ({
-      keys: [...store.keys()]
-        .filter((name) => !prefix || name.startsWith(prefix))
-        .map((name) => ({ name })),
-      list_complete: true,
-      cacheStatus: null,
-    }),
-  } as unknown as KVNamespace;
-}
 
 const receipt = (over: Partial<X402Receipt> = {}): X402Receipt => ({
   offerId: 'offer-1',
@@ -73,7 +51,7 @@ function context(env: Env): RouteContext {
 
 describe('reconcileReceipts', () => {
   it('records the chain status of each settled transaction', async () => {
-    const kv = fakeKv();
+    const kv = createMemoryKv();
     const env = envWith(kv);
     await recordReceipt(env, receipt({ offerId: 'a' }));
     await recordReceipt(env, receipt({ offerId: 'b', recordedAt: '2026-10-16T12:01:00.000Z' }));
@@ -93,7 +71,7 @@ describe('reconcileReceipts', () => {
   });
 
   it('separates failed and unknown settlements and counts undelivered receipts', async () => {
-    const kv = fakeKv();
+    const kv = createMemoryKv();
     const env = envWith(kv);
     await recordReceipt(env, receipt({ offerId: 'ok' }));
     await recordReceipt(env, receipt({ offerId: 'bad', recordedAt: '2026-10-16T12:01:00.000Z' }));
@@ -122,20 +100,20 @@ describe('reconcileReceipts', () => {
   });
 
   it('does nothing when no receipts are stored', async () => {
-    const report = await reconcileReceipts(envWith(fakeKv()), chain('confirmed'));
+    const report = await reconcileReceipts(envWith(createMemoryKv()), chain('confirmed'));
     expect(report).toMatchObject({ checked: 0, confirmed: 0, failed: 0, unknown: 0, deliveryFailed: 0 });
   });
 });
 
 describe('POST /api/x402/reconcile', () => {
   it('fails closed when no RPC endpoint is configured', async () => {
-    const response = await handleReconcileRequest(context(envWith(fakeKv())));
+    const response = await handleReconcileRequest(context(envWith(createMemoryKv())));
     expect(response.status).toBe(503);
     expect(((await response.json()) as { code?: string }).code).toBe('RECONCILE_UNAVAILABLE');
   });
 
   it('runs reconciliation against the configured chain', async () => {
-    const kv = fakeKv();
+    const kv = createMemoryKv();
     const env = { X402_RECEIPTS: kv, X402_RPC_URL: 'https://rpc.test' } as unknown as Env;
     await recordReceipt(env, receipt());
 
