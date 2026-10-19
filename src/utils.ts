@@ -685,6 +685,44 @@ export function rateLimitExceededResponse(correlationId?: string): Response {
   });
 }
 
+/**
+ * A stage timeout is not a failure. It is a transient condition, and the difference matters to the
+ * caller: a 500 says "this is broken, stop", while a 503 with `Retry-After` says "try again".
+ *
+ * This exists because an ODA stage timeout is a **rethrow, not a fall-through** — `odaEntry` rethrows
+ * it, and `walkProviderChain` rethrows anything that is not a `NoResultsError` — for **every** query
+ * shape, not only a postal-only one. So a cold isolate whose first ODA query exceeds its stage budget
+ * reached the caller as `LOOKUP_ERROR`, an internal error, for a request that would have succeeded a
+ * second later. That is most of the 47 lookup errors the OpenNorth robustness run recorded, almost
+ * all of them 30s geocoding timeouts under load.
+ *
+ * Deliberately still not a fall-through to the external geocoder. Timeouts cluster under load, so
+ * falling back on a timeout would multiply external calls at the worst possible moment — the
+ * opposite of what docs/plans/reduce-external-geocoder-fallback.md sets out to do. Retrying is the
+ * caller's decision, and now they can make it.
+ */
+export function serviceUnavailableResponse(
+  code: string,
+  message: string,
+  correlationId?: string,
+  retryAfterSeconds = 5
+): Response {
+  const errorResponse: ErrorResponse = {
+    error: message,
+    code,
+    timestamp: Date.now()
+  };
+  if (correlationId) errorResponse.correlationId = correlationId;
+
+  return new Response(JSON.stringify(errorResponse), {
+    status: 503,
+    headers: {
+      "content-type": "application/json; charset=UTF-8",
+      "Retry-After": String(retryAfterSeconds)
+    }
+  });
+}
+
 // Authentication
 function verifyBasicAuthCredentials(request: Request, env: Env): boolean {
   const authHeader = request.headers.get("Authorization");

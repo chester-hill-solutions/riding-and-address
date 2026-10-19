@@ -5,6 +5,10 @@
 - Cloudflare Workers Observability is enabled in `wrangler.jsonc`.
 - Circuit open events log structured JSON: `{ "alert": "circuit_open", "key": "…", … }` from `src/circuit-breaker.ts`.
 - Elevated 5xx: watch Worker metrics / log drain for status ≥ 500 and `LOOKUP_ERROR` / `UNEXPECTED_ERROR`.
+  - **`LOOKUP_TIMEOUT` (503) is not in that set.** A stage timeout is transient, and it is terminal
+    for every lookup shape, so a cold start or a slow D1 can produce one. It carries `Retry-After`
+    and the caller is expected to retry, so it should not page like a 500. Alert on it only as a rate
+    — a sustained climb means something is genuinely slow, not cold.
 
 ## Recommended queries / notifications
 

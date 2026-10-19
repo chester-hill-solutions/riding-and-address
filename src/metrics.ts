@@ -90,6 +90,7 @@ const metrics: Metrics = {
   lookupCacheHits: 0,
   lookupCacheMisses: 0,
   lookupErrors: 0,
+  lookupTimeouts: 0,
   batchRequests: 0,
   batchErrors: 0,
   webhookDeliveries: 0,
@@ -230,6 +231,8 @@ export function getMetricsSummary(): {
     cacheHits: number;
     cacheMisses: number;
     errors: number;
+    /** The transient subset of `errors`: stage timeouts, answered as 503 + Retry-After. */
+    timeouts: number;
     hitRate: number;
     avgTime: number;
   };
@@ -332,6 +335,8 @@ export function getMetricsSummary(): {
       cacheHits: metrics.lookupCacheHits,
       cacheMisses: metrics.lookupCacheMisses,
       errors: metrics.lookupErrors,
+      // The transient subset: a 503 the caller was told to retry, not a 500 that reads as broken.
+      timeouts: metrics.lookupTimeouts,
       hitRate: Math.round(lookupHitRate * 100) / 100,
       avgTime: Math.round(lookupAvgTime * 100) / 100
     },

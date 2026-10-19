@@ -279,7 +279,9 @@ export function createCanCoderMcpHandler(options: CanCoderMcpOptions) {
           'Use a province code as the dataset for a provincial or territorial riding, or choose federal/combined. ' +
           `Without Authorization: Bearer <Server API key>, this uses the unbilled demo tier, limited to ${DEFAULT_DEMO_RATE_LIMIT} requests per minute per IP. ` +
           'The result carries `ok` and, when nothing resolved or the call failed, a structured `error.code` ' +
-          '(INVALID_ARGUMENT, UNRESOLVED_LOCATION, DATASET_UNAVAILABLE, INVALID_QUERY, RATE_LIMIT_EXCEEDED, KEY_REQUIRED, LOOKUP_ERROR).',
+          '(INVALID_ARGUMENT, UNRESOLVED_LOCATION, DATASET_UNAVAILABLE, INVALID_QUERY, RATE_LIMIT_EXCEEDED, KEY_REQUIRED, LOOKUP_TIMEOUT, LOOKUP_ERROR). ' +
+          'A LOOKUP_TIMEOUT is transient — the lookup did not finish inside its budget, which is ' +
+          'most likely on a cold start; retry it.',
         inputSchema: LOOKUP_TOOL_SCHEMA,
         outputSchema: TOOL_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },

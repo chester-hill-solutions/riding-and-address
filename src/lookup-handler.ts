@@ -1,7 +1,7 @@
 import { geocodeIfNeeded } from './geocoding';
 import { geocodingExecutor } from './circuit-breaker';
 import { incrementMetric, recordTiming } from './metrics';
-import { parseQuery, badRequest, internalErrorResponse } from './utils';
+import { parseQuery, badRequest, internalErrorResponse, serviceUnavailableResponse, TimeoutError } from './utils';
 import { getTimeoutConfig } from './config';
 import { performExpandedLookup, expandedLookupResponseFields } from './lookup-expansion';
 import { resolveLookupPath } from './return-selector';
@@ -93,6 +93,24 @@ export async function handleLookupRequest(ctx: RouteContext): Promise<Response> 
     );
   } catch (error) {
     incrementMetric('errorCount');
+    // Every failed lookup counts here, so `lookupErrors` means what it says.
+    incrementMetric('lookupErrors');
+    // A stage timeout is transient, not a failure, and it is terminal for every lookup shape: an ODA
+    // stage timeout is a rethrow rather than a fall-through, and the chain rethrows anything that is
+    // not a `NoResultsError`. So a cold start used to reach the caller as a 500 for a request that
+    // would have succeeded a moment later. 503 + Retry-After says the true thing, and the timeout
+    // subset gets its own counter so the rate is visible — `lookupErrors` was declared and surfaced
+    // but never written, which is the measurement gap
+    // docs/plans/reduce-external-geocoder-fallback.md opens with.
+    if (error instanceof TimeoutError) {
+      incrementMetric('lookupTimeouts');
+      console.warn(`[${correlationId}] lookup timed out: ${error.message}`);
+      return serviceUnavailableResponse(
+        'LOOKUP_TIMEOUT',
+        'The lookup timed out. This is usually transient; retry shortly.',
+        correlationId
+      );
+    }
     // 5xx bodies stay generic: geocoder/R2/internal messages are logged with the correlation ID
     // instead of being sent to the client.
     return internalErrorResponse(error, 'Lookup error', correlationId, 'LOOKUP_ERROR');
