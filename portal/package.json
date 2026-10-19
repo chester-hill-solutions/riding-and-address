@@ -52,7 +52,7 @@
     "@types/react-dom": "^19.3.0",
     "drizzle-kit": "^0.31.11",
     "tailwindcss": "^4",
-    "typescript": "^5.8.0",
+    "typescript": "^5.9.3",
     "vite": "^8.3.4",
     "vite-tsconfig-paths": "^6.1.1",
     "wrangler": "^4.105.0"
