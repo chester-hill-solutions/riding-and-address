@@ -39,3 +39,53 @@ export function scopesSupported(): string {
 export function hasScope(granted: readonly string[], required: McpScope): boolean {
   return granted.includes(required);
 }
+
+/**
+ * The scope challenge for an operation that needs `required`.
+ *
+ * The MCP server calls this before the operation runs, and a returned challenge becomes a
+ * `403 insufficient_scope` — so an under-scoped token is refused *before* it executes or bills
+ * anything, rather than after.
+ *
+ * `undefined` means "carry on", in two cases that look alike and are not:
+ *
+ *   - **No credential at all.** The keyless demo tier is how an agent discovers this service,
+ *     and a challenge here would put a credential in front of it.
+ *   - **The token already carries the scope.**
+ *
+ * The comparison is `hasScope`, so the no-implication rule above holds here too: a token holding
+ * only `ridings:area` is refused a lookup, because a lookup is a different capability and the
+ * two are not a hierarchy.
+ *
+ * The shape is the MCP server's own, declared structurally rather than imported so that this
+ * module stays a leaf — the portal imports the scope list from here and has no business
+ * depending on the server package to learn what a scope is.
+ */
+export interface ScopeChallenge {
+  /** The complete scope set to ask for. */
+  scopes: readonly [string, ...string[]];
+  /** Optional human-readable detail, satisfying the RFC 6750 `error-description` grammar. */
+  errorDescription?: string;
+}
+
+export interface ScopeChallengeContext {
+  /** The verified credential, when the request carried one. */
+  authInfo?: { scopes: string[] };
+}
+
+export function scopeChallengeFor(
+  required: McpScope
+): (context: ScopeChallengeContext) => ScopeChallenge | undefined {
+  return ({ authInfo }) => {
+    if (!authInfo) return undefined;
+    if (hasScope(authInfo.scopes, required)) return undefined;
+    return {
+      scopes: [required],
+      // The description is what the refusal says in prose, so it says the actionable thing:
+      // re-authorize for this scope. Plain text, per the RFC 6750 `error-description` grammar.
+      errorDescription:
+        `This access token does not carry the ${required} scope this operation needs. ` +
+        `Re-authorize for ${required} to use it.`,
+    };
+  };
+}

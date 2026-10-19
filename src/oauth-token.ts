@@ -29,6 +29,16 @@ export interface OAuthTokenClaims {
   customerId: string;
   /** Scopes granted, as a list. */
   scopes: string[];
+  /**
+   * The OAuth client the token was issued to.
+   *
+   * `client_id` is the standard claim and `azp` carries the same value; a client that predates
+   * `azp` sets only the former. Empty when the token carries neither, which is not a reason to
+   * refuse it — the signature, the issuer and the audience are what decide that.
+   */
+  clientId: string;
+  /** When the token expires, in seconds since the epoch. */
+  expiresAt?: number;
 }
 
 export type OAuthTokenFailure =
@@ -138,6 +148,13 @@ export async function verifyOAuthAccessToken(
         subject: typeof payload.sub === 'string' ? payload.sub : '',
         customerId,
         scopes: scopesFrom(payload),
+        clientId:
+          typeof payload.client_id === 'string'
+            ? payload.client_id
+            : typeof payload.azp === 'string'
+              ? payload.azp
+              : '',
+        expiresAt: typeof payload.exp === 'number' ? payload.exp : undefined,
       },
     };
   } catch (error) {
