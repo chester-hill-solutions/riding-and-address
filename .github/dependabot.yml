@@ -9,6 +9,12 @@ updates:
         dependency-type: development
         patterns:
           - "*"
+        # TypeScript 7 cannot be linted yet: `typescript-eslint`'s peer range is
+        # `>=4.8.4 <6.1.0`, and no release — stable or prerelease — widens it. A grouped
+        # bump that carries it fails the whole run, so the linter's ceiling holds the
+        # compiler back until the linter moves. Remove this when it does.
+        exclude-patterns:
+          - "typescript"
   - package-ecosystem: bun
     directory: "/portal"
     schedule:
