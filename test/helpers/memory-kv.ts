@@ -60,28 +60,3 @@ export function createMemoryKv(entries: Record<string, unknown> = {}): KVNamespa
     },
   } as unknown as KVNamespace;
 }
-
-/**
- * A KV namespace whose contents a test can read back.
- *
- * The memory KV is a black box from the outside — a test can write and read, but cannot assert on
- * what is stored without going through the same API it is testing. This hands over the raw map, so
- * a test can say "the key is stored under this name, with this value" and mean it.
- */
-export function createMemoryKvWithStore(
-  entries: Record<string, unknown> = {}
-): { kv: KVNamespace; store: Map<string, unknown> } {
-  const kv = createMemoryKv(entries);
-  const store = new Map<string, unknown>(Object.entries(entries));
-  const originalPut = kv.put.bind(kv);
-  const originalDelete = kv.delete.bind(kv);
-  kv.put = (async (key: string, value: string) => {
-    store.set(key, value);
-    await originalPut(key, value);
-  }) as KVNamespace['put'];
-  kv.delete = (async (key: string) => {
-    store.delete(key);
-    await originalDelete(key);
-  }) as KVNamespace['delete'];
-  return { kv, store };
-}

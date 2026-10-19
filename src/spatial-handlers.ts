@@ -1,4 +1,3 @@
-import { Env } from './types';
 import {
   initializeSpatialDatabase,
   getSpatialDatabaseStats,
@@ -20,21 +19,21 @@ import { badRequest, internalErrorResponse } from './utils';
  * **Ported out of the Worker's legacy chain.** The behaviour did not change: the same paths, the
  * same methods, the same bodies, and the same 404 for a sub-path that is not one of them.
  *
- * ## Why these are one handler and not four
+ * ## One handler per path, and why
  *
- * The route table declares each sub-path separately — `/api/database/init`, `/api/database/sync`,
- * `/api/database/stats`, `/api/database/query` — because each has its own method and its own
- * auth: the first three are operator surfaces and the fourth is public. That declaration is what
- * the prelude enforces, and it is unchanged.
+ * The route table already declares which path each entry serves and which methods it answers.
+ * A single handler that switched on the pathname would be **a second source of truth for
+ * something the table already says** — and the two can drift: change the table's path and the
+ * handler keeps accepting the old one.
  *
- * What is unchanged too is how a request that does *not* match one of them is answered. A GET to
- * `/api/database/init` matches the table's `/api/database/*` entry, because the method is part of
- * the match — and the answer is the 404 this module returns. So the method checks stay here,
- * where they were, rather than moving into the table.
+ * So each entry gets a handler that knows only its own job, and the table is the only place that
+ * says which path it is. The method is the handler's business because it is the thing the 405 is
+ * about: the entry claims the path for every method, and the handler refuses the ones it does not
+ * implement.
  */
 
 /** `POST /api/database/init` — build the spatial index. Operator surface. */
-async function databaseInit(ctx: RouteContext): Promise<Response> {
+export async function handleDatabaseInit(ctx: RouteContext): Promise<Response> {
   const { env, correlationId } = ctx;
   try {
     const success = await initializeSpatialDatabase(env);
@@ -51,7 +50,7 @@ async function databaseInit(ctx: RouteContext): Promise<Response> {
 }
 
 /** `POST /api/database/sync` — load a dataset into the spatial index. Operator surface. */
-async function databaseSync(ctx: RouteContext): Promise<Response> {
+export async function handleDatabaseSync(ctx: RouteContext): Promise<Response> {
   const { request, env, correlationId } = ctx;
   try {
     const body = (await request.json()) as { dataset?: string };
@@ -76,7 +75,7 @@ async function databaseSync(ctx: RouteContext): Promise<Response> {
 }
 
 /** `GET /api/database/stats` — the real D1 counts, or a disabled status. Operator surface. */
-async function databaseStats(ctx: RouteContext): Promise<Response> {
+export async function handleDatabaseStats(ctx: RouteContext): Promise<Response> {
   const { env, correlationId } = ctx;
   try {
     const stats = await getSpatialDatabaseStats(env);
@@ -95,7 +94,7 @@ async function databaseStats(ctx: RouteContext): Promise<Response> {
 }
 
 /** `GET /api/database/query` — the riding at a point, from the spatial index. Public. */
-async function databaseQuery(ctx: RouteContext): Promise<Response> {
+export async function handleDatabaseQuery(ctx: RouteContext): Promise<Response> {
   const { env, correlationId } = ctx;
   const lat = parseFloat(ctx.url.searchParams.get('lat') || '');
   const lon = parseFloat(ctx.url.searchParams.get('lon') || '');
@@ -114,34 +113,18 @@ async function databaseQuery(ctx: RouteContext): Promise<Response> {
 }
 
 /**
- * The `/api/database/*` surface.
+ * A database sub-path that is not one of the four.
  *
- * The table's entry for each sub-path carries the method and the auth; this handler carries the
- * behaviour. A path that is not one of the four is a 404 — and so is a sub-path reached with the
- * wrong method, because the table's method matching sends it here rather than to the entry.
+ * The table's catch-all entry. Its own wording, because it is the answer for this surface and
+ * not for every surface: a caller that guesses at a path learns that the *surface* has no such
+ * path, and nothing about what is behind it.
  */
-export async function handleDatabaseRoute(ctx: RouteContext): Promise<Response> {
-  const { request } = ctx;
-  const pathname = ctx.url.pathname;
-
-  if (pathname === '/api/database/init' && request.method === 'POST') {
-    return databaseInit(ctx);
-  }
-  if (pathname === '/api/database/sync' && request.method === 'POST') {
-    return databaseSync(ctx);
-  }
-  if (pathname === '/api/database/stats' && request.method === 'GET') {
-    return databaseStats(ctx);
-  }
-  if (pathname === '/api/database/query' && request.method === 'GET') {
-    return databaseQuery(ctx);
-  }
-
+export function handleDatabaseNotFound(_ctx: RouteContext): Response {
   return badRequest('Database endpoint not found', 404);
 }
 
 /** `GET /api/boundaries/lookup` — the riding at a point. Public. */
-async function boundariesLookup(ctx: RouteContext): Promise<Response> {
+export async function handleBoundariesLookup(ctx: RouteContext): Promise<Response> {
   const { env, correlationId } = ctx;
   const lat = parseFloat(ctx.url.searchParams.get('lat') || '');
   const lon = parseFloat(ctx.url.searchParams.get('lon') || '');
@@ -159,7 +142,7 @@ async function boundariesLookup(ctx: RouteContext): Promise<Response> {
 }
 
 /** `GET /api/boundaries/all` — paged features from the spatial index. Public. */
-async function boundariesAll(ctx: RouteContext): Promise<Response> {
+export async function handleBoundariesAll(ctx: RouteContext): Promise<Response> {
   const { env, correlationId } = ctx;
   const dataset = ctx.url.searchParams.get('dataset') || 'federalridings-2024.geojson';
   const limit = parseInt(ctx.url.searchParams.get('limit') || '100', 10);
@@ -178,7 +161,7 @@ async function boundariesAll(ctx: RouteContext): Promise<Response> {
 }
 
 /** `GET /api/boundaries/config` — what this deployment can serve. Public. */
-function boundariesConfig(ctx: RouteContext): Response {
+export function handleBoundariesConfig(ctx: RouteContext): Response {
   const dbConfig = getSpatialDbConfig(ctx.env);
   return new Response(
     JSON.stringify({
@@ -191,21 +174,8 @@ function boundariesConfig(ctx: RouteContext): Response {
   );
 }
 
-/** The `/api/boundaries/*` surface. */
-export async function handleBoundariesRoute(ctx: RouteContext): Promise<Response> {
-  const { request } = ctx;
-  const pathname = ctx.url.pathname;
-
-  if (pathname === '/api/boundaries/lookup' && request.method === 'GET') {
-    return boundariesLookup(ctx);
-  }
-  if (pathname === '/api/boundaries/all' && request.method === 'GET') {
-    return boundariesAll(ctx);
-  }
-  if (pathname === '/api/boundaries/config' && request.method === 'GET') {
-    return boundariesConfig(ctx);
-  }
-
+/** A boundaries sub-path that is not one of the three. The table's catch-all entry. */
+export function handleBoundariesNotFound(_ctx: RouteContext): Response {
   return badRequest('Boundaries endpoint not found', 404);
 }
 
@@ -216,6 +186,9 @@ export async function handleBoundariesRoute(ctx: RouteContext): Promise<Response
  * report about work in flight, and it is public, so it says what the surface supports.
  */
 export function handleGeocodingBatchStatus(ctx: RouteContext): Response {
+  if (ctx.request.method !== 'GET') {
+    return badRequest('Method not allowed', 405);
+  }
   return new Response(
     JSON.stringify({
       enabled: true,
@@ -233,6 +206,9 @@ export function handleGeocodingBatchStatus(ctx: RouteContext): Response {
 /** `POST /api/cache/warm` — warm the lookup cache for a set of points. Operator surface. */
 export async function handleCacheWarm(ctx: RouteContext): Promise<Response> {
   const { request, env, correlationId } = ctx;
+  if (request.method !== 'POST') {
+    return badRequest('Method not allowed', 405);
+  }
   try {
     const body = (await request.json()) as {
       locations?: Array<{ lat: number; lon: number; postal?: string }>;
@@ -259,6 +235,3 @@ export async function handleCacheWarm(ctx: RouteContext): Promise<Response> {
     return internalErrorResponse(error, 'Cache warming failed', correlationId);
   }
 }
-
-/** The `Env` shape the boundary handlers read; re-exported for the tests that build one. */
-export type SpatialHandlerEnv = Env;

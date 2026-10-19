@@ -158,13 +158,16 @@ describe('the batch route', () => {
 });
 
 describe('the batch status route', () => {
-  it('answers 500 without a queue, and leaks nothing about why', async () => {
+  it('answers with the status of the batch it was asked about', async () => {
+    // The id is the parameter the route table matched, so the context carries it the way the
+    // dispatcher would.
+    const request = new Request('https://lookup.test/batch/batch_123');
+    const ctx = { ...contextFor(request), params: { id: 'batch_123' } };
+    const response = await handleBatchStatusRoute(ctx);
+
     // The queue Durable Object is not bound here, so the status lookup fails. The answer is the
     // generic internal-error body — the same one the legacy branch gave, and the one that keeps
     // binding names and stack context out of the response.
-    const request = new Request('https://lookup.test/batch/batch_123');
-    const response = await handleBatchStatusRoute(contextFor(request));
-
     expect(response.status).toBe(500);
     const parsed = (await response.json()) as { error?: string };
     expect(parsed.error).toBe('Internal error');

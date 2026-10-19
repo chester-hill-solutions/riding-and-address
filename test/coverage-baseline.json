@@ -15,7 +15,7 @@
     },
     "src/api-keys.ts": {
       "statements": 82.58,
-      "branches": 77.69
+      "branches": 78.46
     },
     "src/area-geometry.ts": {
       "statements": 97.05,
@@ -30,8 +30,8 @@
       "branches": 94.28
     },
     "src/batch.ts": {
-      "statements": 51.02,
-      "branches": 46.57
+      "statements": 58.38,
+      "branches": 50.66
     },
     "src/billing.ts": {
       "statements": 100,
@@ -295,11 +295,11 @@
     },
     "src/route-context.ts": {
       "statements": 100,
-      "branches": 75
+      "branches": 83.33
     },
     "src/routes.ts": {
-      "statements": 88.69,
-      "branches": 84.32
+      "statements": 89.22,
+      "branches": 84.84
     },
     "src/service-terms.ts": {
       "statements": 100,
@@ -310,8 +310,8 @@
       "branches": 100
     },
     "src/spatial-handlers.ts": {
-      "statements": 63.29,
-      "branches": 66.66
+      "statements": 58.46,
+      "branches": 56.25
     },
     "src/spatial.ts": {
       "statements": 66.03,

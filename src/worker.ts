@@ -153,7 +153,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 
     try {
       // Build the one request context up front; the prelude fills auth, rate-limit and headers
-      // for ported entries, and the legacy fallback receives the same complete object.
+      // for every entry, and the dispatcher adds the path parameters it matched.
       const routeCtx = createRouteContext({ request, env, ctx, correlationId, startTime });
 
       // Handle CORS preflight

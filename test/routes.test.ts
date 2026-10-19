@@ -3,7 +3,6 @@ import { createOpenAPISpec } from '../src/docs';
 import {
   ROUTES,
   compilePattern,
-  legacy,
   matchRoute,
   ownerOf,
   runPrelude,
@@ -111,8 +110,10 @@ describe(':param extraction', () => {
   });
 
   it('does not let a single param segment swallow a deeper path', () => {
-    // /batch/a/b is two segments past /batch, so the trailing wildcard entry wins.
-    expect(matchRoute('GET', '/batch/a/b')?.entry).toBe(entryWithPath('/batch/*'));
+    // `/batch/a/b` is two segments past `/batch`, so the `:id` entry does not match it. A
+    // wildcard entry used to sit underneath and answer it; there is none now, so the path is
+    // simply not served — which is the right answer for a path that names no batch.
+    expect(matchRoute('GET', '/batch/a/b')).toBeNull();
   });
 });
 
@@ -126,6 +127,13 @@ describe('method matching', () => {
   it('falls through to a broader route on a method mismatch', () => {
     // /api/search is GET-only; a POST must fall to the catch-all, not 405 at the search route.
     expect(matchRoute('POST', '/api/search')?.entry).toBe(entryWithPath('/api/*'));
+  });
+
+  it('claims the path for a route that answers 405 for the wrong method', () => {
+    // The queue routes claim their path for every method, so the handler — not a catch-all — is
+    // what answers. That is the difference between "the path exists, the verb does not" and "the
+    // path does not exist", and it is the distinction the legacy chain made.
+    expect(matchRoute('POST', '/api/queue/status')?.entry).toBe(entryWithPath('/api/queue/status'));
   });
 
   it('ignores the method when resolving ownership', () => {
@@ -204,8 +212,7 @@ describe('table completeness', () => {
       '/webhooks/*',
     ];
     for (const path of gateway) {
-      expect(entryWithPath(path).handler, `${path} is still legacy`).not.toBe(legacy);
-      expect(entryWithPath(path).handler).toBeTypeOf('function');
+      expect(entryWithPath(path).handler, `${path} has no handler`).toBeTypeOf('function');
     }
   });
 });
@@ -261,14 +268,17 @@ describe('declared policy is enforced', () => {
    *
    * Now there is one dispatch path, so the declaration and the enforcement are the same thing.
    */
-  it('has no entry left without a handler', () => {
-    const withoutHandler = ROUTES.filter((entry) => entry.handler === legacy);
+  it('has no API entry left without a handler', () => {
+    // Only a portal-owned entry has no handler — the API worker never dispatches those, the
+    // portal does. An API entry without one is a mistake, and there is no legacy chain left to
+    // catch it.
+    const withoutHandler = ROUTES.filter((entry) => entry.owner === 'api' && !entry.handler);
     expect(withoutHandler.map((entry) => entry.path)).toEqual([]);
   });
 
   it('401s an admin-only entry without credentials (fail closed)', async () => {
     const entry = entryWithPath('/api/queue/submit');
-    expect(entry.handler).not.toBe(legacy);
+    expect(entry.handler).toBeTypeOf('function');
 
     const ctx = contextFor(
       {} as Env,
@@ -303,7 +313,7 @@ describe('declared policy is enforced', () => {
     // the property that matters; the legacy assertion above is about the class of entry that
     // used to bypass it.
     const entry = entryWithPath('/api/cache/warm');
-    expect(entry.handler).not.toBe(legacy);
+    expect(entry.handler).toBeTypeOf('function');
 
     const ctx = contextFor(
       {} as Env,
