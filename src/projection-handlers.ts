@@ -12,8 +12,9 @@ import {
 } from './api-keys';
 import {
   clearCustomerCache,
-  CustomerRecord,
   CustomerPlan,
+  CustomerPlanSchema,
+  CustomerRecord,
   defaultFuseLimit,
   deleteCustomer,
   putCustomer,
@@ -36,7 +37,7 @@ import type { RouteContext } from './route-context';
  */
 const CustomerProjectionSchema = z.object({
   id: z.string().min(1),
-  plan: z.enum(['free', 'metered', 'enterprise']).optional(),
+  plan: CustomerPlanSchema.optional(),
   fuseLimit: z.number().int().min(0).optional(),
   fuseSoftWarn: z.boolean().optional(),
   batchEnabled: z.boolean().optional(),

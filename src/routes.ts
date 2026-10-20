@@ -6,10 +6,15 @@
  *   2. the portal's forwarding decision reads `ownerOf(pathname)`,
  *   3. the docs coverage test asserts the OpenAPI spec equals the public API entries.
  *
- * The table is declared in full on day 1 (strangler migration). Entries not yet ported carry
- * `handler: legacy`, which the Worker maps to its old `fetch` guard-chain; ported entries carry a
- * real handler and their old branch is deleted. Specificity is computed, not positional: static
- * beats `:param` beats `*`, longer wins, declaration order breaks remaining ties.
+ * The table was declared in full on day 1 (strangler migration), with the entries not yet ported
+ * carrying `handler: legacy` and the Worker answering them from its old `fetch` guard-chain.
+ *
+ * **That migration is finished: every entry carries a real handler, and the guard-chain is gone.**
+ * An entry marked `legacy` now means a mistake — the dispatcher answers it with a 404 rather than
+ * falling through to a second dispatch path, because one dispatch path is the whole point.
+ *
+ * Specificity is computed, not positional: static beats `:param` beats `*`, longer wins,
+ * declaration order breaks remaining ties.
  *
  * Handler implementations live beside their concerns (`ops-handlers.ts`, `docs.ts`, `embed.ts`,
  * `lookup-handler.ts`, `oda-handlers.ts`, …) and import `RouteContext` from the leaf
@@ -28,12 +33,35 @@ import {
 import { handleWebhookAdmin } from './webhook-admin';
 import { getAllProvincialPaths } from './datasets';
 import { handleDemoRoute, handleLookupRequest } from './lookup-handler';
+import { handleDiscoveryRoute } from './agent-discovery';
+import { handleMcpRoute } from './mcp-handler';
 import { handleQuoteRequest, handleAcceptRequest, handleAreaRequest } from './offers';
+import {
+  handleBatchRoute,
+  handleBatchStatusRoute,
+  handleQueueSubmitRoute,
+  handleQueueStatusRoute,
+  handleQueueProcessRoute,
+  handleQueueStatsRoute,
+} from './batch';
+import {
+  handleDatabaseInit,
+  handleDatabaseSync,
+  handleDatabaseStats,
+  handleDatabaseQuery,
+  handleDatabaseNotFound,
+  handleBoundariesLookup,
+  handleBoundariesAll,
+  handleBoundariesConfig,
+  handleBoundariesNotFound,
+  handleGeocodingBatchStatus,
+  handleCacheWarm,
+} from './spatial-handlers';
 import { handleReceiptsRequest } from './x402-receipts';
 import { handleReconcileRequest } from './x402-reconcile';
-import { handleOdaInit, handleOdaStats } from './oda-handlers';
+import { handleOdaInit, handleOdaStats, handleGeocodeRoute, handleReverseRoute, handleNormalizeAddressRoute, handleSuggestRoute } from './oda-handlers';
 import { handleProtectedResourceMetadata, protectedResourceMetadataPaths } from './oauth-metadata';
-import { checkProjectionAuth, projectionUnauthorizedResponse } from './projection-handlers';
+import { handleProjectionRequest, checkProjectionAuth, projectionUnauthorizedResponse } from './projection-handlers';
 import type { RouteContext } from './route-context';
 import {
   badRequest,
@@ -105,22 +133,36 @@ export type RateLimitBucket =
 
 export type RouteHandler = (ctx: RouteContext) => Promise<Response> | Response;
 
-/** Sentinel marking an entry that still runs the old `fetch` if-chain. */
-export const legacy = Symbol('legacy');
-export type RouteHandlerOrLegacy = RouteHandler | typeof legacy;
-
 export type RouteEntry = {
   path: string | string[];
+  /**
+   * The methods this entry is *for*.
+   *
+   * A route that implements one method and answers 405 for the others declares `ALL_METHODS` and
+   * narrows inside its handler — the shape `/webhooks` uses. A route that implements several
+   * methods declares them all. Either way the table is the only place that says which methods a
+   * path serves, and the handler never re-derives it from the request.
+   */
   methods: readonly string[];
   owner: RouteOwner;
   visibility: RouteVisibility;
   auth: RouteAuth;
   rateLimit: RateLimitBucket;
-  /** Only API entries carry a handler. */
-  handler?: RouteHandlerOrLegacy;
+  /** Only API entries carry a handler; a portal-owned entry is answered by the portal. */
+  handler?: RouteHandler;
 };
 
-/** Routes above never inspect the method themselves, so they accept every one. */
+/**
+ * Every method.
+ *
+ * Two uses, and the difference matters:
+ *
+ * - A route that **implements** several methods — `/api/quote` answers a GET and a POST, and
+ *   `/webhooks` dispatches internally. The handler branches on the method.
+ * - A route that **implements one** method and answers 405 for the rest. It claims the path for
+ *   every method so the 405 is a statement about the method rather than a 404 that claims the
+ *   path does not exist.
+ */
 export const ALL_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
 
 const DEMO_PATHS = [
@@ -138,8 +180,8 @@ const LOOKUP_PATHS = ['/api', '/api/federal', '/api/combined', ...getAllProvinci
 
 export const ROUTES: readonly RouteEntry[] = [
   // Agent discovery resources are public and served by the API Worker on both public hosts.
-  { path: ['/robots.txt', '/sitemap.xml', '/llms.txt', '/llms-full.txt', '/auth.md', '/.well-known/api-catalog', '/.well-known/ai-catalog.json', '/.well-known/ucp', '/.well-known/cancoder.json', '/.well-known/mcp/server-card.json', '/.well-known/agent-skills/index.json', '/.well-known/agent-skills/cancoder-riding-lookup/SKILL.md', '/docs/agents.md'], methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/mcp', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
+  { path: ['/robots.txt', '/sitemap.xml', '/llms.txt', '/llms-full.txt', '/auth.md', '/.well-known/api-catalog', '/.well-known/ai-catalog.json', '/.well-known/ucp', '/.well-known/cancoder.json', '/.well-known/mcp/server-card.json', '/.well-known/agent-skills/index.json', '/.well-known/agent-skills/cancoder-riding-lookup/SKILL.md', '/docs/agents.md'], methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleDiscoveryRoute },
+  { path: '/mcp', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleMcpRoute },
   // RFC 9728 protected-resource metadata. Served from the resource server, which is what RFC 9728
   // asks for and what the MCP plugin's own challenge points at — the plugin advertises this URL but
   // does not serve it. `internal` matches the other discovery documents in this table.
@@ -180,54 +222,56 @@ export const ROUTES: readonly RouteEntry[] = [
   // Run x402 reconciliation on demand: confirm stored settlements against the chain.
   { path: '/api/x402/reconcile', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleReconcileRequest },
 
-  // ODA geocoding surface — geocode/reverse/normalize stay legacy (see billing-invariants gate);
-  // the admin pair is ported.
-  { path: '/api/geocode', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: legacy },
-  { path: '/api/reverse', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: legacy },
-  { path: '/api/normalize-address', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: legacy },
-  { path: '/api/search', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'search', rateLimit: 'search', handler: legacy },
+  // ODA geocoding surface — ported. The three geocode routes are intentionally NOT billed:
+  // only 200 lookup/search responses are Billable units today. The billing-invariants gate
+  // enforces that, and it now looks for these handlers where they live.
+  { path: '/api/geocode', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: handleGeocodeRoute },
+  { path: '/api/reverse', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: handleReverseRoute },
+  { path: '/api/normalize-address', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'key', rateLimit: 'geocode', handler: handleNormalizeAddressRoute },
+  // Address autocomplete. A disabled suggest index means the route is not there, which is a 404 —
+  // see handleSuggestRoute. Search 200s *are* billable, unlike the geocode routes above.
+  { path: '/api/search', methods: ['GET'], owner: 'api', visibility: 'public', auth: 'search', rateLimit: 'search', handler: handleSuggestRoute },
   { path: '/api/oda/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleOdaInit },
   { path: '/api/oda/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleOdaStats },
 
-  // Batch / queue — declared, still legacy.
-  { path: '/batch', methods: ['POST'], owner: 'api', visibility: 'public', auth: 'batch', rateLimit: 'batch', handler: legacy },
-  { path: '/batch/:id', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'batch', rateLimit: 'batch', handler: legacy },
-  { path: '/batch/*', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'batch', rateLimit: 'batch', handler: legacy },
-  { path: '/api/queue/submit', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/api/queue/status', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/api/queue/process', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/api/queue/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  // Anything else under /api/queue falls through to the /api lookup catch-all in the legacy chain,
-  // so its real gate is the lookup key, not admin.
-  { path: '/api/queue/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'key', rateLimit: 'lookup', handler: legacy },
-  { path: '/queue/process', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
+  // Batch / queue — ported.
+  { path: '/batch', methods: ['POST'], owner: 'api', visibility: 'public', auth: 'batch', rateLimit: 'batch', handler: handleBatchRoute },
+  { path: '/batch/:id', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'batch', rateLimit: 'batch', handler: handleBatchStatusRoute },
+  { path: '/api/queue/submit', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueSubmitRoute },
+  { path: '/api/queue/status', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueStatusRoute },
+  { path: '/api/queue/process', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueProcessRoute },
+  { path: '/api/queue/stats', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueStatsRoute },
+  // Anything else under /api/queue falls through to the /api lookup catch-all, so its real gate is
+  // the lookup key, not admin.
+  { path: '/api/queue/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'key', rateLimit: 'lookup', handler: handleLookupRequest },
+  { path: '/queue/process', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleQueueProcessRoute },
   // Unclaimed: the legacy chain answers 404 with no credential, so the catch-all is public.
-  { path: '/queue/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
+  { path: '/queue/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleLookupRequest },
 
-  // Operator surfaces — declared, still legacy.
-  { path: '/api/database/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/api/database/sync', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/api/database/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
-  { path: '/api/database/query', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
+  // Operator surfaces — the spatial database and boundary reads. Ported.
+  { path: '/api/database/init', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleDatabaseInit },
+  { path: '/api/database/sync', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleDatabaseSync },
+  { path: '/api/database/stats', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleDatabaseStats },
+  { path: '/api/database/query', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleDatabaseQuery },
   // Unknown database sub-paths are a 404 with no credential — not the admin gate the old table
   // implied. The specific admin entries above carry their own declaration.
-  { path: '/api/database/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/api/boundaries/lookup', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/api/boundaries/all', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/api/boundaries/config', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/api/boundaries/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/api/geocoding/batch/status', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/api/cache/warm', methods: ['POST'], owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: legacy },
+  { path: '/api/database/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleDatabaseNotFound },
+  { path: '/api/boundaries/lookup', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleBoundariesLookup },
+  { path: '/api/boundaries/all', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleBoundariesAll },
+  { path: '/api/boundaries/config', methods: ['GET'], owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleBoundariesConfig },
+  { path: '/api/boundaries/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleBoundariesNotFound },
+  { path: '/api/geocoding/batch/status', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleGeocodingBatchStatus },
+  { path: '/api/cache/warm', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'admin', rateLimit: 'none', handler: handleCacheWarm },
   // `/api/oda/*` is not a surface: only the two admin entries above exist, and any other
   // `/api/oda/…` path is served by the `/api/*` lookup catch-all (key auth), not admin.
-  { path: '/admin/projection/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'projection', rateLimit: 'none', handler: legacy },
+  { path: '/admin/projection/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'projection', rateLimit: 'none', handler: handleProjectionRequest },
   // Unclaimed /admin paths answer 404 with no credential; the projection and circuit-breaker
   // entries above are the real surfaces.
-  { path: '/admin/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
+  { path: '/admin/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleNotFound },
 
   // Ownership catches that preserve today's prefix decisions.
-  { path: '/docs/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: legacy },
-  { path: '/api/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'key', rateLimit: 'lookup', handler: legacy },
+  { path: '/docs/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'public', rateLimit: 'none', handler: handleNotFound },
+  { path: '/api/*', methods: ALL_METHODS, owner: 'api', visibility: 'internal', auth: 'key', rateLimit: 'lookup', handler: handleLookupRequest },
 ];
 
 // ── Pattern grammar + specificity ───────────────────────────────────────────
@@ -610,13 +654,15 @@ async function authorizeRoute(entry: RouteEntry, ctx: RouteContext): Promise<Res
 
 /**
  * Resolves the request against the API-owned table, runs the one shared prelude, then the handler.
- * Unclaimed paths (and portal-owned paths, which never reach the API worker in the combined deploy)
- * return the Worker's not-found response.
+ *
+ * **There is no legacy fallback any more.** Every entry carries a real handler, so the dispatcher
+ * has exactly one place a request can be answered from. An entry that somehow carried the `legacy`
+ * sentinel would be a 404 rather than a silent fall-through to a second dispatch path.
+ *
+ * Unclaimed paths (and portal-owned paths, which never reach the API worker in the combined
+ * deploy) return the Worker's not-found response.
  */
-export async function dispatch(
-  ctx: RouteContext,
-  legacyHandler: RouteHandler
-): Promise<Response> {
+export async function dispatch(ctx: RouteContext): Promise<Response> {
   const match = matchRoute(ctx.request.method, ctx.url.pathname);
 
   if (!match || match.entry.owner !== 'api') {
@@ -624,14 +670,31 @@ export async function dispatch(
   }
 
   // Shallow copy: the prelude fills auth/rate-limit outcome without mutating the caller's context.
-  const routeCtx: RouteContext = { ...ctx };
+  // The path parameters the table matched ride along, so a handler reads `ctx.params.id` rather
+  // than re-parsing the pathname.
+  const routeCtx: RouteContext = { ...ctx, params: match.params };
 
   const denial = await runPrelude(match.entry, routeCtx);
   if (denial) return denial;
 
-  const handler = match.entry.handler === legacy ? legacyHandler : match.entry.handler;
+  const handler = match.entry.handler;
   if (!handler) {
+    // Only a portal-owned entry has no handler, and those never reach the API dispatcher. An
+    // API entry without one is a mistake, and the answer for it is the same 404 as an unknown
+    // path — there is no second dispatch path to fall through to any more.
     return badRequest('Not found', 404, 'NOT_FOUND', routeCtx.correlationId);
   }
   return handler(routeCtx);
+}
+
+/**
+ * A path that is not one of the known surfaces.
+ *
+ * The catch-all entries — `/admin/*` and `/docs/*` — exist so a request under them is answered
+ * rather than falling off the end of the table. The answer is the same 404 the dispatcher gives
+ * for an unclaimed path, and it is the same body: a caller that guesses at a path learns nothing
+ * about what is behind it.
+ */
+function handleNotFound(ctx: RouteContext): Response {
+  return badRequest('Not found', 404, 'NOT_FOUND', ctx.correlationId);
 }
