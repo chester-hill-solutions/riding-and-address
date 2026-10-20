@@ -150,6 +150,11 @@
     "PUBLIC_API_HOSTS": "cancoder.chesterhillsolutions.ca,riding-lookup.chester-hill-solutions.workers.dev",
     "PAID_CHECKOUT_ENABLED": "false",
     "UPLOAD_CHECKOUT_ENABLED": "true",
+    // Session liveness for OAuth access tokens (ADR-0011). Unset means the check runs, which is
+    // what production wants: an access token stops working when the session it was minted for
+    // ends, so signing out stops an agent. `off` restores the old behaviour and exists only so a
+    // deployment that turns out to be wrong can be reversed without shipping code — it should be
+    // absent here, and it is deliberately not set in staging either.
     "EMAIL_FROM": "CanCoder <noreply@chsolutions.ca>",
     "FOUNDER_USER_IDS": "",
     // Public pk_* for the marketing try-it embed (origin-allowlisted to this Worker's own

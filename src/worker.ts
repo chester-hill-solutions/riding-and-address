@@ -759,6 +759,11 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
             // this is the first point at which a token is actually used rather than advertised.
             const verified = await verifyOAuthAccessToken(env, bearerToken, mcpOrigin);
             if (!verified.ok) {
+              // Every refusal but one answers the same. `no_customer` is the exception, because it
+              // is the one a caller can act on differently — the token is fine, the account it names
+              // is not. A token whose session has ended is answered exactly as a bad signature is:
+              // "authorize again" is the remedy for both, and telling them apart would make this
+              // an oracle for probing tokens (ADR-0011).
               return unauthorizedMcpResponse(
                 mcpOrigin,
                 MCP_LOOKUP_SCOPE,
