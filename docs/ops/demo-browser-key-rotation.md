@@ -110,6 +110,14 @@ That route is the application's own ops interface for minting, reading and revok
 what the rotation workflow uses. It is closed in production — `PROJECTION_ADMIN_SECRET` is not set —
 and the workflow opens it for the duration of a run and closes it again.
 
+**And what else is on the same Customer.** A key left behind by an earlier rotation is attached to a
+real Customer and is not visible from anywhere else, so the interface can list them:
+
+```bash
+curl -s -H "Authorization: Bearer $PROJECTION_ADMIN_SECRET" \
+  "https://cancoder.chesterhillsolutions.ca/admin/projection/keys?customer=<customer>"
+```
+
 ### 2 — Put it in the secret store, before touching the repo
 
 ```bash

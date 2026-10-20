@@ -212,6 +212,36 @@ export async function showKeyProjectionCore(
   return { key: safe };
 }
 
+/**
+ * The keys belonging to one Customer.
+ *
+ * **Scoped to a Customer on purpose.** An ops tool that has replaced a key needs to know what else is
+ * on the same Customer: a key left behind by an earlier rotation is a credential nobody holds,
+ * attached to a real Customer, and it is not visible from anywhere else. The answer is filtered
+ * here, so what comes back is one Customer's keys and not the whole store.
+ *
+ * **The hash of a Server secret is not returned**, for the same reason it is not returned by the
+ * single-key read: it is the one field in the record that is not a public identifier.
+ */
+export async function listCustomerKeysProjectionCore(
+  env: Env,
+  customerId: string
+): Promise<{ keys: Array<Omit<ApiKeyRecord, 'secretHash'>> }> {
+  if (!env.API_KEYS) throw new Error('API_KEYS binding required');
+
+  // A key listing carries names, not values, so each record is read. This is an ops action, not a
+  // request path, and the store is bounded by the number of Customers rather than by traffic.
+  const listing = await env.API_KEYS.list({ prefix: 'key:', limit: 1000 });
+  const keys: Array<Omit<ApiKeyRecord, 'secretHash'>> = [];
+  for (const entry of listing.keys) {
+    const record = await loadApiKey(env, entry.name.replace(/^key:/, ''));
+    if (!record || record.customerId !== customerId) continue;
+    const { secretHash: _secretHash, ...safe } = record;
+    keys.push(safe);
+  }
+  return { keys };
+}
+
 export async function handleProjectionRequest(ctx: RouteContext): Promise<Response> {
   const { request, env } = ctx;
   const pathname = ctx.url.pathname;
@@ -257,6 +287,14 @@ export async function handleProjectionRequest(ctx: RouteContext): Promise<Respon
       const body = await request.json();
       return json(ctx, await mintKeyProjectionCore(env, body as MintKeyInput));
     });
+  }
+
+  if (pathname === '/admin/projection/keys' && request.method === 'GET') {
+    const customerId = ctx.url.searchParams.get('customer');
+    if (!customerId) {
+      return json(ctx, { error: 'A customer is required', code: 'CUSTOMER_REQUIRED' }, 400);
+    }
+    return json(ctx, await listCustomerKeysProjectionCore(env, customerId));
   }
 
   if (pathname.startsWith('/admin/projection/keys/') && request.method === 'DELETE') {

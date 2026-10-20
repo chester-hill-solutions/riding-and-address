@@ -194,27 +194,62 @@ jobs:
             exit 1
           fi
 
-          # Into the secret store. `wrangler secret put` deploys the Worker immediately, so this is
-          # what makes the new key live.
-          printf '%s' "$NEW_KEY" | npx wrangler secret put DEMO_BROWSER_API_KEY -c "$WORKER_CONFIG"
+          # The Customer's other keys, so an operator can see what else is on the same Customer. A
+          # key left behind by an earlier rotation is attached to a real Customer and is not
+          # visible from anywhere else.
+          CUSTOMER=$(node -e 'const b = JSON.parse(process.argv[1]); process.stdout.write(String(b.customerId ?? ""))' "$BODY")
+          curl -s -o customer-keys.json "$API_BASE/admin/projection/keys?customer=$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$CUSTOMER")" \
+            -H "Authorization: Bearer $OPS_SECRET" || true
+          echo "the Customer's keys:"
+          node -e '
+            const m = process.argv[1].match(/\{[\s\S]*\}/);
+            const body = m ? JSON.parse(m[0]) : null;
+            for (const key of body?.keys ?? []) {
+              console.log(`  ${key.id}  ${key.kind}  ${key.label ?? ""}  ${key.disabled ? "disabled" : "active"}`);
+            }
+          ' "$(cat customer-keys.json 2>/dev/null || echo '{}')" || true
 
           # The route closes again. The value is gone from the Worker's environment, so the route
           # is exactly as closed as it was before this run.
           npx wrangler secret delete PROJECTION_ADMIN_SECRET -c "$WORKER_CONFIG"
 
-          # Which key is the Worker serving? A `vars` entry and a secret may share a name, and
-          # which one wins is not something this workflow should assume — so it is measured.
+          # **The vars entry and a secret cannot share a name** — the API refuses it outright — so
+          # the entry has to leave the configuration in the same deploy that the secret arrives in.
+          # Otherwise the Worker is briefly without a key at all, and the try-it widget is down for
+          # the length of it.
+          #
+          # The deploy below carries the new key as a secret and no `vars` entry of that name, and
+          # it keeps the secrets it already had: `wrangler deploy --secrets-file` preserves the
+          # secrets that are not in the file.
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
+            const configPath = process.argv[1];
+            const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+            delete config.vars.DEMO_BROWSER_API_KEY;
+            // Beside the original, so its relative paths — the entry point, the migrations
+            // directory — still resolve.
+            fs.writeFileSync(
+              path.join(path.dirname(configPath), "worker-without-the-demo-var.json"),
+              JSON.stringify(config, null, 2)
+            );
+            fs.writeFileSync("secrets.json", JSON.stringify({ DEMO_BROWSER_API_KEY: process.argv[2] }));
+          ' "$WORKER_CONFIG" "$NEW_KEY"
+
+          npx wrangler deploy -c portal/build/server/worker-without-the-demo-var.json --secrets-file secrets.json
+
+          # Which key is the Worker serving? Measured, not assumed.
           LIVE=$(curl -s --max-time 30 "$API_BASE/" | grep -oE 'pk_live_[a-f0-9]+' | head -1 || true)
           if [ "$LIVE" = "$NEW_KEY" ]; then
             echo "the Worker is serving the new key"
           elif [ "$LIVE" = "$OLD_KEY" ]; then
-            echo "the Worker is still serving the old key — remove the vars entry and deploy"
+            echo "::warning::the Worker is still serving the old key"
           else
             echo "::warning::could not tell which key the Worker is serving"
           fi
           echo "the replacement is in the secret store; the vars entry is still to be removed"
 
-          rm -f minted.json status.txt
+          rm -f minted.json status.txt customer-keys.json secrets.json
 
       - name: Revoke a key
         if: inputs.action == 'revoke'
