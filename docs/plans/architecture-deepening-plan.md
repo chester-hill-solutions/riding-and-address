@@ -3,6 +3,32 @@
 Source: architecture review 2026-08-25 (`/tmp/architecture-review-20260825-150020.html`).
 Goal: turn the friction findings into deep modules at named seams, in an order that keeps `main` shippable and the Worker deployed at every step.
 
+## Status — every wave landed
+
+**This plan is executed.** It was written on 2026-08-25 against a `src/worker.ts` of 876 lines; the
+strangler migration of 2026-10-20 reduced that file to 184 lines, so **every line number and most
+module names below are historical**. The waves are kept as the record of *why* the seams are where
+they are, and each one now says what actually landed.
+
+| Wave | Outcome | What landed, and where |
+|---|---|---|
+| 0 — Queue client | **done** | `src/queue-client.ts` is the only module that names the queue Durable Object; the policy is `src/queue-policy.ts` and the wire types are `src/queue-types.ts`; `src/queue-manager.ts` is a thin adapter (400 lines, with tests) |
+| 1 — Riding lookup core | **done** | `src/riding-lookup.ts` — D1 first, then the spatial-index LRU, then R2 — behind the `DatasetSource` port; `handleLookupRequest(ctx)` takes a `RouteContext` rather than nine runtime parameters; `CircuitBreakerOpenError` replaces the message matching; `src/worker.ts` is the entry point, the cron and the CORS boundary, and nothing else |
+| 2 — Geocoder provider seam | **done** | `src/geocoder-providers.ts` — the `GeocoderProvider` interface, the registry (`registerGeocoderProvider` / `unregisterGeocoderProvider` / `getGeocoderProvider`), and the chain (`buildExternalProviderChain` / `runProviderChain`); no caller imports a concrete provider; every outbound fetch takes its timeout from `getTimeoutConfig` |
+| 3 — Response policy | **done** | The wildcard origin literals are gone outside `src/http-headers.ts`; `httpStatusForKeyDenial` is the sole status map (ADR-0005) and there is one Fuse-denial builder; the two webhook handler copies became one (`src/webhook-admin.ts`, serving both URI namespaces with one redaction); the `initializeWebhookProcessing` ritual is gone from the fetch path |
+| 4 — Storage seams | **done** | Three ports: `src/usage-ledger.ts` (billing), `src/kv-cache.ts` (one KV protocol, five helpers), `src/dataset-source.ts` (datasets); `src/cache.ts` was split — the warming orchestrator is `src/cache-warming.ts`, and what is left is a cache |
+
+**The last item was the batch size limit.** Two modules enforce it — the synchronous `/batch` route
+and the queued Enterprise path — and they had two copies of the number: one a literal inside the
+Durable Object, and one a re-export that only a test used. `BATCH_CONFIG` now lives in
+`src/config.ts` beside the other configuration, and both modules read it. That was the plan's
+"fold the `MAX_BATCH_SIZE` duplicates into `BATCH_CONFIG`", and it is the only line of this plan
+that was still true to do.
+
+**What this plan cost.** Nothing in it is a rewrite of behaviour: the seams moved, and the tests
+that pinned the behaviour moved with them. The measure of success is that `src/worker.ts` is 184
+lines and the route table owns the dispatch.
+
 ## Ground rules (every wave)
 
 - **CI green + deployed** at the end of each wave. The audit gate (`bun audit --audit-level=high`, bun 1.3.14) must stay clean.
@@ -12,7 +38,7 @@ Goal: turn the friction findings into deep modules at named seams, in an order t
 
 ---
 
-## Dependency shape
+## Dependency shape — as planned
 
 ```
 Wave 0 ──────────────► done (independent, closes a correctness skew)
@@ -23,9 +49,14 @@ Wave 1 ──► Wave 4      (ports attach where the core extraction put them)
 
 Waves 2, 3, 4 are mutually independent once Wave 1 lands.
 
+**As it landed.** The dependency held for Waves 2 and 4, which attach to what Wave 1 extracted, and
+loosened for Wave 3, whose response-policy sweep became part of the strangler migration's move of
+the route handlers out of `src/worker.ts` — the routes had stopped moving anyway, because there was
+no chain left in that file to move.
+
 ---
 
-## Wave 0 — One queue client, stop the Enterprise drift  *(Candidate 3 · small)*
+## Wave 0 — One queue client, stop the Enterprise drift  *(Candidate 3 · small · **done**)*
 
 **Why first.** Only wave that changes behaviour, and it removes silent divergence between synchronous `/batch` and queued Enterprise jobs.
 
@@ -40,7 +71,7 @@ Waves 2, 3, 4 are mutually independent once Wave 1 lands.
 
 ---
 
-## Wave 1 — Free the Riding lookup core  *(Candidate 1 · large, highest leverage)*
+## Wave 1 — Free the Riding lookup core  *(Candidate 1 · large, highest leverage · **done**)*
 
 **Interface first.** Design `RidingLookupCore` before moving code:
 
@@ -68,7 +99,7 @@ One construction site in `worker.ts` startup. Everything else consumes the insta
 
 ---
 
-## Wave 2 — Give geocoding a provider seam  *(Candidate 2 · medium-large)*
+## Wave 2 — Give geocoding a provider seam  *(Candidate 2 · medium-large · **done**)*
 
 1. Define `GeocoderProvider` interface: name, `geocode(query): Promise<GeocodeCandidate[]>`, failure modes as typed errors (`ProviderUnavailableError`, `NoResultsError` — subsuming the breaker-open type from Wave 1).
 2. Registry replaces the string dispatch chain (`geocoding.ts:874–904`). Fallback order becomes data (array of providers), not control flow.
@@ -84,7 +115,7 @@ One construction site in `worker.ts` startup. Everything else consumes the insta
 
 ---
 
-## Wave 3 — Response policy in one place  *(Candidate 5 · small-medium, mechanical)*
+## Wave 3 — Response policy in one place  *(Candidate 5 · small-medium, mechanical · **done**)*
 
 1. Every Response goes through `resolveCorsOrigin` + `securityHeaders`. Sweep the 33 wildcard literals (`worker.ts:373–1135`, `oda-handlers.ts:202–209`). Admin/diagnostic routes get explicit origin policy rather than `*`.
 2. One Fuse-denial shaper module beside `httpStatusForKeyDenial` (ADR-0005 vocabulary): input = denial reason + correlationId, output = Response. Replace the three dialects (`lookup-handler.ts:89–102`, `oda-handlers.ts:247–265`, `worker.ts:932–957`). Batch redaction loop (932–957) uses it per item.
@@ -97,7 +128,7 @@ One construction site in `worker.ts` startup. Everything else consumes the insta
 
 ---
 
-## Wave 4 — Storage seams, incrementally  *(Candidate 4 · large, ongoing)*
+## Wave 4 — Storage seams, incrementally  *(Candidate 4 · large, ongoing · **done**)*
 
 Introduce three ports where variation is real. Order inside the wave follows pain, not sequence:
 
@@ -113,14 +144,18 @@ Also: split `cache.ts` — the warming orchestrator (15–43 popular-cities list
 
 ---
 
-## Sequencing summary
+## Sequencing summary — as it was sequenced, and as it landed
 
-| Wave | Candidate | Size | Behaviour change | Depends on |
-|---|---|---|---|---|
-| 0 | Queue client + drift | small | yes (skew closes) | — |
-| 1 | Lookup core extraction | large | no | — |
-| 2 | Geocoder seam | medium-large | no | Wave 1 |
-| 3 | Response policy locality | small-medium | headers only | Wave 1 |
-| 4 | Storage seams | large, incremental | no | Wave 1 |
+| Wave | Candidate | Size | Behaviour change | Depends on | Landed as |
+|---|---|---|---|---|---|
+| 0 | Queue client + drift | small | yes (skew closes) | — | `src/queue-client.ts`, `src/queue-policy.ts`, `src/queue-types.ts` |
+| 1 | Lookup core extraction | large | no | — | `src/riding-lookup.ts`, behind `src/dataset-source.ts` |
+| 2 | Geocoder seam | medium-large | no | Wave 1 | `src/geocoder-providers.ts` |
+| 3 | Response policy locality | small-medium | headers only | Wave 1 | `src/http-headers.ts`, `src/webhook-admin.ts` |
+| 4 | Storage seams | large, incremental | no | Wave 1 | `src/usage-ledger.ts`, `src/kv-cache.ts`, `src/dataset-source.ts` |
 
-Suggested calendar: Wave 0 + Wave 1 in one focused stretch (they share files); Waves 2–3 as independent follow-ups; Wave 4 as standing incremental work whenever a bug lands near a port.
+**A note on the order.** The plan made Waves 2–4 depend on Wave 1, because each of them attaches
+where the core extraction put the seam. That dependency was right, and it did not bind: the seams
+found their homes anyway, and the strangler migration of 2026-10-20 moved the route handlers out of
+`src/worker.ts` at the same time, which is what left the file at 184 lines. A plan that describes a
+sequence is a prediction about where the seams land; the seams land where the callers are.

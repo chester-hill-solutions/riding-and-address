@@ -8,6 +8,7 @@ import { r2DatasetSource, createDatasetCaches, type DatasetSource } from './data
 import { geocodeIfNeeded } from './geocoding';
 import { QueuePolicy, type QueueStateSnapshot } from './queue-policy';
 import type { QueueJob } from './queue-types';
+import { BATCH_CONFIG } from './config';
 
 // The DO's wire types live in `queue-types.ts`; re-exported here so this
 // module's public surface is unchanged.
@@ -175,10 +176,9 @@ export class QueueManager {
       });
     }
 
-    // Validate batch size (maximum 100 requests)
-    const MAX_BATCH_SIZE = 100;
-    if (requests.length > MAX_BATCH_SIZE) {
-      return new Response(JSON.stringify({ error: `Batch size exceeds maximum of ${MAX_BATCH_SIZE} requests` }), {
+    // Validate batch size (the same limit the synchronous route enforces)
+    if (requests.length > BATCH_CONFIG.MAX_BATCH_SIZE) {
+      return new Response(JSON.stringify({ error: `Batch size exceeds maximum of ${BATCH_CONFIG.MAX_BATCH_SIZE} requests` }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
       });

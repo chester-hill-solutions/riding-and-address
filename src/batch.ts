@@ -19,17 +19,8 @@ import * as queueClient from './queue-client';
 import { recordSuccessfulBillable } from './billing';
 import { safeParseBatchLookupRequests } from './validation';
 import { badRequest, internalErrorResponse } from './utils';
+import { BATCH_CONFIG } from './config';
 
-export const BATCH_CONFIG = {
-  DEFAULT_BATCH_SIZE: 10,
-  MAX_BATCH_SIZE: 100,
-  TIMEOUT: 300000,
-  RETRY_ATTEMPTS: 3,
-  RETRY_DELAY: 1000,
-};
-
-// Maximum batch size limits
-export const MAX_BATCH_SIZE = BATCH_CONFIG.MAX_BATCH_SIZE;
 export const MAX_REQUEST_BODY_SIZE = 10 * 1024 * 1024; // 10MB
 
 // Process batch lookup with batch geocoding (GeoGratis-first). Optional normalization via Google when key configured.
@@ -41,8 +32,8 @@ export async function processBatchLookupWithBatchGeocoding(
   const lookupRiding = ctx.deps?.lookup ?? cachedLookupRiding;
   const circuitBreaker = geocodingExecutor();
 
-  if (requests.length > MAX_BATCH_SIZE) {
-    throw new Error(`Batch size exceeds maximum of ${MAX_BATCH_SIZE} requests`);
+  if (requests.length > BATCH_CONFIG.MAX_BATCH_SIZE) {
+    throw new Error(`Batch size exceeds maximum of ${BATCH_CONFIG.MAX_BATCH_SIZE} requests`);
   }
 
   const results: BatchLookupResponse[] = [];
@@ -217,8 +208,8 @@ export function redactFuseDeniedResult(
 export async function submitBatchToQueue(env: Env, requests: unknown): Promise<{ batchId: string; status: string }> {
   const validatedRequests = parseBatchLookupRequests(requests);
 
-  if (validatedRequests.length > MAX_BATCH_SIZE) {
-    throw new Error(`Batch size exceeds maximum of ${MAX_BATCH_SIZE} requests`);
+  if (validatedRequests.length > BATCH_CONFIG.MAX_BATCH_SIZE) {
+    throw new Error(`Batch size exceeds maximum of ${BATCH_CONFIG.MAX_BATCH_SIZE} requests`);
   }
 
   return queueClient.submitBatch(env, validatedRequests);
