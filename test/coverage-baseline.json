@@ -42,7 +42,7 @@
       "branches": 62.5
     },
     "src/cache.ts": {
-      "statements": 60,
+      "statements": 61.19,
       "branches": 37.93
     },
     "src/canada-post-format.ts": {
@@ -346,7 +346,7 @@
       "branches": 88.65
     },
     "src/validation.ts": {
-      "statements": 79.36,
+      "statements": 87.27,
       "branches": 65.62
     },
     "src/webhook-admin.ts": {
@@ -354,8 +354,8 @@
       "branches": 76.47
     },
     "src/webhooks.ts": {
-      "statements": 46.04,
-      "branches": 26
+      "statements": 49.74,
+      "branches": 28.57
     },
     "src/worker.ts": {
       "statements": 46.66,

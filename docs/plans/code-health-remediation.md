@@ -19,16 +19,17 @@ status of that plan, as re-derived from the tree on 2026-10-19:
 
 ## Status — where each wave landed
 
-Executed as a series of four pull requests, one concern each, because this repository merges small
+Executed as a series of five pull requests, one concern each, because this repository merges small
 single-concern PRs and **merging deploys to production**. Each PR is a step in the series, and each
 one is reviewable on its own.
 
 | PR | Wave | Outcome | Evidence |
 |---|---|---|---|
 | #235 | 1, 2, 5 — the gates | **done** | `scripts/check-secrets.mjs`, `scripts/check-coverage-ratchet.mjs`; `projection-handlers.ts` 13.5% → 98.5%, `billing.ts` 70% → 100%, `customer.ts` 70% → 100%; the portal suite, 8 tests in 3 files → 22 in 5 |
-| #236 | 0 — session liveness | **done** | `src/oauth-token.ts` consults the session; ADR-0011; the consent screen now says the truth |
+| #236 | 0 — session liveness | **done** | `src/oauth-token.ts` consults the session; ADR-0011; the consent screen now says the truth; the session query is tested against the portal's real schema |
 | #237 | 3 — the import cycles | **done** | **0** runtime cycles, from 2; `scripts/check-import-cycles.mjs` keeps it at 0 |
 | #238 | 4 — the strangler migration | **done** | **32 legacy entries → 0**; `src/worker.ts` 876 → 184 lines |
+| #239 | the dead exports | **done** | **34 exports nothing used**, removed: `types.ts` −111, `validation.ts` −92, `webhooks.ts` −42, `cache.ts` −13 |
 
 **Two things this plan could not do, and why.**
 

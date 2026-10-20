@@ -205,12 +205,12 @@ export interface OdaGeocodeMetadata {
 // `location` via the existing lookup routes once the user selects one.
 
 /** Zero-based, endOffset exclusive — Google's StringRange. */
-export interface StringRange {
+interface StringRange {
   startOffset: number;
   endOffset: number;
 }
 
-export interface FormattableText {
+interface FormattableText {
   text: string;
   matches?: StringRange[];
 }
@@ -219,7 +219,7 @@ export interface FormattableText {
  * Canada Post's precision ladder. `Street` is a container (many addresses); `Premise` is a real
  * ODA row; `RangedPremise` is a civic that falls inside a street's range but has no exact row.
  */
-export type SuggestionDataLevel = 'Premise' | 'RangedPremise' | 'Street';
+type SuggestionDataLevel = 'Premise' | 'RangedPremise' | 'Street';
 
 /**
  * What kind of set a container holds. A `Premise` is a container when one civic number holds
@@ -232,7 +232,7 @@ export type SuggestionDataLevel = 'Premise' | 'RangedPremise' | 'Street';
  * point — call /api/federal?lat=&lon= with it. There is no retrieve step: leaves carry their
  * data inline.
  */
-export type SuggestionNext = 'search' | 'lookup';
+type SuggestionNext = 'search' | 'lookup';
 
 export interface Suggestion {
   id: string;
@@ -288,35 +288,9 @@ export interface SuggestResponse {
 }
 
 // Geocoding interfaces
-export interface MapboxFeature {
-  center: [number, number];
-}
-
-export interface MapboxResponse {
-  features: MapboxFeature[];
-}
-
-export interface NominatimResult {
-  lon: string;
-  lat: string;
-}
-
 export interface GoogleGeocodeLocation { 
   lat: number; 
   lng: number; 
-}
-
-export interface GoogleGeocodeGeometry { 
-  location: GoogleGeocodeLocation; 
-}
-
-export interface GoogleGeocodeResult { 
-  geometry: GoogleGeocodeGeometry; 
-}
-
-export interface GoogleGeocodeResponse { 
-  status: string; 
-  results: GoogleGeocodeResult[]; 
 }
 
 // Google Address Components - structured breakdown of address parts
@@ -366,54 +340,6 @@ export interface GoogleAddressComponents {
     northeast: GoogleGeocodeLocation;
     southwest: GoogleGeocodeLocation;
   };
-}
-
-// GeoGratis Geolocation API interfaces
-export interface GeoGratisGeometry {
-  type: string;
-  coordinates: number[];
-}
-
-export interface GeoGratisResult {
-  title: string;
-  qualifier?: string;
-  type?: string;
-  geometry: GeoGratisGeometry;
-  bbox?: number[];
-  score?: number;
-  component?: Record<string, unknown>;
-}
-
-export type GeoGratisResponse = GeoGratisResult[];
-
-// Google Maps Batch Geocoding API types
-export interface GoogleBatchGeocodeRequest {
-  addresses: Array<{
-    address: string;
-  }>;
-}
-
-export interface GoogleBatchGeocodeResponse {
-  results: Array<{
-    address: string;
-    geocoded_address: string;
-    partial_match: boolean;
-    place_id: string;
-    postcode_localities: string[];
-    types: string[];
-    address_components?: Record<string, unknown>[];
-    geometry: {
-      location: {
-        lat: number;
-        lng: number;
-      };
-      location_type: string;
-      viewport: {
-        northeast: { lat: number; lng: number };
-        southwest: { lat: number; lng: number };
-      };
-    };
-  }>;
 }
 
 // GeoJSON interfaces
@@ -503,14 +429,6 @@ export interface BatchLookupRequest {
   pathname: string;
 }
 
-export interface BatchRequest {
-  endpoint: string;
-  queries: Array<{
-    id?: string;
-    query: QueryParams;
-  }>;
-}
-
 export interface BatchLookupResponse {
   id: string;
   query: QueryParams;
@@ -535,14 +453,6 @@ export interface BatchJob {
   completedAt?: number;
   results: BatchLookupResponse[];
   errors: string[];
-}
-
-// Configuration interfaces
-export interface TimeoutConfig {
-  geocoding: number;
-  lookup: number;
-  batch: number;
-  total: number;
 }
 
 // Webhook interfaces
@@ -582,23 +492,6 @@ export interface WebhookDelivery {
   attemptedAt: number;
   duration: number;
   error?: string;
-}
-
-// Spatial database interfaces
-export interface SpatialDatabaseFeature {
-  id: string;
-  dataset: string;
-  name: string;
-  geometry: string; // WKT format
-  properties: string; // JSON string
-  centroid_lon: number;
-  centroid_lat: number;
-  bbox_min_lon: number;
-  bbox_min_lat: number;
-  bbox_max_lon: number;
-  bbox_max_lat: number;
-  created_at: number;
-  updated_at: number;
 }
 
 // Circuit breaker interfaces

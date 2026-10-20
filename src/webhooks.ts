@@ -172,7 +172,7 @@ export async function createWebhookSignature(secret: string, payload: string): P
 }
 
 // Deliver webhook
-export async function deliverWebhook(env: Env, webhookId: string, eventId: string): Promise<boolean> {
+async function deliverWebhook(env: Env, webhookId: string, eventId: string): Promise<boolean> {
   const webhook = await getWebhookConfig(env, webhookId);
   if (!env.WEBHOOKS) return false;
   const event = await readJsonEntry<WebhookEvent>(env.WEBHOOKS, `${WEBHOOK_EVENT_PREFIX}${eventId}`);
@@ -336,36 +336,6 @@ export async function cleanupWebhookData(env: Env): Promise<void> {
   await writeJsonEntry(env.WEBHOOKS, WEBHOOK_DELIVERY_INDEX_KEY, newDeliveryIndex);
 }
 
-// Trigger webhook for batch completion
-export async function triggerBatchCompletionWebhook(env: Env, batchId: string, batchStatus: Record<string, unknown>): Promise<void> {
-  if (!WEBHOOK_CONFIG.ENABLED) {
-    return;
-  }
-  
-  const payload = {
-    event: 'batch.completed',
-    batchId,
-    timestamp: Date.now(),
-    status: batchStatus.status,
-    results: batchStatus.results,
-    errors: batchStatus.errors,
-    processingTime: (batchStatus.completedAt as number) - (batchStatus.createdAt as number)
-  };
-  
-  // Create events for all enabled webhooks
-  const webhookIndex = await getWebhookIndex(env);
-  for (const webhookId of webhookIndex) {
-    const webhook = await getWebhookConfig(env, webhookId);
-    if (webhook && webhook.active && webhook.events.includes('batch.completed')) {
-      try {
-        await createWebhookEvent(env, webhookId, 'batch.completed', batchId, payload);
-      } catch (error) {
-        console.error(`Failed to create webhook event for ${webhookId}:`, error);
-      }
-    }
-  }
-}
-
 // Webhook management functions
 export async function createWebhook(env: Env, config: Omit<WebhookConfig, 'createdAt' | 'lastDelivery' | 'failureCount' | 'maxFailures'>): Promise<string> {
   const webhookIndex = await getWebhookIndex(env);
@@ -384,17 +354,6 @@ export async function createWebhook(env: Env, config: Omit<WebhookConfig, 'creat
   
   await setWebhookConfig(env, webhookId, webhook);
   return webhookId;
-}
-
-export async function updateWebhook(env: Env, webhookId: string, updates: Partial<WebhookConfig>): Promise<boolean> {
-  const webhook = await getWebhookConfig(env, webhookId);
-  if (!webhook) {
-    return false;
-  }
-  
-  const updatedWebhook = { ...webhook, ...updates };
-  await setWebhookConfig(env, webhookId, updatedWebhook);
-  return true;
 }
 
 export async function deleteWebhook(env: Env, webhookId: string): Promise<boolean> {
