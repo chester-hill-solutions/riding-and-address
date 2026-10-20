@@ -394,4 +394,29 @@ describe('the projection HTTP surface', () => {
     );
     expect(response.status).toBe(404);
   });
+
+  it('lists one Customer\'s keys, and only that Customer\'s', async () => {
+    // A key left behind by an earlier rotation is attached to a real Customer and is not visible
+    // from anywhere else, so an ops tool has to be able to ask.
+    env.PROJECTION_ADMIN_SECRET = secret;
+    await mintKeyProjectionCore(env, { kind: 'browser', customerId: 'cust_listed', label: 'demo' });
+    await mintKeyProjectionCore(env, { kind: 'browser', customerId: 'cust_listed', label: 'demo' });
+    await mintKeyProjectionCore(env, { kind: 'browser', customerId: 'cust_other' });
+
+    const response = await handleProjectionRequest(
+      makeContext(env, request('/admin/projection/keys?customer=cust_listed'))
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { keys: Array<{ customerId: string; label?: string }> };
+    expect(body.keys).toHaveLength(2);
+    expect(body.keys.every((key) => key.customerId === 'cust_listed')).toBe(true);
+  });
+
+  it('answers 400 when the list has no Customer to scope it to', async () => {
+    env.PROJECTION_ADMIN_SECRET = secret;
+    const response = await handleProjectionRequest(
+      makeContext(env, request('/admin/projection/keys'))
+    );
+    expect(response.status).toBe(400);
+  });
 });
