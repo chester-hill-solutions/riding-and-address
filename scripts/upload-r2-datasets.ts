@@ -14,7 +14,7 @@
 import { execSync } from 'child_process';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { getAllDatasetKeys } from '../src/datasets';
+import { getLiveDatasetKeys } from '../src/datasets';
 
 const BUCKET = 'ridings';
 /** `data/ridings` holds the riding boundaries; `data/geo` holds the municipal and sub-municipal ones. */
@@ -35,7 +35,14 @@ function main(): void {
   const missing: string[] = [];
   const uploaded: string[] = [];
 
-  for (const key of getAllDatasetKeys()) {
+  // Only datasets marked `live` are published. A `registered` dataset has a route and a
+  // documented shape but its data is not ready to serve, and the municipal layers are far
+  // too large for the Worker to load into an isolate — publishing one by accident would
+  // turn a clean 404 into an out-of-memory 500. Flip the status in src/geo-datasets.ts
+  // to publish a level.
+  const keys = getLiveDatasetKeys();
+
+  for (const key of keys) {
     const local = findLocalFile(key);
     if (!local) {
       missing.push(key);
@@ -50,7 +57,7 @@ function main(): void {
   }
 
   console.log('\n--- Verification (R2 head) ---');
-  for (const key of getAllDatasetKeys()) {
+  for (const key of keys) {
     try {
       execSync(`wrangler r2 object get ${BUCKET}/${key} --file /dev/null${remoteFlag}`, { stdio: 'pipe' });
       console.log(`OK  ${key}`);

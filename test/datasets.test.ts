@@ -8,6 +8,7 @@ import {
   getLiveR2Keys,
   getLiveWarmTargets,
   getAllGeoR2Keys,
+  getLiveDatasetKeys,
 } from '../src/datasets';
 import { inMemoryDatasetSource } from '../src/dataset-source';
 import type { GeoJSONFeatureCollection } from '../src/types';
@@ -61,6 +62,16 @@ describe('checkRidingDatasets', () => {
     const env = { RIDINGS: mockR2(new Set()) } as Env;
     const datasets = await checkRidingDatasets(env);
     expect(datasets.map((d) => d.key)).toEqual([...getAllR2Keys(), ...getAllGeoR2Keys()]);
+  });
+
+  it('publishes only live datasets, so a registered geo layer is never uploaded to the serving path', () => {
+    // The municipal layers are far too large for a Worker isolate to load. Uploading a
+    // registered one would turn a clean 404 into an out-of-memory 500.
+    const live = getLiveDatasetKeys();
+    expect(live).toEqual([...getLiveR2Keys()]);
+    for (const key of getAllGeoR2Keys()) {
+      expect(live).not.toContain(key);
+    }
   });
 });
 

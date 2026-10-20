@@ -83,6 +83,19 @@ export function getAllDatasetKeys(): DatasetKey[] {
   return [...getAllR2Keys(), ...GEO_DATASETS.map((d) => d.r2Key)];
 }
 
+/**
+ * The dataset keys that are published: the riding datasets, plus the geo datasets whose
+ * status is `live`.
+ *
+ * This is the set the R2 upload script writes. A `registered` geo dataset has a route
+ * and a documented response shape, but its data is not ready to serve — and the
+ * municipal layers are far too large for a Worker isolate to load — so publishing one
+ * by accident would replace a clean 404 with an out-of-memory 500.
+ */
+export function getLiveDatasetKeys(): DatasetKey[] {
+  return [...getLiveR2Keys(), ...getLiveGeoR2Keys()];
+}
+
 export function getLiveR2Keys(): RidingDatasetKey[] {
   const keys: RidingDatasetKey[] = [];
   if (FEDERAL_DATASET.status === 'live') {
