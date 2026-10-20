@@ -5,6 +5,7 @@ import {
   deleteApiKey,
   generateApiKey,
   generateServerKey,
+  loadApiKey,
   putBrowserKey,
   putServerKey,
   serverKeyDisplayId,
@@ -188,6 +189,29 @@ export async function revokeKeyProjectionCore(env: Env, id: string): Promise<{ d
   return { deleted: id };
 }
 
+/**
+ * Read a key's record, for an ops tool that has to replace it.
+ *
+ * **A rotation needs the key it is replacing.** A replacement that does not carry the old key's
+ * own customer, origin allowlist and daily cap is not the same key with a new value — it is a
+ * different key that happens to sit in the same place, and it is served to nobody if the allowlist
+ * was left behind. The portal mirrors the keys it mints into its own database, but a key minted
+ * from the command line is in the key store and nowhere else, so the only complete copy is here.
+ *
+ * **The hash of a server secret is not returned.** It is not something an authenticated caller needs
+ * — it cannot be used to authenticate, and it is the one field in this record that is not a public
+ * identifier. Everything else about the record is.
+ */
+export async function showKeyProjectionCore(
+  env: Env,
+  id: string
+): Promise<{ key: Omit<ApiKeyRecord, 'secretHash'> } | { error: 'NOT_FOUND' }> {
+  const record = await loadApiKey(env, id);
+  if (!record) return { error: 'NOT_FOUND' };
+  const { secretHash: _secretHash, ...safe } = record;
+  return { key: safe };
+}
+
 export async function handleProjectionRequest(ctx: RouteContext): Promise<Response> {
   const { request, env } = ctx;
   const pathname = ctx.url.pathname;
@@ -238,6 +262,13 @@ export async function handleProjectionRequest(ctx: RouteContext): Promise<Respon
   if (pathname.startsWith('/admin/projection/keys/') && request.method === 'DELETE') {
     const id = decodeURIComponent(pathname.slice('/admin/projection/keys/'.length));
     return json(ctx, await revokeKeyProjectionCore(env, id));
+  }
+
+  if (pathname.startsWith('/admin/projection/keys/') && request.method === 'GET') {
+    const id = decodeURIComponent(pathname.slice('/admin/projection/keys/'.length));
+    const result = await showKeyProjectionCore(env, id);
+    if ('error' in result) return json(ctx, { error: 'Not found' }, 404);
+    return json(ctx, result);
   }
 
   return json(ctx, { error: 'Not found' }, 404);
