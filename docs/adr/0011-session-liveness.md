@@ -78,6 +78,18 @@ an availability failure never becomes an unbounded bypass of the check. This is 
 the fuse's fail-closed/fail-open rule in `src/usage-ledger.ts`, applied to a security decision
 rather than a quota.
 
+**What a D1 outage actually looks like from the caller's side.** The session query and the
+signing-key read hit the same database, and the signing key is cached for 60 seconds. So an
+outage breaks token *verification* 60 seconds in, while the grace window keeps a cached "live"
+verdict standing for 75. The check therefore does not widen the outage: verification has already
+failed before the session check gives up.
+
+The one narrow case is a token presented for the **first** time during an outage: it has no cached
+verdict, so the check refuses it while verification would still have succeeded. That window is the
+signing key's 60 seconds, and it is the price of failing closed — failing open there would let a
+revoked token work for the length of the outage, which is the unbounded bypass this decision
+exists to prevent.
+
 ### The verdict cache
 
 A session's verdict is cached for **15 seconds**, which is the revocation latency: a person who
