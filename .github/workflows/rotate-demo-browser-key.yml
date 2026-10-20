@@ -159,7 +159,7 @@ jobs:
             }));
           ' "$(cat old-key.json)")
 
-          if [ "$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).customerId ?? ""' "$BODY")" = "" ]; then
+          if [ "$(node -e 'const b = JSON.parse(process.argv[1]); process.stdout.write(String(b.customerId ?? ""))' "$BODY")" = "" ]; then
             echo "::error::the old key's record has no customer"
             npx wrangler secret delete PROJECTION_ADMIN_SECRET -c "$WORKER_CONFIG" || true
             exit 1
