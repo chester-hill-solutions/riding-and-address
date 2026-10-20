@@ -159,20 +159,3 @@ export class LRUCache<K, V> {
 export const geoCacheLRU = new LRUCache<string, GeoJSONFeatureCollection>(CACHE_CONFIG.MAX_SIZE, CACHE_CONFIG.MAX_AGE);
 export const spatialIndexCacheLRU = new LRUCache<string, SpatialIndex>(CACHE_CONFIG.MAX_SIZE, CACHE_CONFIG.MAX_AGE);
 
-// Cache utility functions
-export function getCachedGeoJSON(key: string): GeoJSONFeatureCollection | undefined {
-  return geoCacheLRU.get(key);
-}
-
-export function setCachedGeoJSON(key: string, data: GeoJSONFeatureCollection): void {
-  geoCacheLRU.set(key, data);
-}
-
-export function getCachedSpatialIndex(key: string): SpatialIndex | undefined {
-  return spatialIndexCacheLRU.get(key);
-}
-
-export function setCachedSpatialIndex(key: string, data: SpatialIndex): void {
-  spatialIndexCacheLRU.set(key, data);
-}
-

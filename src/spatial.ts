@@ -1,5 +1,5 @@
 import { Env, GeoJSONFeature, GeoJSONFeatureCollection, GeoJSONGeometry } from './types';
-import { isPointInPolygon } from './geometry';
+import { isPointInPolygon, simplifyLineString } from './geometry';
 import type { DatasetSource } from './dataset-source';
 
 // Spatial database configuration
@@ -650,29 +650,3 @@ export async function syncGeoJSONToDatabase(
   }
 }
 
-// Douglas-Peucker line simplification
-export function simplifyLineString(coordinates: number[][], tolerance: number, maxVertices: number): number[][] {
-  if (coordinates.length <= 2) {
-    return coordinates;
-  }
-  
-  // If we're already under the max vertices, return as is
-  if (coordinates.length <= maxVertices) {
-    return coordinates;
-  }
-  
-  // Simple decimation for now - take every nth point
-  const step = Math.ceil(coordinates.length / maxVertices);
-  const simplified: number[][] = [];
-  
-  for (let i = 0; i < coordinates.length; i += step) {
-    simplified.push(coordinates[i]);
-  }
-  
-  // Always include the last point
-  if (simplified[simplified.length - 1] !== coordinates[coordinates.length - 1]) {
-    simplified.push(coordinates[coordinates.length - 1]);
-  }
-  
-  return simplified;
-}

@@ -43,6 +43,14 @@ export type RouteContext = {
   correlationId: string;
   /** Request start timestamp, for the timing metrics. */
   startTime: number;
+  /**
+   * The path parameters the route table matched: `/batch/:id` gives `{ id }`.
+   *
+   * The table compiles each pattern once and extracts the parameters, so a handler that needs one
+   * reads it here rather than re-parsing the pathname. Empty for a context built outside the
+   * dispatcher — a handler called directly, in a test.
+   */
+  params: Record<string, string>;
   /** The one response-header policy: CORS + security + correlation id. */
   corsHeaders: (origin?: string | null) => Record<string, string>;
   /** Defer background work past the response, via the request's `ExecutionContext`. */
@@ -74,6 +82,8 @@ export type RouteContextInput = {
   correlationId: string;
   startTime: number;
   deps?: RouteDeps;
+  /** The path parameters the dispatcher matched. Empty when the context is built outside it. */
+  params?: Record<string, string>;
 };
 
 /** Build the header policy once: CORS for this origin, security headers, and the correlation id. */
@@ -103,7 +113,7 @@ export function jsonHeaders(ctx: RouteContext): Record<string, string> {
  * filled by `runPrelude`.
  */
 export function createRouteContext(input: RouteContextInput): RouteContext {
-  const { request, env, ctx, correlationId, startTime, deps } = input;
+  const { request, env, ctx, correlationId, startTime, deps, params } = input;
   const url = new URL(request.url);
   const corsHeaders = responseHeaderPolicy(env, correlationId);
 
@@ -113,6 +123,7 @@ export function createRouteContext(input: RouteContextInput): RouteContext {
     url,
     correlationId,
     startTime,
+    params: params ?? {},
     corsHeaders,
     deferTask: (task: Promise<unknown>) => { ctx.waitUntil(task); },
     isAdmin: false,

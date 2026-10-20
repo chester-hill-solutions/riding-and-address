@@ -1,7 +1,7 @@
 import { jsonOk, jsonError } from '@chester-hill-solutions/http';
 import { Env, QueryParams, SuggestQueryParams, SuggestResponse } from './types';
 import { initializeOdaDatabase, getOdaStats } from './oda-schema';
-import { isOdaEnabled, getOdaConfig, getOdaSuggestConfig, ODA_DEFAULTS } from './oda-config';
+import { isOdaEnabled, isOdaSuggestEnabled, getOdaConfig, getOdaSuggestConfig, ODA_DEFAULTS } from './oda-config';
 import { jsonHeaders, type RouteContext } from './route-context';
 import {
   geocodeWithOda,
@@ -162,6 +162,25 @@ export async function handleNormalizeAddressRoute(ctx: RouteContext): Promise<Re
  * Returns suggestions only; no riding. The caller takes a suggestion's `location` and calls the
  * existing lookup routes once the user selects one, which is why this path never touches R2.
  */
+/**
+ * `GET /api/search` — the route's own entry point.
+ *
+ * **Autocomplete is a feature flag, and a disabled feature is not there.**
+ *
+ * The suggest index is built per province and can be absent, and until it is built the route does
+ * not exist. Before this route was ported out of the Worker's legacy chain, a request for it with
+ * the feature off fell through to the `/api` lookup catch-all, which answers an unregistered lookup
+ * path with a 404 — so the answer was a 404, and it still is. The check lives here rather than in
+ * the dispatcher because the route now owns its own gate: the catch-all is no longer what a
+ * disabled request reaches.
+ */
+export async function handleSuggestRoute(ctx: RouteContext): Promise<Response> {
+  if (!isOdaSuggestEnabled(ctx.env)) {
+    return badRequest('Not found', 404, 'NOT_FOUND', ctx.correlationId);
+  }
+  return handleSearchRoute(ctx);
+}
+
 export async function handleSearchRoute(ctx: RouteContext): Promise<Response> {
   const { request, env, correlationId, startTime, corsHeaders: getCorsHeaders, deferTask, auth } = ctx;
   const origin = request.headers.get('Origin');

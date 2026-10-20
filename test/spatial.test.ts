@@ -9,9 +9,11 @@ import {
   isPointInBoundingBox,
   findCandidateFeatures,
   calculateCentroid,
-  simplifyLineString,
   type BoundingBox
 } from '../src/spatial';
+// The line simplifier is geometry's, not spatial's: there was one of each, with the same name
+// and the same signature and different algorithms, and only this one was ever called.
+import { simplifyLineString } from '../src/geometry';
 import type { GeoJSONFeature, GeoJSONFeatureCollection } from '../src/types';
 
 // Helper to create a simple polygon feature

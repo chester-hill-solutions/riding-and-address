@@ -3,7 +3,6 @@ import { createOpenAPISpec } from '../src/docs';
 import {
   ROUTES,
   compilePattern,
-  legacy,
   matchRoute,
   ownerOf,
   runPrelude,
@@ -111,8 +110,10 @@ describe(':param extraction', () => {
   });
 
   it('does not let a single param segment swallow a deeper path', () => {
-    // /batch/a/b is two segments past /batch, so the trailing wildcard entry wins.
-    expect(matchRoute('GET', '/batch/a/b')?.entry).toBe(entryWithPath('/batch/*'));
+    // `/batch/a/b` is two segments past `/batch`, so the `:id` entry does not match it. A
+    // wildcard entry used to sit underneath and answer it; there is none now, so the path is
+    // simply not served — which is the right answer for a path that names no batch.
+    expect(matchRoute('GET', '/batch/a/b')).toBeNull();
   });
 });
 
@@ -126,6 +127,13 @@ describe('method matching', () => {
   it('falls through to a broader route on a method mismatch', () => {
     // /api/search is GET-only; a POST must fall to the catch-all, not 405 at the search route.
     expect(matchRoute('POST', '/api/search')?.entry).toBe(entryWithPath('/api/*'));
+  });
+
+  it('claims the path for a route that answers 405 for the wrong method', () => {
+    // The queue routes claim their path for every method, so the handler — not a catch-all — is
+    // what answers. That is the difference between "the path exists, the verb does not" and "the
+    // path does not exist", and it is the distinction the legacy chain made.
+    expect(matchRoute('POST', '/api/queue/status')?.entry).toBe(entryWithPath('/api/queue/status'));
   });
 
   it('ignores the method when resolving ownership', () => {
@@ -204,8 +212,7 @@ describe('table completeness', () => {
       '/webhooks/*',
     ];
     for (const path of gateway) {
-      expect(entryWithPath(path).handler, `${path} is still legacy`).not.toBe(legacy);
-      expect(entryWithPath(path).handler).toBeTypeOf('function');
+      expect(entryWithPath(path).handler, `${path} has no handler`).toBeTypeOf('function');
     }
   });
 });
@@ -250,13 +257,32 @@ describe('paid rail rate-limit bucket', () => {
 });
 
 describe('declared policy is enforced', () => {
-  it('401s an admin-only legacy entry without credentials (fail closed)', async () => {
-    const entry = entryWithPath('/api/cache/warm');
-    expect(entry.handler).toBe(legacy);
+  /**
+   * Every entry carries a real handler.
+   *
+   * The strangler migration is finished: the table used to declare ~30 entries with
+   * `handler: legacy`, and the Worker answered them from a second dispatch path — the old `fetch`
+   * guard-chain — where the declared `auth` and `rateLimit` were read by nothing. The property
+   * that mattered was never "the entry says admin"; it was "an admin entry 401s without
+   * credentials", and that only held for the ported ones.
+   *
+   * Now there is one dispatch path, so the declaration and the enforcement are the same thing.
+   */
+  it('has no API entry left without a handler', () => {
+    // Only a portal-owned entry has no handler — the API worker never dispatches those, the
+    // portal does. An API entry without one is a mistake, and there is no legacy chain left to
+    // catch it.
+    const withoutHandler = ROUTES.filter((entry) => entry.owner === 'api' && !entry.handler);
+    expect(withoutHandler.map((entry) => entry.path)).toEqual([]);
+  });
+
+  it('401s an admin-only entry without credentials (fail closed)', async () => {
+    const entry = entryWithPath('/api/queue/submit');
+    expect(entry.handler).toBeTypeOf('function');
 
     const ctx = contextFor(
       {} as Env,
-      new Request('https://lookup.test/api/cache/warm', { method: 'POST' })
+      new Request('https://lookup.test/api/queue/submit', { method: 'POST' })
     );
     const denial = await runPrelude(entry, ctx);
 
@@ -264,10 +290,10 @@ describe('declared policy is enforced', () => {
     expect(ctx.isAdmin).toBe(false);
   });
 
-  it('admits an admin-only legacy entry with the operator credential', async () => {
-    const entry = entryWithPath('/api/cache/warm');
+  it('admits an admin-only entry with the operator credential', async () => {
+    const entry = entryWithPath('/api/queue/submit');
     const env = { BASIC_AUTH: 'admin:secret' } as Env;
-    const request = new Request('https://lookup.test/api/cache/warm', {
+    const request = new Request('https://lookup.test/api/queue/submit', {
       method: 'POST',
       headers: { Authorization: `Basic ${btoa('admin:secret')}` },
     });
@@ -277,9 +303,26 @@ describe('declared policy is enforced', () => {
     expect(ctx.isAdmin).toBe(true);
   });
 
-  it('gates that legacy entry through the real worker + dispatch path', async () => {
-    const response = await fetchLookup(createLookupTestEnv(), '/api/cache/warm', { method: 'POST' });
+  it('gates that entry through the real worker + dispatch path', async () => {
+    const response = await fetchLookup(createLookupTestEnv(), '/api/queue/submit', { method: 'POST' });
     expect(response.status).toBe(401);
+  });
+
+  it('fails closed for a ported admin surface too', async () => {
+    // The prelude runs for every entry, so a ported admin surface is gated the same way. This is
+    // the property that matters; the legacy assertion above is about the class of entry that
+    // used to bypass it.
+    const entry = entryWithPath('/api/cache/warm');
+    expect(entry.handler).toBeTypeOf('function');
+
+    const ctx = contextFor(
+      {} as Env,
+      new Request('https://lookup.test/api/cache/warm', { method: 'POST' })
+    );
+    const denial = await runPrelude(entry, ctx);
+
+    expect(denial?.status).toBe(401);
+    expect(ctx.isAdmin).toBe(false);
   });
 
   it('applies the search bucket exactly once per request', async () => {
