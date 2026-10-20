@@ -6,8 +6,13 @@
       "branches": 72.85
     },
     "src/agent-discovery.ts": {
+<<<<<<< HEAD
       "statements": 87.3,
       "branches": 84.28
+=======
+      "statements": 100,
+      "branches": 100
+>>>>>>> origin/main
     },
     "src/api-key-usage-do.ts": {
       "statements": 92.03,
@@ -15,7 +20,11 @@
     },
     "src/api-keys.ts": {
       "statements": 82.58,
+<<<<<<< HEAD
       "branches": 78.46
+=======
+      "branches": 77.69
+>>>>>>> origin/main
     },
     "src/area-geometry.ts": {
       "statements": 97.05,
@@ -30,8 +39,13 @@
       "branches": 94.28
     },
     "src/batch.ts": {
+<<<<<<< HEAD
       "statements": 58.38,
       "branches": 50.66
+=======
+      "statements": 55.07,
+      "branches": 48.38
+>>>>>>> origin/main
     },
     "src/billing.ts": {
       "statements": 100,
@@ -78,7 +92,11 @@
       "branches": 100
     },
     "src/dataset-cache.ts": {
+<<<<<<< HEAD
       "statements": 95.65,
+=======
+      "statements": 90.41,
+>>>>>>> origin/main
       "branches": 83.33
     },
     "src/dataset-source.ts": {
@@ -130,8 +148,13 @@
       "branches": 51.89
     },
     "src/geometry.ts": {
+<<<<<<< HEAD
       "statements": 95.31,
       "branches": 89.58
+=======
+      "statements": 45.79,
+      "branches": 57.81
+>>>>>>> origin/main
     },
     "src/http-headers.ts": {
       "statements": 95.65,
@@ -161,10 +184,13 @@
       "statements": 95.55,
       "branches": 72.41
     },
+<<<<<<< HEAD
     "src/mcp-handler.ts": {
       "statements": 75.51,
       "branches": 69.23
     },
+=======
+>>>>>>> origin/main
     "src/mcp-purchase.ts": {
       "statements": 100,
       "branches": 92.85
@@ -222,8 +248,13 @@
       "branches": 74.5
     },
     "src/oda-handlers.ts": {
+<<<<<<< HEAD
       "statements": 81.53,
       "branches": 66.98
+=======
+      "statements": 81.1,
+      "branches": 66.34
+>>>>>>> origin/main
     },
     "src/oda-import.ts": {
       "statements": 62.06,
@@ -294,12 +325,21 @@
       "branches": 50
     },
     "src/route-context.ts": {
+<<<<<<< HEAD
       "statements": 100,
       "branches": 83.33
     },
     "src/routes.ts": {
       "statements": 89.22,
       "branches": 84.84
+=======
+      "statements": 90,
+      "branches": 50
+    },
+    "src/routes.ts": {
+      "statements": 89.22,
+      "branches": 84.32
+>>>>>>> origin/main
     },
     "src/service-terms.ts": {
       "statements": 100,
@@ -309,6 +349,7 @@
       "statements": 100,
       "branches": 100
     },
+<<<<<<< HEAD
     "src/spatial-handlers.ts": {
       "statements": 58.46,
       "branches": 56.25
@@ -316,6 +357,11 @@
     "src/spatial.ts": {
       "statements": 64.42,
       "branches": 50.31
+=======
+    "src/spatial.ts": {
+      "statements": 64.9,
+      "branches": 50.3
+>>>>>>> origin/main
     },
     "src/time.ts": {
       "statements": 100,
@@ -343,7 +389,11 @@
     },
     "src/utils.ts": {
       "statements": 95.41,
+<<<<<<< HEAD
       "branches": 88.65
+=======
+      "branches": 87.62
+>>>>>>> origin/main
     },
     "src/validation.ts": {
       "statements": 79.36,
@@ -358,8 +408,13 @@
       "branches": 26
     },
     "src/worker.ts": {
+<<<<<<< HEAD
       "statements": 46.66,
       "branches": 55.55
+=======
+      "statements": 44.16,
+      "branches": 48.78
+>>>>>>> origin/main
     },
     "src/x402-receipts.ts": {
       "statements": 97.61,
