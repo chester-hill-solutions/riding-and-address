@@ -1,3 +1,4 @@
+import { createMemoryKv } from './helpers/memory-kv';
 import { describe, it, expect } from 'vitest';
 import {
   handleReceiptsRequest,
@@ -16,29 +17,6 @@ import type { Env } from '../src/types';
  * reconciliation trace. The rail refuses to take money without it.
  */
 
-function fakeKv(): KVNamespace {
-  const store = new Map<string, string>();
-  return {
-    get: async (key: string, type?: string) => {
-      const value = store.get(key);
-      if (value === undefined) return null;
-      return type === 'json' ? JSON.parse(value) : value;
-    },
-    put: async (key: string, value: string) => {
-      store.set(key, value);
-    },
-    delete: async (key: string) => {
-      store.delete(key);
-    },
-    list: async ({ prefix }: { prefix?: string } = {}) => ({
-      keys: [...store.keys()]
-        .filter((name) => !prefix || name.startsWith(prefix))
-        .map((name) => ({ name })),
-      list_complete: true,
-      cacheStatus: null,
-    }),
-  } as unknown as KVNamespace;
-}
 
 const receipt = (over: Partial<X402Receipt> = {}): X402Receipt => ({
   offerId: 'offer-1',
@@ -78,7 +56,7 @@ describe('receipt store', () => {
   });
 
   it('records and reads back a receipt', async () => {
-    const env = { X402_RECEIPTS: fakeKv() } as unknown as Env;
+    const env = { X402_RECEIPTS: createMemoryKv() } as unknown as Env;
     await recordReceipt(env, receipt());
     const receipts = await listReceipts(env);
     expect(receipts).toHaveLength(1);
@@ -86,7 +64,7 @@ describe('receipt store', () => {
   });
 
   it('skips a malformed stored entry rather than trusting it', async () => {
-    const kv = fakeKv();
+    const kv = createMemoryKv();
     await kv.put('x402receipt:bad', JSON.stringify({ nope: true }));
     const env = { X402_RECEIPTS: kv } as unknown as Env;
     expect(await listReceipts(env)).toEqual([]);
@@ -108,7 +86,7 @@ describe('receipt store', () => {
 
 describe('GET /api/x402/receipts', () => {
   it('returns the receipts and the reconciliation summary', async () => {
-    const kv = fakeKv();
+    const kv = createMemoryKv();
     const env = { X402_RECEIPTS: kv } as unknown as Env;
     await recordReceipt(env, receipt({ offerId: 'a' }));
     await recordReceipt(env, receipt({ offerId: 'b', delivered: false }));

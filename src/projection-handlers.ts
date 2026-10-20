@@ -1,4 +1,5 @@
 import { Env } from './types';
+import { z } from 'zod';
 import {
   clearApiKeyCache,
   deleteApiKey,
@@ -20,6 +21,62 @@ import {
 import { peekCustomerUsage } from './billing';
 import { timingSafeEqual } from './utils';
 import type { RouteContext } from './route-context';
+
+/**
+ * The shape of a Customer projection write.
+ *
+ * **Validated, not cast.** `request.json()` used to be cast to a type and believed — so a body
+ * with `fuseLimit: -1`, or a `plan` this Worker does not implement, or a `batchEnabled` of
+ * `"yes"`, was written straight into the record the fuse and the Enterprise gate read. This is the
+ * credential- and money-owning path; a body that does not match the shape is a bad request.
+ *
+ * The validation lives in the *core* function rather than in the HTTP wrapper, because the portal
+ * calls the core in-process (`portal/app/lib/projection.server.ts`) — a schema in the wrapper
+ * would leave the path the portal actually uses unvalidated.
+ */
+const CustomerProjectionSchema = z.object({
+  id: z.string().min(1),
+  plan: z.enum(['free', 'metered', 'enterprise']).optional(),
+  fuseLimit: z.number().int().min(0).optional(),
+  fuseSoftWarn: z.boolean().optional(),
+  batchEnabled: z.boolean().optional(),
+  stripeCustomerId: z.string().optional(),
+  label: z.string().optional(),
+});
+
+/**
+ * The shape of a key-minting request.
+ *
+ * `kind` decides which credential is minted, so it is an enum rather than a string. `origins` is
+ * the allowlist a Browser key is restricted to, and `dailyLimit` its abuse cap — both are read by
+ * the auth path, so neither may be whatever the body said.
+ */
+const MintKeySchema = z.object({
+  kind: z.enum(['browser', 'server']),
+  customerId: z.string().min(1),
+  label: z.string().optional(),
+  origins: z.array(z.string()).optional(),
+  dailyLimit: z.number().int().min(0).optional(),
+  live: z.boolean().optional(),
+});
+
+/** A body that does not match the shape. The HTTP wrapper turns this into a 400. */
+export class ProjectionValidationError extends Error {
+  readonly issues: string[];
+  constructor(issues: string[]) {
+    super(`invalid projection body: ${issues.join('; ')}`);
+    this.name = 'ProjectionValidationError';
+    this.issues = issues;
+  }
+}
+
+function parseOrThrow<T>(schema: z.ZodType<T>, value: unknown): T {
+  const parsed = schema.safeParse(value);
+  if (!parsed.success) {
+    throw new ProjectionValidationError(parsed.error.issues.map((issue) => issue.message));
+  }
+  return parsed.data;
+}
 
 /** The one 401 body for the projection Bearer gate; `runPrelude` returns it before dispatch. */
 export function projectionUnauthorizedResponse(): Response {
@@ -69,15 +126,16 @@ export async function upsertCustomerProjectionCore(
   env: Env,
   input: Partial<CustomerRecord> & { id: string }
 ): Promise<{ customer: CustomerRecord }> {
-  const plan = (input.plan || 'free') as CustomerPlan;
+  const parsed = parseOrThrow(CustomerProjectionSchema, input);
+  const plan: CustomerPlan = parsed.plan ?? 'free';
   const record: CustomerRecord = {
-    id: input.id,
+    id: parsed.id,
     plan,
-    fuseLimit: input.fuseLimit ?? defaultFuseLimit(plan, env),
-    fuseSoftWarn: input.fuseSoftWarn,
-    batchEnabled: input.batchEnabled,
-    stripeCustomerId: input.stripeCustomerId,
-    label: input.label,
+    fuseLimit: parsed.fuseLimit ?? defaultFuseLimit(plan, env),
+    fuseSoftWarn: parsed.fuseSoftWarn,
+    batchEnabled: parsed.batchEnabled,
+    stripeCustomerId: parsed.stripeCustomerId,
+    label: parsed.label,
   };
   await putCustomer(env, record);
   return { customer: record };
@@ -96,26 +154,27 @@ export async function usageProjectionCore(
 }
 
 export async function mintKeyProjectionCore(env: Env, input: MintKeyInput): Promise<MintKeyResult> {
-  if (input.kind === 'browser') {
-    const id = generateApiKey(input.live !== false);
+  const parsed = parseOrThrow(MintKeySchema, input);
+  if (parsed.kind === 'browser') {
+    const id = generateApiKey(parsed.live !== false);
     const record: ApiKeyRecord = {
       id,
       kind: 'browser',
-      customerId: input.customerId,
-      label: input.label,
-      origins: input.origins || [],
-      dailyLimit: input.dailyLimit ?? 1000,
+      customerId: parsed.customerId,
+      label: parsed.label,
+      origins: parsed.origins || [],
+      dailyLimit: parsed.dailyLimit ?? 1000,
     };
     await putBrowserKey(env, record);
     return { key: record, secret: id };
   }
 
-  const secret = generateServerKey(input.live !== false);
+  const secret = generateServerKey(parsed.live !== false);
   const displayId = serverKeyDisplayId(secret);
   const record = await putServerKey(env, secret, {
     id: displayId,
-    customerId: input.customerId,
-    label: input.label,
+    customerId: parsed.customerId,
+    label: parsed.label,
     dailyLimit: 0,
   });
   return { key: record, secret };
@@ -137,10 +196,25 @@ export async function handleProjectionRequest(ctx: RouteContext): Promise<Respon
     return json(ctx, { error: 'API_KEYS binding not configured', code: 'API_KEYS_MISSING' }, 503);
   }
 
+  // A body that does not match the shape is a bad request, not a crash. The schemas live in the
+  // core functions, so the portal's in-process path is validated too; this catch is what turns
+  // their rejection into a 400 on the HTTP path.
+  const guard = async (run: () => Promise<Response>): Promise<Response> => {
+    try {
+      return await run();
+    } catch (error) {
+      if (error instanceof ProjectionValidationError) {
+        return json(ctx, { error: 'Invalid request body', code: 'INVALID_PROJECTION_BODY', issues: error.issues }, 400);
+      }
+      throw error;
+    }
+  };
+
   if (pathname === '/admin/projection/customers' && request.method === 'PUT') {
-    const body = (await request.json()) as Partial<CustomerRecord> & { id: string };
-    if (!body.id) return json(ctx, { error: 'id required' }, 400);
-    return json(ctx, await upsertCustomerProjectionCore(env, body));
+    return guard(async () => {
+      const body = await request.json();
+      return json(ctx, await upsertCustomerProjectionCore(env, body as Partial<CustomerRecord> & { id: string }));
+    });
   }
 
   if (pathname.startsWith('/admin/projection/customers/') && request.method === 'DELETE') {
@@ -154,11 +228,10 @@ export async function handleProjectionRequest(ctx: RouteContext): Promise<Respon
   }
 
   if (pathname === '/admin/projection/keys' && request.method === 'POST') {
-    const body = (await request.json()) as MintKeyInput;
-    if (!body.customerId || !body.kind) {
-      return json(ctx, { error: 'customerId and kind required' }, 400);
-    }
-    return json(ctx, await mintKeyProjectionCore(env, body));
+    return guard(async () => {
+      const body = await request.json();
+      return json(ctx, await mintKeyProjectionCore(env, body as MintKeyInput));
+    });
   }
 
   if (pathname.startsWith('/admin/projection/keys/') && request.method === 'DELETE') {

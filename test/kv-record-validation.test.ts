@@ -1,3 +1,4 @@
+import { createMemoryKv } from './helpers/memory-kv';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { z } from 'zod';
 import { readJsonEntry, readTimestampedEntry, type KVNamespaceLike } from '../src/kv-cache';
@@ -12,13 +13,16 @@ import type { Env } from '../src/types';
  */
 
 function kv(entries: Record<string, unknown>): KVNamespaceLike {
+  // The narrow interface the KV read helpers actually use, backed by the shared memory fake. The
+  // `json` type has to be forwarded: the helpers ask for JSON, and the fake's answer to that
+  // question is the parsed value rather than the stored text.
+  const memory = createMemoryKv(entries);
   return {
-    get: async (key: string) => entries[key] ?? null,
-    put: async () => {},
-    delete: async () => {},
+    get: async (key: string, type: 'json') => memory.get(key, type),
+    put: async (key: string, value: string) => memory.put(key, value),
+    delete: async (key: string) => memory.delete(key),
   };
 }
-
 const PointSchema = z.object({ id: z.string(), n: z.number() });
 
 describe('KV record validation', () => {

@@ -8,13 +8,22 @@ import { SITE_BRAND_STYLES, SITE_FONT_STYLESHEET, renderSiteHeader } from './sit
 import { EMBED_EVENTS, EMBED_SCRIPT_ATTRIBUTES, EMBED_VERSION } from './embed';
 import type { RouteContext } from './route-context';
 
-/** `/docs/embed` + `/embed/docs` — the widget guide. Wildcard CORS, kept separate from Scalar. */
+/**
+ * `/docs/embed` + `/embed/docs` — the widget guide.
+ *
+ * The CORS header comes from the one policy in `src/http-headers.ts`, like every other route.
+ * It used to be a hardcoded `'Access-Control-Allow-Origin': '*'` — the last literal of its kind in
+ * `src/`, left over from before the policy existed in one place. Under the shared policy the page
+ * is wildcard while `ALLOWED_ORIGINS` is unset (which is production today), and narrows with
+ * everything else when an operator tightens the allowlist, so the documentation page cannot end up
+ * more permissive than the API it documents.
+ */
 export function handleEmbedDocs(ctx: RouteContext): Response {
   const baseUrl = `${ctx.url.protocol}//${ctx.url.host}`;
   return new Response(createEmbedDocsPage(baseUrl), {
     headers: {
       'content-type': 'text/html; charset=UTF-8',
-      'Access-Control-Allow-Origin': '*',
+      ...ctx.corsHeaders(ctx.request.headers.get('Origin')),
     },
   });
 }

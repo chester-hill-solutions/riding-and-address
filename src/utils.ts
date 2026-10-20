@@ -53,22 +53,32 @@ export function clearRateLimitStore(): void {
   rateLimitStore.clear();
 }
 
-// Cleanup expired rate limit entries to prevent memory leaks
-function cleanupRateLimitStore(): void {
+/**
+ * Drop the expired entries from the in-memory rate-limit store.
+ *
+ * **Exported so a test can call it.** The sweep used to be unreachable from a test — `checkRateLimit`
+ * calls it about one time in a hundred — so its body was covered at random and the file's coverage
+ * number differed between two runs of the same suite. Exported, it is directly exercisable, and the
+ * one-time-in-a-hundred decision to sweep lives only at the call site.
+ *
+ * Two jobs: drop the entries whose window has passed, and — if the store has grown past ten
+ * thousand — keep only the most recent five thousand.
+ */
+export function cleanupRateLimitStore(): void {
   const now = Date.now();
   const entriesToDelete: string[] = [];
-  
+
   for (const [clientId, entry] of rateLimitStore.entries()) {
     // Remove entries that are expired by more than 5 minutes (safety margin)
     if (now > entry.resetTime + 5 * 60 * 1000) {
       entriesToDelete.push(clientId);
     }
   }
-  
+
   for (const clientId of entriesToDelete) {
     rateLimitStore.delete(clientId);
   }
-  
+
   // If store is getting large, do more aggressive cleanup
   if (rateLimitStore.size > 10000) {
     const allEntries = Array.from(rateLimitStore.entries());

@@ -17,7 +17,9 @@
     "test:runtime": "node scripts/test-runtime.mjs",
     "db:status": "wrangler d1 migrations list PORTAL_DB --remote",
     "db:status:staging": "wrangler d1 migrations list PORTAL_DB --env staging --remote",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:coverage": "node ../scripts/check-coverage-ratchet.mjs --only=portal",
+    "check:coverage:update": "node ../scripts/check-coverage-ratchet.mjs --only=portal --update"
   },
   "packageManager": "bun@1.4.3",
   "dependencies": {

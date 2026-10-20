@@ -46,11 +46,17 @@ jobs:
       - name: Check billing invariants
         run: bun run check:billing-invariants
 
+      - name: Check for committed credentials
+        run: bun run check:secrets
+
       - name: Audit dependencies
         run: bun audit --audit-level=high
 
-      - name: Run tests
-        run: bun run test
+      - name: Run tests and the coverage ratchet
+        # The ratchet runs the suite with coverage, so this replaces a plain `bun run test` rather
+        # than duplicating it: the gate fails on a coverage regression, which a plain test run
+        # cannot see.
+        run: bun run check:coverage
 
   portal:
     runs-on: ubuntu-latest
@@ -93,6 +99,12 @@ jobs:
       - name: Portal unit tests
         working-directory: portal
         run: bun run test
+
+      - name: Portal coverage ratchet
+        # The portal's own gate, in the portal's own job: the portal installs its own dependencies,
+        # and the root's job does not have them.
+        working-directory: portal
+        run: bun run check:coverage
 
       - name: Portal build + Worker dry-run
         working-directory: portal
