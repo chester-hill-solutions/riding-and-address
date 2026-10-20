@@ -17,14 +17,57 @@ So the problem is not disclosure. It is **rotation**:
 - Putting the value in the Cloudflare secret store means the repository carries only the *name*,
   and a rotation leaves no trace in the tree at all.
 
-**Why this is not already done.** Moving the value into the secret store needs an operator with
-Cloudflare credentials. Until that happens, the literal stays in the file, and
-`scripts/check-secrets.mjs` carries it as a named, reviewed exception rather than failing the build
+**Why it was not done sooner.** Moving the value into the secret store needed an operator with
+Cloudflare credentials, and this environment did not have any: `wrangler whoami` reports *"Not
+logged in. Your auth token has expired and could not be refreshed"*, and the token cannot be
+refreshed non-interactively. Until then, the literal stayed in the file, and
+`scripts/check-secrets.mjs` carried it as a named, reviewed exception rather than failing the build
 on every commit.
+
+**What changed.** The deploy job already holds a `CLOUDFLARE_API_TOKEN` secret, and CI can reach
+the same account the deploy reaches. The rotation does not need a human's local machine at all —
+it needs a job that has the credential. So it is a workflow now:
+`.github/workflows/rotate-demo-browser-key.yml`, triggered by hand from the Actions tab.
 
 ---
 
-## The procedure
+## The workflow — the normal path
+
+**Actions tab → Rotate the demo browser key → Run workflow.**
+
+| Action | What it does | When |
+|---|---|---|
+| `mint` | Reads the old key's own customer, origins, cap and label out of the key store; mints a replacement with them; puts the replacement in the secret store; deploys; and reports which key the Worker is now serving | First |
+| `revoke` | Disables a key by id, so the value that is in git history stops working | Last, after the `vars` entry is gone and deployed |
+
+**The order is not optional.** `mint` first, then remove the `vars` entry and deploy (that is a
+normal pull request, not a workflow run), then `revoke`. Running `revoke` before the `vars` entry
+is gone leaves the Worker serving a key that no longer works, and the try-it widget breaks.
+
+The new key is never printed by the workflow. It lives in the secret store and on the page the
+browser reads it from, which is where a public browser key belongs. The old key's id is in git
+history, and it is the argument the `revoke` action needs.
+
+**Verifying it worked.** The portal's home page carries the key it is serving, so the live surface
+answers the question directly:
+
+```bash
+curl -s https://cancoder.chesterhillsolutions.ca/ | grep -oE 'pk_live_[a-f0-9]+' | head -1
+```
+
+And the key the page carries must still be accepted:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' \
+  "https://cancoder.chesterhillsolutions.ca/api/search?q=1&key=$(curl -s https://cancoder.chesterhillsolutions.ca/ | grep -oE 'pk_live_[a-f0-9]+' | head -1)"
+```
+
+---
+
+## The procedure — by hand, if the workflow is not available
+
+The steps below are what the workflow automates. They need `wrangler login` or a
+`CLOUDFLARE_API_TOKEN` in the environment.
 
 Order matters. The embed widget's key ships to the browser, so a deploy that removes the key before
 the replacement is set breaks the marketing try-it widget until the next deploy.
