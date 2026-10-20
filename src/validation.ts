@@ -9,12 +9,12 @@ import { parseReturnSelector, parseIncludeProvince, resolveIncludeProvince } fro
  */
 
 // GeoGratis API response schemas
-export const GeoGratisGeometrySchema = z.object({
+const GeoGratisGeometrySchema = z.object({
   type: z.string(),
   coordinates: z.array(z.number())
 });
 
-export const GeoGratisResultSchema = z.object({
+const GeoGratisResultSchema = z.object({
   title: z.string().optional(),
   qualifier: z.string().optional(),
   type: z.string().optional(),
@@ -24,15 +24,15 @@ export const GeoGratisResultSchema = z.object({
   component: z.record(z.string(), z.any()).optional()
 });
 
-export const GeoGratisResponseSchema = z.array(GeoGratisResultSchema);
+const GeoGratisResponseSchema = z.array(GeoGratisResultSchema);
 
 // Google Geocoding API response schemas
-export const GoogleLocationSchema = z.object({
+const GoogleLocationSchema = z.object({
   lat: z.number(),
   lng: z.number()
 });
 
-export const GoogleGeometrySchema = z.object({
+const GoogleGeometrySchema = z.object({
   location: GoogleLocationSchema,
   location_type: z.string().optional(),
   viewport: z.object({
@@ -41,7 +41,7 @@ export const GoogleGeometrySchema = z.object({
   }).optional()
 });
 
-export const GoogleGeocodeResultSchema = z.object({
+const GoogleGeocodeResultSchema = z.object({
   address_components: z.array(z.any()).optional(),
   formatted_address: z.string().optional(),
   geometry: GoogleGeometrySchema,
@@ -49,39 +49,13 @@ export const GoogleGeocodeResultSchema = z.object({
   types: z.array(z.string()).optional()
 });
 
-export const GoogleGeocodeResponseSchema = z.object({
+const GoogleGeocodeResponseSchema = z.object({
   results: z.array(GoogleGeocodeResultSchema),
   status: z.enum(['OK', 'ZERO_RESULTS', 'OVER_QUERY_LIMIT', 'REQUEST_DENIED', 'INVALID_REQUEST', 'UNKNOWN_ERROR'])
 });
 
-// Google Batch Geocoding API response schemas
-export const GoogleBatchGeocodeResultItemSchema = z.object({
-  address: z.string(),
-  geocoded_address: z.string().optional(),
-  partial_match: z.boolean().optional(),
-  place_id: z.string().optional(),
-  postcode_localities: z.array(z.string()).optional(),
-  types: z.array(z.string()).optional(),
-  address_components: z.array(z.any()).optional(),
-  geometry: z.object({
-    location: z.object({
-      lat: z.number(),
-      lng: z.number()
-    }),
-    location_type: z.string().optional(),
-    viewport: z.object({
-      northeast: z.object({ lat: z.number(), lng: z.number() }),
-      southwest: z.object({ lat: z.number(), lng: z.number() })
-    }).optional()
-  })
-});
-
-export const GoogleBatchGeocodeResponseSchema = z.object({
-  results: z.array(GoogleBatchGeocodeResultItemSchema)
-});
-
 // Nominatim (OpenStreetMap) API response schemas
-export const NominatimResultSchema = z.object({
+const NominatimResultSchema = z.object({
   place_id: z.number().optional(),
   licence: z.string().optional(),
   osm_type: z.string().optional(),
@@ -96,10 +70,10 @@ export const NominatimResultSchema = z.object({
   icon: z.string().optional()
 });
 
-export const NominatimResponseSchema = z.array(NominatimResultSchema);
+const NominatimResponseSchema = z.array(NominatimResultSchema);
 
 // Mapbox Geocoding API response schemas
-export const MapboxFeatureSchema = z.object({
+const MapboxFeatureSchema = z.object({
   id: z.string().optional(),
   type: z.string(),
   place_type: z.array(z.string()).optional(),
@@ -111,57 +85,12 @@ export const MapboxFeatureSchema = z.object({
   geometry: z.any().optional()
 });
 
-export const MapboxResponseSchema = z.object({
+const MapboxResponseSchema = z.object({
   type: z.literal('FeatureCollection'),
   query: z.array(z.any()).optional(),
   features: z.array(MapboxFeatureSchema),
   attribution: z.string().optional()
 });
-
-/**
- * Validates a GeoGratis API response.
- * @param data - Raw response data to validate
- * @returns Validated GeoGratis response or throws ZodError
- */
-export function validateGeoGratisResponse(data: unknown) {
-  return GeoGratisResponseSchema.parse(data);
-}
-
-/**
- * Validates a Google Geocoding API response.
- * @param data - Raw response data to validate
- * @returns Validated Google response or throws ZodError
- */
-export function validateGoogleGeocodeResponse(data: unknown) {
-  return GoogleGeocodeResponseSchema.parse(data);
-}
-
-/**
- * Validates a Google Batch Geocoding API response.
- * @param data - Raw response data to validate
- * @returns Validated Google batch response or throws ZodError
- */
-export function validateGoogleBatchGeocodeResponse(data: unknown) {
-  return GoogleBatchGeocodeResponseSchema.parse(data);
-}
-
-/**
- * Validates a Nominatim API response.
- * @param data - Raw response data to validate
- * @returns Validated Nominatim response or throws ZodError
- */
-export function validateNominatimResponse(data: unknown) {
-  return NominatimResponseSchema.parse(data);
-}
-
-/**
- * Validates a Mapbox Geocoding API response.
- * @param data - Raw response data to validate
- * @returns Validated Mapbox response or throws ZodError
- */
-export function validateMapboxResponse(data: unknown) {
-  return MapboxResponseSchema.parse(data);
-}
 
 /**
  * Safe validation wrapper for GeoGratis responses.
@@ -175,13 +104,6 @@ export function safeValidateGeoGratis(data: unknown) {
  */
 export function safeValidateGoogleGeocode(data: unknown) {
   return safeValidate(GoogleGeocodeResponseSchema, data);
-}
-
-/**
- * Safe validation wrapper for Google Batch Geocoding responses.
- */
-export function safeValidateGoogleBatchGeocode(data: unknown) {
-  return safeValidate(GoogleBatchGeocodeResponseSchema, data);
 }
 
 /**
@@ -202,7 +124,7 @@ export function safeValidateMapbox(data: unknown) {
  * Safe validation wrapper that returns a result instead of throwing.
  * Useful for error handling when validation failures should be handled gracefully.
  */
-export function safeValidate<T>(
+function safeValidate<T>(
   schema: z.ZodSchema<T>,
   data: unknown
 ): { success: true; data: T } | { success: false; error: z.ZodError } {
@@ -233,13 +155,13 @@ const QueryParamsSchema = z.object({
   { message: 'query must include lat/lon, postal, or address' }
 );
 
-export const BatchLookupRequestSchema = z.object({
+const BatchLookupRequestSchema = z.object({
   id: z.string().min(1),
   query: QueryParamsSchema,
   pathname: z.string().regex(/^\/api/),
 });
 
-export const BatchLookupRequestsSchema = z.array(BatchLookupRequestSchema).min(1).max(100);
+const BatchLookupRequestsSchema = z.array(BatchLookupRequestSchema).min(1).max(100);
 
 export function parseBatchLookupRequests(data: unknown): BatchLookupRequest[] {
   const parsed = BatchLookupRequestsSchema.parse(data) as BatchLookupRequest[];

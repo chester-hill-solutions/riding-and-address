@@ -1,10 +1,9 @@
 import { z } from 'zod';
-import { Env, GeoJSONGeometry, QueryParams, LookupResult, LookupCacheEntry, Suggestion, SuggestQueryParams } from './types';
+import { Env, QueryParams, LookupResult, LookupCacheEntry, Suggestion, SuggestQueryParams } from './types';
 import { readTimestampedEntry, writeTimestampedEntry } from './kv-cache';
 import { TIME_CONSTANTS, TIME_CONSTANTS_SECONDS } from './config';
 import { pickDataset } from './datasets';
 import { normalizeSearchToken } from './oda-normalize';
-import { CACHE_CONFIG, LRUCache } from './dataset-cache';
 
 /**
  * Shape checks for the timestamped cache entries.
@@ -32,17 +31,6 @@ const SuggestCacheEntrySchema = z
     timestamp: z.number(),
   })
   .passthrough() as unknown as z.ZodType<SuggestCacheEntry>;
-
-// LRU cache for simplified boundaries
-export const simplifiedBoundariesCacheLRU = new LRUCache<string, GeoJSONGeometry>(CACHE_CONFIG.MAX_SIZE, CACHE_CONFIG.MAX_AGE);
-
-export function getCachedSimplifiedBoundary(cacheKey: string): GeoJSONGeometry | undefined {
-  return simplifiedBoundariesCacheLRU.get(cacheKey);
-}
-
-export function setCachedSimplifiedBoundary(cacheKey: string, geometry: GeoJSONGeometry): void {
-  simplifiedBoundariesCacheLRU.set(cacheKey, geometry);
-}
 
 // Lookup result cache functions
 
