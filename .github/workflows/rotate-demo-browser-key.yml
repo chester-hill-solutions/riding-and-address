@@ -126,13 +126,23 @@ jobs:
           # origin allowlist and daily cap is not the same key with a new value — it is a different
           # key that happens to sit in the same place, and it is served to nobody if the allowlist
           # was left behind. So the parameters are read, not transcribed.
-          curl -s -o old-key.json -w '%{http_code}' -X GET "$API_BASE/admin/projection/keys/$OLD_KEY" \
-            -H "Authorization: Bearer $OPS_SECRET" > old-status.txt
-          if [ "$(cat old-status.txt)" != "200" ]; then
-            echo "::error::could not read the old key's record ($(cat old-status.txt))"
-            npx wrangler secret delete PROJECTION_ADMIN_SECRET -c "$WORKER_CONFIG" || true
-            exit 1
-          fi
+          # `wrangler secret put` deploys a new version carrying the secret, and the edge takes a
+          # moment to serve it. Until it does, the route is the closed route it was before — so the
+          # request is retried until the new version answers, rather than failing on a race.
+          for attempt in $(seq 1 24); do
+            curl -s -o old-key.json -w '%{http_code}' -X GET "$API_BASE/admin/projection/keys/$OLD_KEY" \
+              -H "Authorization: Bearer $OPS_SECRET" > old-status.txt
+            if [ "$(cat old-status.txt)" = "200" ]; then
+              break
+            fi
+            if [ "$attempt" = "24" ]; then
+              echo "::error::could not read the old key's record ($(cat old-status.txt))"
+              cat old-key.json
+              npx wrangler secret delete PROJECTION_ADMIN_SECRET -c "$WORKER_CONFIG" || true
+              exit 1
+            fi
+            sleep 5
+          done
 
           BODY=$(node -e '
             const m = process.argv[1].match(/\{[\s\S]*\}/);
@@ -155,17 +165,22 @@ jobs:
             exit 1
           fi
 
-          curl -s -o minted.json -w '%{http_code}' -X POST "$API_BASE/admin/projection/keys" \
-            -H "Authorization: Bearer $OPS_SECRET" \
-            -H 'Content-Type: application/json' \
-            --data "$BODY" > status.txt
-
-          if [ "$(cat status.txt)" != "200" ]; then
-            echo "::error::the projection route answered $(cat status.txt)"
-            cat minted.json
-            npx wrangler secret delete PROJECTION_ADMIN_SECRET -c "$WORKER_CONFIG" || true
-            exit 1
-          fi
+          for attempt in $(seq 1 12); do
+            curl -s -o minted.json -w '%{http_code}' -X POST "$API_BASE/admin/projection/keys" \
+              -H "Authorization: Bearer $OPS_SECRET" \
+              -H 'Content-Type: application/json' \
+              --data "$BODY" > status.txt
+            if [ "$(cat status.txt)" = "200" ]; then
+              break
+            fi
+            if [ "$attempt" = "12" ]; then
+              echo "::error::the projection route answered $(cat status.txt)"
+              cat minted.json
+              npx wrangler secret delete PROJECTION_ADMIN_SECRET -c "$WORKER_CONFIG" || true
+              exit 1
+            fi
+            sleep 5
+          done
 
           NEW_KEY=$(node -e '
             const m = process.argv[1].match(/\{[\s\S]*\}/);
@@ -215,16 +230,22 @@ jobs:
           OPS_SECRET=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")
           printf '%s' "$OPS_SECRET" | npx wrangler secret put PROJECTION_ADMIN_SECRET -c "$WORKER_CONFIG"
 
-          curl -s -o revoked.json -w '%{http_code}' -X DELETE "$API_BASE/admin/projection/keys/$KEY" \
-            -H "Authorization: Bearer $OPS_SECRET" > status.txt
+          for attempt in $(seq 1 24); do
+            curl -s -o revoked.json -w '%{http_code}' -X DELETE "$API_BASE/admin/projection/keys/$KEY" \
+              -H "Authorization: Bearer $OPS_SECRET" > status.txt
+            if [ "$(cat status.txt)" = "200" ]; then
+              break
+            fi
+            if [ "$attempt" = "24" ]; then
+              echo "::error::the projection route answered $(cat status.txt)"
+              cat revoked.json
+              npx wrangler secret delete PROJECTION_ADMIN_SECRET -c "$WORKER_CONFIG" || true
+              exit 1
+            fi
+            sleep 5
+          done
 
           npx wrangler secret delete PROJECTION_ADMIN_SECRET -c "$WORKER_CONFIG"
-
-          if [ "$(cat status.txt)" != "200" ]; then
-            echo "::error::the projection route answered $(cat status.txt)"
-            cat revoked.json
-            exit 1
-          fi
           echo "the key is disabled; the value in git history no longer works"
           rm -f revoked.json status.txt
 
