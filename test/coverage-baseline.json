@@ -78,11 +78,7 @@
       "branches": 100
     },
     "src/dataset-cache.ts": {
-<<<<<<< HEAD
       "statements": 95.65,
-=======
-      "statements": 90.41,
->>>>>>> origin/main
       "branches": 83.33
     },
     "src/dataset-source.ts": {
@@ -134,13 +130,8 @@
       "branches": 51.89
     },
     "src/geometry.ts": {
-<<<<<<< HEAD
       "statements": 95.31,
       "branches": 89.58
-=======
-      "statements": 45.79,
-      "branches": 57.81
->>>>>>> origin/main
     },
     "src/http-headers.ts": {
       "statements": 95.65,
@@ -231,13 +222,8 @@
       "branches": 74.5
     },
     "src/oda-handlers.ts": {
-<<<<<<< HEAD
       "statements": 81.53,
       "branches": 66.98
-=======
-      "statements": 81.1,
-      "branches": 66.34
->>>>>>> origin/main
     },
     "src/oda-import.ts": {
       "statements": 62.06,
@@ -357,11 +343,7 @@
     },
     "src/utils.ts": {
       "statements": 95.41,
-<<<<<<< HEAD
       "branches": 88.65
-=======
-      "branches": 87.62
->>>>>>> origin/main
     },
     "src/validation.ts": {
       "statements": 79.36,
