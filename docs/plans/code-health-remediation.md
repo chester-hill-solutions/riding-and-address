@@ -31,17 +31,28 @@ one is reviewable on its own.
 | #238 | 4 — the strangler migration | **done** | **32 legacy entries → 0**; `src/worker.ts` 876 → 184 lines |
 | #239 | the dead exports | **done** | **34 exports nothing used**, removed: `types.ts` −111, `validation.ts` −92, `webhooks.ts` −42, `cache.ts` −13 |
 
-**Two things this plan could not do, and why.**
+**Everything was deployed, and the live surface was verified after each one.** The plan's ground
+rule is "CI green **and deployed**", and the second half is now done: all five pull requests landed
+on `main` in order, each one deploying, and the live surface was probed against the pre-merge
+baseline after every deploy — method, path, status and body, identical throughout. The strangler
+migration is the one that mattered most there: 32 legacy route entries became 0, and the live
+surface did not move.
 
-- **The demo browser key was not rotated.** Moving it out of `portal/wrangler.jsonc` into the
-  Cloudflare secret store needs credentials this environment does not have, and removing the
-  literal *before* the secret is set would break the try-it widget on the next deploy. The
-  procedure is written down in `docs/ops/demo-browser-key-rotation.md`, and the literal is a
-  named, reviewed exception in `scripts/secret-allowlist.json` until someone with credentials runs
-  it.
-- **Nothing was deployed.** Every PR ends green locally and on CI, but the deploy is the
-  operator's: the plan's ground rule is "CI green **and deployed**", and the second half needs
-  Cloudflare access.
+**One thing this plan could not finish, and why.**
+
+- **The demo browser key was not rotated.** The credential this environment lacks is the reason it
+  was originally written as a human procedure: `wrangler whoami` reports that the local token has
+  expired and cannot be refreshed non-interactively. But the rotation does not need a human's
+  machine — it needs a job that holds the credential, and the deploy job holds one. So it is a
+  workflow now: `.github/workflows/rotate-demo-browser-key.yml`, with `mint` and `revoke` actions
+  and a `check` action that reports which Cloudflare permissions the token actually has.
+- **What is left is one permission.** The token can deploy, apply D1 migrations, and read and write
+  the Worker's secret store — all three proved, the secret write end to end. It cannot touch the
+  key store, because it has no `Workers KV Storage: Edit`. That is the account administrator's to
+  grant, and the `check` action names it exactly.
+- **Until then the literal stays**, under the named, reviewed exception in
+  `scripts/secret-allowlist.json` — which is what that exception is for. The gate still fails on
+  anything else. The procedure is in `docs/ops/demo-browser-key-rotation.md`.
 
 **One correction the plan itself carried.** The review that produced this plan counted four
 import cycles because it counted type-only imports as edges. Type-only imports are erased at
