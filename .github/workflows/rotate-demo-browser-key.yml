@@ -213,14 +213,14 @@ jobs:
           # is exactly as closed as it was before this run.
           npx wrangler secret delete PROJECTION_ADMIN_SECRET -c "$WORKER_CONFIG"
 
-          # **The vars entry and a secret cannot share a name** — the API refuses it outright — so
-          # the entry has to leave the configuration in the same deploy that the secret arrives in.
-          # Otherwise the Worker is briefly without a key at all, and the try-it widget is down for
-          # the length of it.
+          # **The vars entry and a secret cannot share a name** — the API refuses it outright:
           #
-          # The deploy below carries the new key as a secret and no `vars` entry of that name, and
-          # it keeps the secrets it already had: `wrangler deploy --secrets-file` preserves the
-          # secrets that are not in the file.
+          #     Binding name 'DEMO_BROWSER_API_KEY' already in use.
+          #
+          # So the entry has to leave the *deployed* Worker before the secret can take its name.
+          # The order is therefore: deploy without the entry, wait for that to be live, and only
+          # then put the secret. The try-it widget is without a key for the length of that — which
+          # is a deploy and a secret put, not a morning.
           node -e '
             const fs = require("fs");
             const path = require("path");
@@ -233,10 +233,31 @@ jobs:
               path.join(path.dirname(configPath), "worker-without-the-demo-var.json"),
               JSON.stringify(config, null, 2)
             );
-            fs.writeFileSync("secrets.json", JSON.stringify({ DEMO_BROWSER_API_KEY: process.argv[2] }));
-          ' "$WORKER_CONFIG" "$NEW_KEY"
+          ' "$WORKER_CONFIG"
 
-          npx wrangler deploy -c portal/build/server/worker-without-the-demo-var.json --secrets-file secrets.json
+          npx wrangler deploy -c portal/build/server/worker-without-the-demo-var.json
+
+          # Wait for that to be live: until it is, the page still carries the old key.
+          for attempt in $(seq 1 24); do
+            LIVE=$(curl -s --max-time 30 "$API_BASE/" | grep -oE 'pk_live_[a-f0-9]+' | head -1 || true)
+            if [ -z "$LIVE" ]; then
+              break
+            fi
+            sleep 5
+          done
+
+          # The name is free now.
+          for attempt in $(seq 1 12); do
+            if printf '%s' "$NEW_KEY" | npx wrangler secret put DEMO_BROWSER_API_KEY \
+              -c portal/build/server/worker-without-the-demo-var.json; then
+              break
+            fi
+            if [ "$attempt" = "12" ]; then
+              echo "::error::the secret store refused the key"
+              exit 1
+            fi
+            sleep 5
+          done
 
           # Which key is the Worker serving? Measured, not assumed.
           LIVE=$(curl -s --max-time 30 "$API_BASE/" | grep -oE 'pk_live_[a-f0-9]+' | head -1 || true)
@@ -249,7 +270,7 @@ jobs:
           fi
           echo "the replacement is in the secret store; the vars entry is still to be removed"
 
-          rm -f minted.json status.txt customer-keys.json secrets.json
+          rm -f minted.json status.txt customer-keys.json
 
       - name: Revoke a key
         if: inputs.action == 'revoke'
