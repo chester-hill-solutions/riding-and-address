@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { withTimeout, TimeoutError } from '../src/utils';
+import { withTimeout, TimeoutError } from '../src/retry';
 import { geocodeIfNeeded } from '../src/geocoding';
 import { NoResultsError } from '../src/geocoder-providers';
 import type { MetricsSink } from '../src/metrics';

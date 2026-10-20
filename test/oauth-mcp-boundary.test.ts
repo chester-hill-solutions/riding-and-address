@@ -2,7 +2,7 @@ import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from 'vite
 import { SignJWT, exportJWK, generateKeyPair } from 'jose';
 
 import { clearApiKeyCache, putServerKey } from '../src/api-keys';
-import { geoCacheLRU, spatialIndexCacheLRU } from '../src/cache';
+import { geoCacheLRU, spatialIndexCacheLRU } from '../src/dataset-cache';
 import { clearCustomerCache, putCustomer, type CustomerPlan } from '../src/customer';
 import { clearJwksCache, clearSessionVerdictCache } from '../src/oauth-token';
 import { fakeUsageNamespace } from './helpers/fake-usage-do';

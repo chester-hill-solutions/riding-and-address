@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { handleLookupRequest } from '../src/lookup-handler';
 import { createRouteContext, type RouteContext, type RouteDeps } from '../src/route-context';
 import { getMetrics, resetMetrics } from '../src/metrics';
-import { serviceUnavailableResponse, TimeoutError } from '../src/utils';
+import { TimeoutError } from '../src/retry';
+import { serviceUnavailableResponse } from '../src/utils';
 import type { Env } from '../src/types';
 
 /**

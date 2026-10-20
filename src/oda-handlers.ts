@@ -10,7 +10,7 @@ import {
   OdaGeocodeError,
 } from './oda-geocoding';
 import { searchSuggestions, SuggestError } from './oda-suggest';
-import { consumeDailyQuota } from './api-key-usage-do';
+import { consumeDailyQuota } from './daily-quota';
 import { recordSuccessfulBillable } from './billing';
 import {
   generateSuggestCacheKey,
@@ -20,8 +20,6 @@ import {
 import { normalizeProvince } from './oda-normalize';
 import { parseQuery, badRequest } from './utils';
 import { incrementMetric, recordTiming } from './metrics';
-import { normalizeAddressWithGoogle } from './geocoding';
-import { GoogleAddressComponents, CanadaPostStyleAddress } from './types';
 
 function odaErrorResponse(error: unknown, ctx: RouteContext): Response {
   if (error instanceof OdaGeocodeError) {
@@ -401,45 +399,4 @@ function suggestErrorResponse(
   return jsonError({ error: message, code, correlationId }, status, {
     headers: { 'content-type': 'application/json; charset=UTF-8', ...corsHeaders },
   });
-}
-
-export async function resolveNormalizedAddress(
-  env: Env,
-  lat: number,
-  lon: number,
-  qp: QueryParams,
-  request?: Request,
-  circuitBreaker?: { execute: (key: string, fn: () => Promise<unknown>) => Promise<unknown> }
-): Promise<{ normalizedAddress?: string; addressComponents?: GoogleAddressComponents; mailingAddress?: CanadaPostStyleAddress } | undefined> {
-  if (isOdaEnabled(env)) {
-    try {
-      const result = await reverseGeocodeWithOda(env, lat, lon);
-      return {
-        normalizedAddress: result.normalizedAddress,
-        addressComponents: result.addressComponents as GoogleAddressComponents,
-        mailingAddress: result.mailingAddress,
-      };
-    } catch {
-      if (qp.address || qp.postal || qp.city) {
-        try {
-          const result = await geocodeWithOda(env, qp);
-          return {
-            normalizedAddress: result.normalizedAddress,
-            addressComponents: result.addressComponents as GoogleAddressComponents,
-            mailingAddress: result.mailingAddress,
-          };
-        } catch {
-          return undefined;
-        }
-      }
-      return undefined;
-    }
-  }
-
-  const googleResult = await normalizeAddressWithGoogle(env, lat, lon, request, circuitBreaker);
-  if (!googleResult) return undefined;
-  return {
-    normalizedAddress: googleResult.formattedAddress,
-    addressComponents: googleResult.components,
-  };
 }

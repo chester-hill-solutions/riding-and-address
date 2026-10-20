@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { geoCacheLRU, spatialIndexCacheLRU } from '../src/cache';
+import { geoCacheLRU, spatialIndexCacheLRU } from '../src/dataset-cache';
 import {
   createLookupTestEnv,
   fetchLookup,

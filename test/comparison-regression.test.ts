@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
-import { validateAndSanitizeQuery } from '../src/utils';
+import { validateAndSanitizeQuery } from '../src/input-validation';
 import {
   TORONTO_LAT,
   TORONTO_LON,

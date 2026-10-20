@@ -41,7 +41,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.dom.json",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"portal/app/**/*.{ts,tsx}\" \"portal/test/**/*.ts\" \"portal/workers/**/*.ts\" \"portal/*.ts\" --max-warnings 0",
     "lint:fix": "eslint src/**/*.ts test/**/*.ts scripts/**/*.ts --fix --max-warnings 0",
-    "validate": "bun run lint && bun run typecheck && bun run check:billing-invariants && bun run check:secrets && bun run check:coverage",
+    "validate": "bun run lint && bun run typecheck && bun run check:billing-invariants && bun run check:secrets && bun run check:import-cycles && bun run check:coverage",
     "check:billing-invariants": "bun scripts/check-billing-invariants.mjs",
     "check:secrets": "node scripts/check-secrets.mjs",
     "check:coverage": "node scripts/check-coverage-ratchet.mjs --only=root",
@@ -65,7 +65,9 @@
     "build:oda:suggest": "tsx scripts/build-oda-suggest.ts",
     "keys": "tsx scripts/manage-keys.ts",
     "prepare": "husky",
-    "check:coverage:all": "node scripts/check-coverage-ratchet.mjs"
+    "check:coverage:all": "node scripts/check-coverage-ratchet.mjs",
+    "check:import-cycles": "node scripts/check-import-cycles.mjs",
+    "check:import-cycles:update": "node scripts/check-import-cycles.mjs --update"
   },
   "packageManager": "bun@1.4.3",
   "keywords": [],

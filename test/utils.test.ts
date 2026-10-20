@@ -1,19 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { GeoJSONGeometry } from '../src/types';
-import {
-  validateCoordinates,
-  validatePostalCode,
-  sanitizeString,
-  ringContains,
-  polygonContains,
-  isPointInPolygon,
-  generateCorrelationId,
-  ridingNameFromProperties,
-  checkBasicAuth,
-  checkAdminAuth,
-  validateAndSanitizeQuery,
-  parseQuery,
-} from '../src/utils';
+import { ringContains, polygonContains, isPointInPolygon } from '../src/geometry';
+import { validateCoordinates, validatePostalCode, sanitizeString, validateAndSanitizeQuery } from '../src/input-validation';
+import { generateCorrelationId, ridingNameFromProperties, checkBasicAuth, checkAdminAuth, parseQuery } from '../src/utils';
 
 describe('validateCoordinates', () => {
   it('returns valid for correct coordinates', () => {

@@ -49,6 +49,9 @@ jobs:
       - name: Check for committed credentials
         run: bun run check:secrets
 
+      - name: Check for import cycles
+        run: bun run check:import-cycles
+
       - name: Audit dependencies
         run: bun audit --audit-level=high
 

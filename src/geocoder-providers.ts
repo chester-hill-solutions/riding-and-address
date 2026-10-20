@@ -8,7 +8,7 @@ import {
   OdaGeocodeMetadata,
 } from './types';
 import { getRetryConfig } from './config';
-import { withRetry, NonRetriableError } from './utils';
+import { withRetry, NonRetriableError } from './retry';
 import {
   safeValidateGeoGratis,
   safeValidateGoogleGeocode,
