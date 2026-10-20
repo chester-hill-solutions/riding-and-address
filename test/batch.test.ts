@@ -2,10 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   createBatchJob,
   updateBatchJobStatus,
-  MAX_BATCH_SIZE,
-  MAX_REQUEST_BODY_SIZE,
-  BATCH_CONFIG
+  MAX_REQUEST_BODY_SIZE
 } from '../src/batch';
+import { BATCH_CONFIG } from '../src/config';
 import type { BatchLookupRequest } from '../src/types';
 
 describe('createBatchJob', () => {
@@ -81,12 +80,6 @@ describe('updateBatchJobStatus', () => {
     const originalStatus = job.status;
     updateBatchJobStatus(job, 'completed');
     expect(job.status).toBe(originalStatus);
-  });
-});
-
-describe('MAX_BATCH_SIZE', () => {
-  it('is set to 100', () => {
-    expect(MAX_BATCH_SIZE).toBe(100);
   });
 });
 

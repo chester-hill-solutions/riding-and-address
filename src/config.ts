@@ -34,6 +34,23 @@ export const RETRY_CONFIG = {
   jitter: true            // Add random jitter to prevent thundering herd
 };
 
+/**
+ * Batch configuration.
+ *
+ * **Here, and not in the batch handler.** Two modules enforce the same limit — the synchronous
+ * `/batch` route and the queued Enterprise path — and they had two copies of the number, one of
+ * them a literal in a Durable Object that nothing kept in step with the other. A limit that two
+ * modules enforce is not a module's private detail; it is configuration, and configuration has one
+ * home.
+ */
+export const BATCH_CONFIG = {
+  DEFAULT_BATCH_SIZE: 10,
+  MAX_BATCH_SIZE: 100,
+  TIMEOUT: 300000,
+  RETRY_ATTEMPTS: 3,
+  RETRY_DELAY: 1000,
+};
+
 // Get timeout values from environment or use defaults
 export function getTimeoutConfig(env: Env) {
   const batchTimeout = env.BATCH_TIMEOUT ? Number(env.BATCH_TIMEOUT) : undefined;
