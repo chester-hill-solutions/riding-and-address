@@ -62,6 +62,21 @@ curl -s -o /dev/null -w '%{http_code}\n' \
   "https://cancoder.chesterhillsolutions.ca/api/search?q=1&key=$(curl -s https://cancoder.chesterhillsolutions.ca/ | grep -oE 'pk_live_[a-f0-9]+' | head -1)"
 ```
 
+### The one permission it needs
+
+**The token the deploy job holds does not have `Workers KV Storage: Edit`.** It can deploy the
+Worker, apply D1 migrations, and read and write the Worker's secret store — and it cannot touch the
+key store, which is where browser keys live.
+
+That is not a shortcoming of the workflow; it is a fact about the token, and the token's permissions
+are the account administrator's to grant. The `check` action reports exactly which of the three
+permissions is present, so the request can be specific:
+
+> Add **Workers KV Storage → Edit** for the account to the API token the deploy job uses.
+
+With that one permission, `mint` and `revoke` both work and the rotation is two runs and one pull
+request.
+
 ---
 
 ## The procedure — by hand, if the workflow is not available
