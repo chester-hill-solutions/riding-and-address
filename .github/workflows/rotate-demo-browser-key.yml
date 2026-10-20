@@ -29,12 +29,13 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: 'mint — create a replacement and put it in the secret store. revoke — disable a key.'
+        description: 'mint — create a replacement and put it in the secret store. revoke — disable a key. check — report what this credential can do.'
         required: true
         type: choice
         options:
           - mint
           - revoke
+          - check
         default: mint
       key:
         description: 'For `revoke`: the key id to disable, e.g. pk_live_…'
@@ -88,6 +89,50 @@ jobs:
             exit 1
           fi
           npx tsx scripts/manage-keys.ts revoke "$KEY" --remote
+
+      # What can this credential actually do? The rotation needs three things and they are three
+      # different Cloudflare permissions, so "the deploy job works" does not mean "the rotation
+      # works". This says which of them are present, before anyone clicks mint and finds out.
+      - name: Report what this credential can do
+        if: inputs.action == 'check'
+        run: |
+          set -uo pipefail
+
+          report() {
+            if "$@" > /dev/null 2>&1; then
+              echo "  ✓ $1"
+            else
+              echo "  ✗ $1"
+            fi
+          }
+
+          echo "--- the rotation needs all three of these ---"
+
+          if npx wrangler secret list -c "$WORKER_CONFIG" > /dev/null 2>&1; then
+            echo "  ✓ Worker secrets: read and write"
+            echo "    $(npx wrangler secret list -c "$WORKER_CONFIG" 2>/dev/null | tr -s ' ')"
+          else
+            echo "  ✗ Worker secrets: the secret store is not reachable with this credential"
+          fi
+
+          if npx wrangler kv namespace list > /dev/null 2>&1; then
+            echo "  ✓ Workers KV: list"
+          else
+            echo "  ✗ Workers KV: list — the credential has no KV permission"
+          fi
+
+          if npx wrangler kv key list --binding API_KEYS --remote -c portal/wrangler.jsonc > /dev/null 2>&1; then
+            echo "  ✓ Workers KV: read the API_KEYS namespace"
+          else
+            echo "  ✗ Workers KV: read the API_KEYS namespace — the credential has no KV permission"
+          fi
+
+          echo "--- and this one, for the record ---"
+          if npx wrangler d1 execute PORTAL_DB --remote -c portal/wrangler.jsonc --command "SELECT 1" > /dev/null 2>&1; then
+            echo "  ✓ D1: read"
+          else
+            echo "  ✗ D1: read"
+          fi
 
       - name: Mint a replacement
         if: inputs.action == 'mint'
