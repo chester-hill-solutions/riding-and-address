@@ -38,21 +38,20 @@ baseline after every deploy — method, path, status and body, identical through
 migration is the one that mattered most there: 32 legacy route entries became 0, and the live
 surface did not move.
 
-**One thing this plan could not finish, and why.**
+**The demo browser key was rotated too.** It was the one thing this plan originally said it could
+not do, and the reason it could not was never the difficulty — it was that the credential lived on
+a laptop. The rotation needs a *job* that holds the credential, the deploy job holds one, and it is
+a workflow now: `.github/workflows/rotate-demo-browser-key.yml`, with `mint` and `revoke` actions and
+a `check` action that reports which Cloudflare permissions the token has.
 
-- **The demo browser key was not rotated.** The credential this environment lacks is the reason it
-  was originally written as a human procedure: `wrangler whoami` reports that the local token has
-  expired and cannot be refreshed non-interactively. But the rotation does not need a human's
-  machine — it needs a job that holds the credential, and the deploy job holds one. So it is a
-  workflow now: `.github/workflows/rotate-demo-browser-key.yml`, with `mint` and `revoke` actions
-  and a `check` action that reports which Cloudflare permissions the token actually has.
-- **What is left is one permission.** The token can deploy, apply D1 migrations, and read and write
-  the Worker's secret store — all three proved, the secret write end to end. It cannot touch the
-  key store, because it has no `Workers KV Storage: Edit`. That is the account administrator's to
-  grant, and the `check` action names it exactly.
-- **Until then the literal stays**, under the named, reviewed exception in
-  `scripts/secret-allowlist.json` — which is what that exception is for. The gate still fails on
-  anything else. The procedure is in `docs/ops/demo-browser-key-rotation.md`.
+The key store is reached through the Worker's own `/admin/projection/*` interface, because the
+Worker's `API_KEYS` binding needs no token permission, and the route is closed in production and
+opened only for the length of a run. The replacement carries the old key's own customer, origin
+allowlist and daily cap, because they are read rather than transcribed.
+
+**The repository carries no credential now.** The literal is out of `portal/wrangler.jsonc`, the
+value is in the Cloudflare secret store, and `bun run check:secrets` reports **0 allowlisted
+exceptions**. The next rotation has nothing to remove from the tree — which is the point.
 
 **One correction the plan itself carried.** The review that produced this plan counted four
 import cycles because it counted type-only imports as edges. Type-only imports are erased at

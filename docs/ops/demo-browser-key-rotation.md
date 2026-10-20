@@ -186,8 +186,10 @@ It has two properties worth knowing:
 - **An allowlist entry that no longer matches is a failure.** So the exception list cannot quietly
   become a place where exceptions go to be forgotten.
 
-The one entry in `scripts/secret-allowlist.json` is the `DEMO_BROWSER_API_KEY` literal in
-`portal/wrangler.jsonc`. This runbook is how that entry goes away.
+**The list is empty.** The demo browser key was rotated on 2026-10-20: it is in the Cloudflare secret
+store, the literal is out of `portal/wrangler.jsonc`, and `bun run check:secrets` reports **0
+allowlisted exceptions**. The next rotation has nothing to remove from the tree — which is the point
+of putting it in the secret store rather than in the file.
 
 ---
 

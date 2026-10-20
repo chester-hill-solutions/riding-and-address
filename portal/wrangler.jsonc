@@ -156,10 +156,11 @@
     // deployment that turns out to be wrong can be reversed without shipping code — it should be
     // absent here, and it is deliberately not set in staging either.
     "EMAIL_FROM": "CanCoder <noreply@chsolutions.ca>",
-    "FOUNDER_USER_IDS": "",
-    // Public pk_* for the marketing try-it embed (origin-allowlisted to this Worker's own
-    // origin, 5k/day). Safe as a plain var: browser keys are public identifiers by design.
-    "DEMO_BROWSER_API_KEY": "pk_live_5269b90b8a5b6c9c3ae5645a593e1029b60fcfbe396f1019"
+    "FOUNDER_USER_IDS": ""
+    // DEMO_BROWSER_API_KEY is a secret now, not a var: a browser key is public by design
+    // (origin-allowlisted and daily-capped), but the value in this file was in git history and
+    // could never be taken back out of it. Rotated 2026-10-20; the value lives in the Cloudflare
+    // secret store, and the procedure is docs/ops/demo-browser-key-rotation.md.
     // ALLOWED_ORIGINS: set via wrangler secret/vars to portal + embed origins when tightening CORS
     // PROJECTION_ADMIN_SECRET / STRIPE_*: wrangler secret put …
   },
