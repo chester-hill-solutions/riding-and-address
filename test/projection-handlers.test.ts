@@ -345,4 +345,53 @@ describe('the projection HTTP surface', () => {
     expect(response.status).toBe(200);
     expect(await loadApiKey(env, minted.key.id)).toBeNull();
   });
+
+  it('reads a key back over HTTP, with the parameters a replacement needs', async () => {
+    // A rotation has to carry the old key's own customer, origin allowlist and daily cap. Reading
+    // them back is what makes that a read rather than a transcription.
+    env.PROJECTION_ADMIN_SECRET = secret;
+    const minted = await mintKeyProjectionCore(env, {
+      kind: 'browser',
+      customerId: 'cust_http_5',
+      origins: ['https://cancoder.chesterhillsolutions.ca'],
+      dailyLimit: 1234,
+      label: 'demo browser',
+    });
+
+    const response = await handleProjectionRequest(
+      makeContext(env, request(`/admin/projection/keys/${minted.key.id}`))
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      key: { id: string; customerId: string; origins: string[]; dailyLimit: number; label?: string };
+    };
+    expect(body.key.id).toBe(minted.key.id);
+    expect(body.key.customerId).toBe('cust_http_5');
+    expect(body.key.origins).toEqual(['https://cancoder.chesterhillsolutions.ca']);
+    expect(body.key.dailyLimit).toBe(1234);
+    expect(body.key.label).toBe('demo browser');
+  });
+
+  it('never returns the hash of a Server secret', async () => {
+    // The one field in the record that is not a public identifier. It cannot authenticate, and it
+    // is not something to hand to a caller even over the authenticated path.
+    env.PROJECTION_ADMIN_SECRET = secret;
+    const minted = await mintKeyProjectionCore(env, { kind: 'server', customerId: 'cust_http_6' });
+
+    const response = await handleProjectionRequest(
+      makeContext(env, request(`/admin/projection/keys/${minted.key.id}`))
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { key: Record<string, unknown> };
+    expect(body.key.secretHash).toBeUndefined();
+    expect(Object.keys(body.key)).not.toContain('secretHash');
+  });
+
+  it('answers 404 for a key that does not exist', async () => {
+    env.PROJECTION_ADMIN_SECRET = secret;
+    const response = await handleProjectionRequest(
+      makeContext(env, request('/admin/projection/keys/pk_live_does_not_exist'))
+    );
+    expect(response.status).toBe(404);
+  });
 });

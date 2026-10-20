@@ -96,6 +96,20 @@ bun run keys -- mint browser --customer-id <customer> --origins https://cancoder
 The command prints the new key **once**. Copy it. (`bun run keys --help` for the exact flags; the
 script is `scripts/manage-keys.ts`.)
 
+**Or read the old key's own parameters and carry them over.** The replacement is not the same key
+with a new value — it is a different key that happens to sit in the same place, and it is served to
+nobody if the origin allowlist was left behind. So the parameters are read, not transcribed:
+
+```bash
+# The key's record: customer, origin allowlist, daily cap, label.
+curl -s -H "Authorization: Bearer $PROJECTION_ADMIN_SECRET" \
+  https://cancoder.chesterhillsolutions.ca/admin/projection/keys/pk_live_…
+```
+
+That route is the application's own ops interface for minting, reading and revoking keys, and it is
+what the rotation workflow uses. It is closed in production — `PROJECTION_ADMIN_SECRET` is not set —
+and the workflow opens it for the duration of a run and closes it again.
+
 ### 2 — Put it in the secret store, before touching the repo
 
 ```bash

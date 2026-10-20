@@ -51,6 +51,9 @@ on:
       key:
         description: 'For `revoke`: the key id to disable, e.g. pk_live_…'
         required: false
+      old_key:
+        description: 'For `mint`: the key being replaced. Defaults to the one in portal/wrangler.jsonc.'
+        required: false
 
 permissions:
   contents: read
@@ -93,54 +96,6 @@ jobs:
         run: bun run build
 
       # ---------------------------------------------------------------------------------------------
-      # The key's own parameters.
-      #
-      # The key store cannot be read with this credential, but the portal mirrors every key it
-      # mints into its own D1 — `api_key_mirror` carries the id, the customer, the origins and the
-      # label. The mirror is the same record the key store holds; it is just readable.
-      #
-      # The one field the mirror does not carry is `dailyLimit`, and it does not need to: a key
-      # minted by the portal does not pass one, so the mint default (1000) is what it has.
-      # ---------------------------------------------------------------------------------------------
-      - name: Read the key's parameters from the portal's mirror
-        id: key
-        run: |
-          set -euo pipefail
-
-          OLD_KEY=$(grep -oE 'pk_live_[a-f0-9]+' portal/wrangler.jsonc | head -1 || true)
-          if [ -z "${OLD_KEY:-}" ]; then
-            echo "::error::no demo browser key in portal/wrangler.jsonc — nothing to describe"
-            exit 1
-          fi
-          echo "old-key=$OLD_KEY" >> "$GITHUB_OUTPUT"
-
-          MIRROR=$(npx wrangler d1 execute PORTAL_DB --remote -c "$PORTAL_CONFIG" --json \
-            --command "SELECT customer_id, origins, label FROM api_key_mirror WHERE id = '$OLD_KEY'" \
-            2>/dev/null || echo '[]')
-
-          read -r CUSTOMER ORIGINS LABEL <<<"$(node -e '
-            const m = process.argv[1].match(/\[[\s\S]*\]/);
-            const row = m ? (JSON.parse(m[0])[0] ?? null) : null;
-            if (!row) { process.stdout.write(" "); process.exit(0); }
-            process.stdout.write([
-              row.customer_id ?? "",
-              (row.origins ?? "").split(",").filter(Boolean).join(","),
-              row.label ?? ""
-            ].join(" "));
-          ' "$MIRROR")"
-
-          echo "customer=$CUSTOMER" >> "$GITHUB_OUTPUT"
-          echo "origins=$ORIGINS" >> "$GITHUB_OUTPUT"
-          echo "label=$LABEL" >> "$GITHUB_OUTPUT"
-          echo "daily-limit=1000" >> "$GITHUB_OUTPUT"
-
-          if [ -z "$CUSTOMER" ]; then
-            echo "::warning::the key has no row in api_key_mirror, so its customer is unknown"
-          else
-            echo "the key's customer, origins and label are known"
-          fi
-
-      # ---------------------------------------------------------------------------------------------
       # Turn the projection route on, use it, turn it off.
       #
       # `PROJECTION_ADMIN_SECRET` is not set in production, so this is a route that exists and is
@@ -150,17 +105,16 @@ jobs:
       - name: Mint a replacement
         if: inputs.action == 'mint'
         env:
-          OLD_KEY: ${{ steps.key.outputs.old-key }}
-          CUSTOMER: ${{ steps.key.outputs.customer }}
-          ORIGINS: ${{ steps.key.outputs.origins }}
-          LABEL: ${{ steps.key.outputs.label }}
-          DAILY_LIMIT: ${{ steps.key.outputs.daily-limit }}
+          OLD_KEY: ${{ inputs.old_key }}
         run: |
           set -euo pipefail
 
-          if [ -z "${CUSTOMER:-}" ]; then
-            echo "::error::the key's customer is unknown — the mirror has no row for it, and a key"
-            echo "::error::whose customer does not exist is refused by the browser-key path"
+          # The key being replaced: the one in the config, unless the caller named another.
+          if [ -z "${OLD_KEY:-}" ]; then
+            OLD_KEY=$(grep -oE 'pk_live_[a-f0-9]+' portal/wrangler.jsonc | head -1 || true)
+          fi
+          if [ -z "${OLD_KEY:-}" ]; then
+            echo "::error::no key to replace — portal/wrangler.jsonc holds none and none was given"
             exit 1
           fi
 
@@ -168,17 +122,38 @@ jobs:
           OPS_SECRET=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")
           printf '%s' "$OPS_SECRET" | npx wrangler secret put PROJECTION_ADMIN_SECRET -c "$WORKER_CONFIG"
 
-          # The replacement, carrying the old key's own parameters.
+          # The old key's own record. A replacement that does not carry the old key's customer,
+          # origin allowlist and daily cap is not the same key with a new value — it is a different
+          # key that happens to sit in the same place, and it is served to nobody if the allowlist
+          # was left behind. So the parameters are read, not transcribed.
+          curl -s -o old-key.json -w '%{http_code}' -X GET "$API_BASE/admin/projection/keys/$OLD_KEY" \
+            -H "Authorization: Bearer $OPS_SECRET" > old-status.txt
+          if [ "$(cat old-status.txt)" != "200" ]; then
+            echo "::error::could not read the old key's record ($(cat old-status.txt))"
+            npx wrangler secret delete PROJECTION_ADMIN_SECRET -c "$WORKER_CONFIG" || true
+            exit 1
+          fi
+
           BODY=$(node -e '
+            const m = process.argv[1].match(/\{[\s\S]*\}/);
+            const body = m ? JSON.parse(m[0]) : null;
+            const key = body?.key;
+            if (!key) { process.stdout.write("{}"); process.exit(0); }
             process.stdout.write(JSON.stringify({
               kind: "browser",
-              customerId: process.argv[1],
-              origins: process.argv[2].split(",").filter(Boolean),
-              dailyLimit: Number(process.argv[3]),
-              label: process.argv[4] || "demo browser",
+              customerId: key.customerId,
+              origins: key.origins ?? [],
+              dailyLimit: key.dailyLimit ?? 1000,
+              label: key.label ?? "demo browser",
               live: true
             }));
-          ' "$CUSTOMER" "$ORIGINS" "$DAILY_LIMIT" "$LABEL")
+          ' "$(cat old-key.json)")
+
+          if [ "$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).customerId ?? ""' "$BODY")" = "" ]; then
+            echo "::error::the old key's record has no customer"
+            npx wrangler secret delete PROJECTION_ADMIN_SECRET -c "$WORKER_CONFIG" || true
+            exit 1
+          fi
 
           curl -s -o minted.json -w '%{http_code}' -X POST "$API_BASE/admin/projection/keys" \
             -H "Authorization: Bearer $OPS_SECRET" \
@@ -258,11 +233,6 @@ jobs:
       # works". This says which of them are present, before anyone clicks mint and finds out.
       - name: Report what this credential can do
         if: inputs.action == 'check'
-        env:
-          OLD_KEY: ${{ steps.key.outputs.old-key }}
-          CUSTOMER: ${{ steps.key.outputs.customer }}
-          ORIGINS: ${{ steps.key.outputs.origins }}
-          LABEL: ${{ steps.key.outputs.label }}
         run: |
           set -uo pipefail
 
@@ -292,11 +262,6 @@ jobs:
           if npx wrangler d1 execute PORTAL_DB --remote -c "$PORTAL_CONFIG" --command "SELECT 1" > /dev/null 2>&1; then
             echo "  ✓ D1: read"
           fi
-
-          echo "--- the key this deployment is serving ---"
-          echo "  customer : ${CUSTOMER:-unknown}"
-          echo "  origins  : ${ORIGINS:-unknown}"
-          echo "  label    : ${LABEL:-unknown}"
 
           # The secret store is the half of the rotation this credential can do, and the half with
           # the most ways to be subtly wrong: the write has to be piped, and it deploys the Worker
