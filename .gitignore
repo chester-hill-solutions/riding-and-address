@@ -19,6 +19,7 @@ portal/.react-router
 *.tsbuildinfo
 *.geojson
 data/ridings/.raw/
+data/geo/.raw/
 /CLIPBOARD.md
 /.agent/
 /.repl/

@@ -7,6 +7,7 @@ import {
   getAllR2Keys,
   getLiveR2Keys,
   getLiveWarmTargets,
+  getAllGeoR2Keys,
 } from '../src/datasets';
 import { inMemoryDatasetSource } from '../src/dataset-source';
 import type { GeoJSONFeatureCollection } from '../src/types';
@@ -41,14 +42,25 @@ describe('checkRidingDatasets', () => {
   it('treats all provinces as live datasets required for health', async () => {
     const env = { RIDINGS: mockR2(new Set(getLiveR2Keys())) } as Env;
     const datasets = await checkRidingDatasets(env);
-    expect(datasets.filter((d) => d.status === 'registered')).toHaveLength(0);
+    // Scoped to the riding datasets: the municipal and sub-municipal levels are allowed to
+    // be registered (route exists, data not yet uploaded) without failing health.
+    const riding = datasets.filter((d) => getAllR2Keys().includes(d.key as never));
+    expect(riding.filter((d) => d.status === 'registered')).toHaveLength(0);
+    expect(allRequiredDatasetsPresent(datasets)).toBe(true);
+  });
+
+  it('does not require a registered geo dataset for health', async () => {
+    const env = { RIDINGS: mockR2(new Set(getLiveR2Keys())) } as Env;
+    const datasets = await checkRidingDatasets(env);
+    const geo = datasets.filter((d) => getAllGeoR2Keys().includes(d.key as never));
+    expect(geo.length).toBeGreaterThan(0);
     expect(allRequiredDatasetsPresent(datasets)).toBe(true);
   });
 
   it('head-checks every registered R2 key', async () => {
     const env = { RIDINGS: mockR2(new Set()) } as Env;
     const datasets = await checkRidingDatasets(env);
-    expect(datasets.map((d) => d.key)).toEqual(getAllR2Keys());
+    expect(datasets.map((d) => d.key)).toEqual([...getAllR2Keys(), ...getAllGeoR2Keys()]);
   });
 });
 

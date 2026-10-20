@@ -7,7 +7,9 @@ import { performExpandedLookup, expandedLookupResponseFields } from './lookup-ex
 import { resolveLookupPath } from './return-selector';
 import { recordSuccessfulBillable } from './billing';
 import { cachedLookupRiding } from './riding-lookup';
+import { DatasetNotFoundError } from './dataset-source';
 import { FEDERAL_DATASET, PROVINCIAL_DATASETS, isLookupPath } from './datasets';
+import { GEO_DATASETS } from './geo-datasets';
 import type { RouteContext } from './route-context';
 import {
   handleGeocodeRoute,
@@ -15,6 +17,14 @@ import {
   handleReverseRoute,
 } from './oda-handlers';
 
+/**
+ * The dataset vintage a route is serving.
+ *
+ * This is the single place a pathname resolves to an `{id, year, name}` triple, and it
+ * gates the dataset pin: a pin is accepted only when it matches the vintage this route
+ * serves. A path that is not in the registry falls back to federal, which is why every
+ * registered level must be listed here.
+ */
 function datasetMetaForPath(pathname: string): { id: string; year: number; name: string } {
   if (pathname === '/api' || pathname === '/api/federal' || pathname === '/api/combined') {
     return { id: FEDERAL_DATASET.r2Key, year: FEDERAL_DATASET.year, name: FEDERAL_DATASET.name };
@@ -22,6 +32,10 @@ function datasetMetaForPath(pathname: string): { id: string; year: number; name:
   const provincial = PROVINCIAL_DATASETS.find((d) => d.path === pathname);
   if (provincial) {
     return { id: provincial.r2Key, year: provincial.year, name: provincial.name };
+  }
+  const geo = GEO_DATASETS.find((d) => d.path === pathname);
+  if (geo) {
+    return { id: geo.r2Key, year: geo.year, name: geo.name };
   }
   return { id: FEDERAL_DATASET.r2Key, year: FEDERAL_DATASET.year, name: FEDERAL_DATASET.name };
 }
@@ -103,6 +117,16 @@ export async function handleLookupRequest(ctx: RouteContext): Promise<Response> 
       }
     );
   } catch (error) {
+    // A level that is registered but not yet acquired is a 404, not a failure: the route
+    // exists and is documented, the data simply is not published yet.
+    if (error instanceof DatasetNotFoundError) {
+      return badRequest(
+        `Dataset '${error.key}' is not available`,
+        404,
+        'DATASET_UNAVAILABLE',
+        correlationId
+      );
+    }
     incrementMetric('errorCount');
     // 5xx bodies stay generic: geocoder/R2/internal messages are logged with the correlation ID
     // instead of being sent to the client.

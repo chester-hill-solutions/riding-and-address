@@ -2,10 +2,14 @@ import { SITE_BRAND_STYLES, SITE_FONT_STYLESHEET, renderSiteHeader } from './sit
 // Documentation and UI functions
 
 import { getAllProvincialPaths, PROVINCIAL_DATASETS } from './datasets';
+import { GEO_DATASETS, getAllGeoPaths } from './geo-datasets';
 import { EMBED_EVENTS, EMBED_SCRIPT_ATTRIBUTES } from './embed';
 import { jsonHeaders, type RouteContext } from './route-context';
 
 const PROVINCIAL_DATASET_STEMS = PROVINCIAL_DATASETS.map((d) => d.r2Key.replace(/\.geojson$/, ''));
+
+/** The OpenAPI tag the municipal and sub-municipal endpoints are grouped under. */
+const GEO_API_TAG = 'Municipal & Sub-Municipal';
 
 /** `/api/docs` — the machine-readable OpenAPI document. */
 export function handleOpenApiDocs(ctx: RouteContext): Response {
@@ -144,7 +148,13 @@ const INCLUDE_PROVINCE_PARAMETER = {
   schema: { type: "string", enum: ["true", "false"], example: "true" },
 };
 
-const ALL_LOOKUP_PATHS = ['/api', '/api/federal', '/api/combined', ...getAllProvincialPaths()];
+const ALL_LOOKUP_PATHS = [
+  '/api',
+  '/api/federal',
+  '/api/combined',
+  ...getAllProvincialPaths(),
+  ...getAllGeoPaths(),
+];
 
 const LOOKUP_QUERY_PARAMETERS = [
   {
@@ -350,6 +360,69 @@ function buildProvincialEndpointSpecs(): Record<string, unknown> {
                 },
               },
             },
+          },
+        },
+        security: [{ basicAuth: [] }, { apiKey: [] }],
+      },
+    };
+  }
+  return paths;
+}
+
+/**
+ * The municipal and sub-municipal lookup endpoints.
+ *
+ * Each level gets its own route so a caller pays for exactly one level: a real-estate
+ * caller wants the municipality, a campaign wants the polling division, and nobody should
+ * have to ask for both to get one.
+ */
+function buildGeoEndpointSpecs(): Record<string, unknown> {
+  const paths: Record<string, unknown> = {};
+  for (const dataset of GEO_DATASETS) {
+    const statusNote = dataset.status === 'registered'
+      ? ' (registered — dataset upload to R2 pending; lookups return 404 DATASET_UNAVAILABLE until it is live)'
+      : '';
+    paths[dataset.path] = {
+      get: {
+        summary: `Lookup ${dataset.name} by location`,
+        description:
+          `Find the ${dataset.name} containing a given location${statusNote}. ` +
+          'The response reports the level, its vintage, and the source attributes for the unit.',
+        tags: [GEO_API_TAG],
+        parameters: LOOKUP_QUERY_PARAMETERS,
+        responses: {
+          "200": {
+            description: "Successful lookup",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    query: { type: "object" },
+                    point: {
+                      type: "object",
+                      properties: {
+                        lon: { type: "number" },
+                        lat: { type: "number" },
+                      },
+                    },
+                    riding: {
+                      type: "string",
+                      description: "Display name of the unit containing the point",
+                    },
+                    properties: {
+                      type: "object",
+                      nullable: true,
+                      description: "Source attributes for the unit, normalized to the CanCoder contract",
+                    },
+                    dataset: DATASET_RESPONSE_PROPERTY,
+                  },
+                },
+              },
+            },
+          },
+          "404": {
+            description: "Dataset not available (not yet uploaded, or a dataset pin mismatch)",
           },
         },
         security: [{ basicAuth: [] }, { apiKey: [] }],
@@ -667,6 +740,7 @@ export function createOpenAPISpec(baseUrl: string) {
         },
       },
       ...buildProvincialEndpointSpecs(),
+      ...buildGeoEndpointSpecs(),
       ...buildDemoEndpointSpecs(),
       "/api/geocode": {
         get: {
@@ -1050,6 +1124,11 @@ export function createOpenAPISpec(baseUrl: string) {
       {
         name: "Provincial Ridings",
         description: "Operations for provincial and territorial riding lookups",
+      },
+      {
+        name: GEO_API_TAG,
+        description:
+          "Municipal and sub-municipal lookups: census subdivisions, census metropolitan areas, census divisions, forward sortation areas and federal polling divisions",
       },
       {
         name: "ODA Geolocation",

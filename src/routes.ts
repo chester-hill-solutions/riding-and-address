@@ -27,6 +27,7 @@ import {
 } from './ops-handlers';
 import { handleWebhookAdmin } from './webhook-admin';
 import { getAllProvincialPaths } from './datasets';
+import { getAllGeoPaths } from './geo-datasets';
 import { handleDemoRoute, handleLookupRequest } from './lookup-handler';
 import { handleOdaInit, handleOdaStats } from './oda-handlers';
 import { checkProjectionAuth, projectionUnauthorizedResponse } from './projection-handlers';
@@ -116,7 +117,13 @@ const DEMO_PATHS = [
 ];
 
 /** The lookup surface served by one handler; `/api` and `/api/combined` are aliases of federal. */
-const LOOKUP_PATHS = ['/api', '/api/federal', '/api/combined', ...getAllProvincialPaths()];
+const LOOKUP_PATHS = [
+  '/api',
+  '/api/federal',
+  '/api/combined',
+  ...getAllProvincialPaths(),
+  ...getAllGeoPaths(),
+];
 
 // ── The table ────────────────────────────────────────────────────────────────
 

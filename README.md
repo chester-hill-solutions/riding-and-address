@@ -11,9 +11,27 @@ A comprehensive API service for finding Canadian electoral district (riding) inf
 
 The API provides lookup endpoints for different levels of government:
 
-- `GET /api/federal` — Federal ridings (2024 boundaries)
+| `GET /api/federal` — Federal ridings (2024 boundaries)
 - `GET /api` — Alias of `/api/federal` for backwards compatibility
 - `GET /api/combined` — Convenience endpoint equivalent to federal lookup with `include_province=true` by default
+
+### Municipal and Sub-Municipal Coverage
+
+Levels below the riding, each on its own route, each reporting its own vintage. These are
+in development: a level whose data is not yet uploaded answers `404 DATASET_UNAVAILABLE`
+rather than failing. See [the plan](docs/plans/municipal-and-submunicipal-geography.md) for
+the source archaeology, the licences, and the acquisition pipeline.
+
+| Level | Endpoint | Vintage | Source |
+|-------|----------|---------|--------|
+| Census subdivision (the municipality) | `GET /api/csd` | 2016 | Statistics Canada, 2016 Census of Population |
+| Census division | `GET /api/cd` | 2016 | Statistics Canada, 2016 Census of Population |
+| Census metropolitan area | `GET /api/cma` | 2021 | Statistics Canada, 2021 Census of Population |
+| Federal polling division | `GET /api/pd` | 2025 | Elections Canada, 45th General Election |
+| Federal polling division | `GET /api/pd/2021`, `/api/pd/2019`, `/api/pd/2015` | 2021 / 2019 / 2015 | Elections Canada |
+
+A polling division number is unique only inside its federal electoral district and only for
+the election it was drawn for, so the response always states the vintage it answered with.
 
 ### Provincial Coverage
 

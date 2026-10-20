@@ -33,6 +33,26 @@ export interface DatasetSource {
   querySpatial(key: string, lon: number, lat: number): Promise<Record<string, unknown> | null>;
 }
 
+/**
+ * Raised when a dataset key is not present in R2.
+ *
+ * This is distinct from a transient failure: the object is genuinely absent, which is the
+ * expected state for a level that has been registered but not yet acquired. Callers turn
+ * it into a 404 `DATASET_UNAVAILABLE` rather than a 500, because "we do not serve this
+ * level yet" is a different answer from "the lookup is broken".
+ */
+export class DatasetNotFoundError extends Error {
+  readonly key: string;
+  /** `withRetry` honours this flag and fails fast instead of retrying a missing object. */
+  readonly nonRetriable = true;
+
+  constructor(key: string) {
+    super(`R2 object not found: ${key}`);
+    this.name = 'DatasetNotFoundError';
+    this.key = key;
+  }
+}
+
 /** The two per-isolate LRUs a source owns. */
 export interface DatasetCaches {
   geo: LRUCache<string, GeoJSONFeatureCollection>;
@@ -78,7 +98,7 @@ async function loadGeoFromR2(
       const retryConfig = getRetryConfig();
       return await withRetry(async () => {
         const obj = await env.RIDINGS.get(key);
-        if (!obj) throw new Error(`R2 object not found: ${key}`);
+        if (!obj) throw new DatasetNotFoundError(key);
         const text = await obj.text();
         const parsed = JSON.parse(text) as GeoJSONFeatureCollection;
 
@@ -194,12 +214,12 @@ export function inMemoryDatasetSource(
   return {
     load: async (key) => {
       const geo = store.get(key);
-      if (!geo) throw new Error(`R2 object not found: ${key}`);
+      if (!geo) throw new DatasetNotFoundError(key);
       return geo;
     },
     getSpatialIndex: async (key) => {
       const geo = store.get(key);
-      if (!geo) throw new Error(`R2 object not found: ${key}`);
+      if (!geo) throw new DatasetNotFoundError(key);
       return createSpatialIndex(geo);
     },
     head: async (key) => (store.has(key) ? {} : null),

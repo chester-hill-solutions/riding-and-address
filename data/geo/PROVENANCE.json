@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-10-19T22:58:50.178382Z",
+  "datasets": [
+    {
+      "r2Key": "census-divisions-2016.geojson",
+      "level": "census-division",
+      "sourceId": "goc-shared-arcgis",
+      "sourceName": "Government of Canada shared ArcGIS services",
+      "licenceId": "statcan-ogl-canada",
+      "licenceName": "Open Government Licence \u2013 Canada",
+      "licenceUrl": "https://open.canada.ca/en/open-government-licence-canada",
+      "attribution": "\u00a9 Statistics Canada, 2016 Census of Population",
+      "features": 293,
+      "bytes": 27849352,
+      "sha256": "e4ffb81fff206da48a3c73e58abe7a4ac8b887e2d0f06ba6a74008dfa0e3f789",
+      "fetchedAt": "2026-10-19T22:46:24.989Z"
+    },
+    {
+      "r2Key": "census-subdivisions-2016.geojson",
+      "level": "census-subdivision",
+      "sourceId": "goc-shared-arcgis",
+      "sourceName": "Government of Canada shared ArcGIS services",
+      "licenceId": "statcan-ogl-canada",
+      "licenceName": "Open Government Licence \u2013 Canada",
+      "licenceUrl": "https://open.canada.ca/en/open-government-licence-canada",
+      "attribution": "\u00a9 Statistics Canada, 2016 Census of Population",
+      "features": 5162,
+      "bytes": 119203426,
+      "sha256": "6c1c641128d13dd94fec67b83cbb4e574bb3dcf9ab17f13645afc3919b6169e4",
+      "fetchedAt": "2026-10-19T22:54:29.182Z"
+    },
+    {
+      "r2Key": "federal-electoral-districts-2025.geojson",
+      "level": "federal-electoral-district",
+      "sourceId": "elections-canada-2025",
+      "sourceName": "Elections Canada \u2014 45th General Election (2025) electoral geography",
+      "licenceId": "elections-canada-ogl-canada",
+      "licenceName": "Open Government Licence \u2013 Canada",
+      "licenceUrl": "https://open.canada.ca/en/open-government-licence-canada",
+      "attribution": "\u00a9 Elections Canada, 45th General Election (2025) electoral geography",
+      "features": 352,
+      "bytes": 24428577,
+      "sha256": "fdd6c6b4bb35ca2b7b483ba21cce43c9874801d500440cfebda9011cd192fa48",
+      "fetchedAt": "2026-10-19T22:58:50.178382Z"
+    },
+    {
+      "r2Key": "federal-polling-divisions-2025.geojson",
+      "level": "federal-polling-division",
+      "sourceId": "elections-canada-2025",
+      "sourceName": "Elections Canada \u2014 45th General Election (2025) electoral geography",
+      "licenceId": "elections-canada-ogl-canada",
+      "licenceName": "Open Government Licence \u2013 Canada",
+      "licenceUrl": "https://open.canada.ca/en/open-government-licence-canada",
+      "attribution": "\u00a9 Elections Canada, 45th General Election (2025) electoral geography",
+      "features": 71687,
+      "bytes": 239571473,
+      "sha256": "70df535764e889f1f9ef41861b77e48c13fa532c9d982272d987233bef457bab",
+      "fetchedAt": "2026-10-19T22:58:50.178382Z"
+    }
+  ]
+}

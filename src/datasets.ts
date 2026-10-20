@@ -1,7 +1,8 @@
 import { Env } from './types';
 import { r2DatasetSource, type DatasetSource } from './dataset-source';
+import { GEO_DATASETS, type DatasetStatus } from './geo-datasets';
 
-export type DatasetStatus = 'live' | 'registered';
+export type { DatasetStatus } from './geo-datasets';
 
 export interface FederalDataset {
   code: string;
@@ -52,6 +53,9 @@ export const PROVINCIAL_DATASETS: readonly ProvincialDataset[] = [
 ];
 
 export type RidingDatasetKey = typeof FEDERAL_DATASET.r2Key | (typeof PROVINCIAL_DATASETS)[number]['r2Key'];
+export type GeoDatasetKey = (typeof GEO_DATASETS)[number]['r2Key'];
+/** Every boundary dataset CanCoder can serve, riding and non-riding alike. */
+export type DatasetKey = RidingDatasetKey | GeoDatasetKey;
 
 export type WarmTarget = {
   pathname: string;
@@ -74,6 +78,11 @@ export function getAllR2Keys(): RidingDatasetKey[] {
   return [FEDERAL_DATASET.r2Key, ...PROVINCIAL_DATASETS.map((d) => d.r2Key)];
 }
 
+/** Every boundary dataset key CanCoder knows about, riding and non-riding. */
+export function getAllDatasetKeys(): DatasetKey[] {
+  return [...getAllR2Keys(), ...GEO_DATASETS.map((d) => d.r2Key)];
+}
+
 export function getLiveR2Keys(): RidingDatasetKey[] {
   const keys: RidingDatasetKey[] = [];
   if (FEDERAL_DATASET.status === 'live') {
@@ -87,6 +96,16 @@ export function getLiveR2Keys(): RidingDatasetKey[] {
   return keys;
 }
 
+/** The non-riding dataset keys whose data is in R2 and is expected to answer. */
+export function getLiveGeoR2Keys(): GeoDatasetKey[] {
+  return GEO_DATASETS.filter((dataset) => dataset.status === 'live').map((dataset) => dataset.r2Key);
+}
+
+/** Every non-riding dataset key, live or registered. */
+export function getAllGeoR2Keys(): GeoDatasetKey[] {
+  return GEO_DATASETS.map((dataset) => dataset.r2Key);
+}
+
 export function getLiveWarmTargets(): WarmTarget[] {
   const targets: WarmTarget[] = [];
   if (FEDERAL_DATASET.status === 'live') {
@@ -97,30 +116,42 @@ export function getLiveWarmTargets(): WarmTarget[] {
       targets.push({ pathname: dataset.path, r2Key: dataset.r2Key });
     }
   }
+  for (const dataset of GEO_DATASETS) {
+    if (dataset.status === 'live') {
+      targets.push({ pathname: dataset.path, r2Key: dataset.r2Key });
+    }
+  }
   return targets;
 }
 
-export function getRouteForR2Key(key: RidingDatasetKey): string {
+export function getRouteForR2Key(key: DatasetKey): string {
   if (key === FEDERAL_DATASET.r2Key) {
     return FEDERAL_DATASET.path;
   }
   const provincial = PROVINCIAL_DATASETS.find((d) => d.r2Key === key);
-  return provincial?.path ?? FEDERAL_DATASET.path;
+  if (provincial) return provincial.path;
+  const geo = GEO_DATASETS.find((d) => d.r2Key === key);
+  return geo?.path ?? FEDERAL_DATASET.path;
 }
 
 /** Only registered lookup routes may resolve a boundary dataset. */
 export function isLookupPath(pathname: string): boolean {
   return pathname === '/api' || pathname === '/api/federal' || pathname === '/api/combined' ||
-    PROVINCIAL_DATASETS.some((dataset) => dataset.path === pathname);
+    PROVINCIAL_DATASETS.some((dataset) => dataset.path === pathname) ||
+    GEO_DATASETS.some((dataset) => dataset.path === pathname);
 }
 
 export function pickDataset(pathname: string): { r2Key: string } {
   if (pathname === '/api' || pathname === '/api/federal' || pathname === '/api/combined') {
     return { r2Key: FEDERAL_DATASET.r2Key };
   }
-  const dataset = PROVINCIAL_DATASETS.find((d) => d.path === pathname);
-  if (dataset) {
-    return { r2Key: dataset.r2Key };
+  const provincial = PROVINCIAL_DATASETS.find((d) => d.path === pathname);
+  if (provincial) {
+    return { r2Key: provincial.r2Key };
+  }
+  const geo = GEO_DATASETS.find((d) => d.path === pathname);
+  if (geo) {
+    return { r2Key: geo.r2Key };
   }
   return { r2Key: FEDERAL_DATASET.r2Key };
 }
@@ -159,14 +190,14 @@ export function provincePathFromFederalProperties(
 }
 
 export type DatasetAvailability = {
-  key: RidingDatasetKey;
+  key: DatasetKey;
   route: string;
   status: DatasetStatus;
   present: boolean;
 };
 
 /**
- * Head-check each registered riding dataset in R2 (does not download full GeoJSON).
+ * Head-check each registered boundary dataset in R2 (does not download full GeoJSON).
  *
  * `checkRidingDatasets` keeps its `env` entry point for the health route; `checkDatasetsFromSource`
  * is the port-shaped core so callers (and tests) can supply an in-memory adapter.
@@ -178,9 +209,10 @@ export async function checkRidingDatasets(env: Env): Promise<DatasetAvailability
 export async function checkDatasetsFromSource(source: DatasetSource): Promise<DatasetAvailability[]> {
   const results: DatasetAvailability[] = [];
 
-  const entries: Array<{ key: RidingDatasetKey; route: string; status: DatasetStatus }> = [
+  const entries: Array<{ key: DatasetKey; route: string; status: DatasetStatus }> = [
     { key: FEDERAL_DATASET.r2Key, route: FEDERAL_DATASET.path, status: FEDERAL_DATASET.status },
     ...PROVINCIAL_DATASETS.map((d) => ({ key: d.r2Key, route: d.path, status: d.status })),
+    ...GEO_DATASETS.map((d) => ({ key: d.r2Key, route: d.path, status: d.status })),
   ];
 
   for (const entry of entries) {
@@ -206,6 +238,6 @@ export function allRequiredDatasetsPresent(datasets: DatasetAvailability[]): boo
   return datasets.filter((d) => d.status === 'live').every((d) => d.present);
 }
 
-export function missingDatasetKeys(datasets: DatasetAvailability[]): RidingDatasetKey[] {
+export function missingDatasetKeys(datasets: DatasetAvailability[]): DatasetKey[] {
   return datasets.filter((d) => d.status === 'live' && !d.present).map((d) => d.key);
 }

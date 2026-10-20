@@ -13,6 +13,7 @@ Guides for operating, extending, and integrating with the CanCoder API.
 | [Alerts](ops/alerts.md) | 5xx / circuit-open Observability |
 | [Suggest index staging](ops/suggest-index-staging.md) | Enable `/api/search` safely |
 | [Portal](../portal/README.md) | Self-serve Customer app + marketing (Workers + D1 + CHS auth-d1) |
+| [Municipal & sub-municipal plan](plans/municipal-and-submunicipal-geography.md) | Adding the census, metropolitan and polling-division tiers below the riding: sources, licences, acquisition, and the D1 import |
 
 ## Operations
 

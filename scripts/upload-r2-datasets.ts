@@ -14,10 +14,11 @@
 import { execSync } from 'child_process';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { getAllR2Keys } from '../src/datasets';
+import { getAllDatasetKeys } from '../src/datasets';
 
 const BUCKET = 'ridings';
-const SEARCH_DIRS = ['data/ridings', '.'];
+/** `data/ridings` holds the riding boundaries; `data/geo` holds the municipal and sub-municipal ones. */
+const SEARCH_DIRS = ['data/ridings', 'data/geo', '.'];
 
 function findLocalFile(key: string): string | null {
   for (const dir of SEARCH_DIRS) {
@@ -34,7 +35,7 @@ function main(): void {
   const missing: string[] = [];
   const uploaded: string[] = [];
 
-  for (const key of getAllR2Keys()) {
+  for (const key of getAllDatasetKeys()) {
     const local = findLocalFile(key);
     if (!local) {
       missing.push(key);
@@ -49,7 +50,7 @@ function main(): void {
   }
 
   console.log('\n--- Verification (R2 head) ---');
-  for (const key of getAllR2Keys()) {
+  for (const key of getAllDatasetKeys()) {
     try {
       execSync(`wrangler r2 object get ${BUCKET}/${key} --file /dev/null${remoteFlag}`, { stdio: 'pipe' });
       console.log(`OK  ${key}`);
