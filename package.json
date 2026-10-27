@@ -13,16 +13,16 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@better-auth/oauth-provider": "^1.7.10",
-    "@cloudflare/workers-types": "^5.20261016.1",
+    "@better-auth/oauth-provider": "^1.7.12",
+    "@cloudflare/workers-types": "^5.20261024.1",
     "@eslint/js": "^10.0.1",
-    "@scalar/api-reference": "^1.74.0",
+    "@scalar/api-reference": "^1.76.0",
     "@types/jsdom": "^30.0.0",
     "@types/node": "^26.6.5",
-    "@typescript-eslint/eslint-plugin": "^8.71.2",
-    "@typescript-eslint/parser": "^8.71.2",
+    "@typescript-eslint/eslint-plugin": "^8.72.0",
+    "@typescript-eslint/parser": "^8.72.0",
     "@vitest/coverage-v8": "^5.0.5",
-    "better-auth": "^1.7.10",
+    "better-auth": "^1.7.12",
     "eslint": "10.13.0",
     "globals": "^17.13.0",
     "husky": "^9.1.7",
@@ -30,9 +30,9 @@
     "lint-staged": "^17.6.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
-    "vite": "^8.1.6",
+    "vite": "^8.3.5",
     "vitest": "^5.0.5",
-    "wrangler": "^4.151.0"
+    "wrangler": "^4.152.0"
   },
   "scripts": {
     "dev": "bun run --cwd portal dev",
