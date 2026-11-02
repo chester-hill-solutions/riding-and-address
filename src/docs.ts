@@ -213,7 +213,7 @@ const LOOKUP_QUERY_PARAMETERS = [
     name: "geocode_method",
     in: "query" as const,
     description:
-      "Accuracy mode. Auto geocodes before point-in-polygon; a missing full postal code can use nearby codes sharing five characters (postal_prefix, confidence 0.65). Use postal_centroid to require an exact full-code centroid.",
+      "Accuracy mode. Auto geocodes before point-in-polygon; a missing full postal code can use a NAR FSA+zone centroid (postal_centroid, confidence 0.75), then nearby codes sharing five characters (postal_prefix, confidence 0.65). Zone matches include postalMatch.matchedPrefix and an empty matchedPostalCodes list. Use postal_centroid to require an exact full-code centroid.",
     required: false,
     schema: { type: "string", enum: ["postal_centroid"], example: "postal_centroid" },
   },
