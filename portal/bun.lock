@@ -5,15 +5,15 @@
     "": {
       "name": "riding-lookup-portal",
       "dependencies": {
-        "@better-auth/cimd": "^1.7.14",
-        "@better-auth/drizzle-adapter": "^1.7.14",
-        "@better-auth/mcp": "^1.7.14",
-        "@better-auth/oauth-provider": "^1.7.14",
+        "@better-auth/cimd": "1.7.14",
+        "@better-auth/drizzle-adapter": "1.7.14",
+        "@better-auth/mcp": "1.7.14",
+        "@better-auth/oauth-provider": "1.7.14",
         "@chester-hill-solutions/auth": "file:./vendor/@chester-hill-solutions/auth",
         "@chester-hill-solutions/auth-d1": "file:./vendor/@chester-hill-solutions/auth-d1",
         "@chester-hill-solutions/auth-react-router": "file:./vendor/@chester-hill-solutions/auth-react-router",
         "@chester-hill-solutions/validation": "file:../vendor/@chester-hill-solutions/validation",
-        "better-auth": "^1.7.14",
+        "better-auth": "1.7.14",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "drizzle-orm": "^0.45.2",
@@ -46,6 +46,7 @@
     },
   },
   "overrides": {
+    "@better-auth/oauth-provider": "1.7.14",
     "browserslist": "^4.29.3",
     "nanoid": "^3.3.18",
     "sharp": "^0.35.5",
@@ -672,8 +673,6 @@
     "@babel/core/semver": ["semver@6.3.1", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="],
 
     "@babel/helper-compilation-targets/semver": ["semver@6.3.1", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="],
-
-    "@better-auth/mcp/@better-auth/oauth-provider": ["@better-auth/oauth-provider@1.7.15", "", { "dependencies": { "jose": "^6.2.3", "zod": "^4.5.4" }, "peerDependencies": { "@better-auth/core": "^1.7.15", "@better-auth/utils": "^0.4.2 || ^0.5.0", "@better-fetch/fetch": "1.3.3", "better-auth": "^1.7.15", "better-call": "1.4.4" } }, "sha512-0SeH4pSTOtfGwFmub9RDHt5/iCLxGQv8qWs/aj7UH0YKThrN+piu8eGIuKnfNUbofppoydk5dk3O5ZEnMyhXNg=="],
 
     "@chester-hill-solutions/auth-d1/@chester-hill-solutions/auth": ["@chester-hill-solutions/auth@file:vendor/@chester-hill-solutions/auth", { "peerDependencies": { "cookie": "^1.0.0", "postgres": "^3.4.0" }, "optionalPeers": ["postgres"] }],
 
