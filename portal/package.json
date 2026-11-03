@@ -23,11 +23,15 @@
   },
   "packageManager": "bun@1.4.3",
   "dependencies": {
-    "@better-auth/drizzle-adapter": "^1.7.12",
+    "@better-auth/cimd": "1.7.14",
+    "@better-auth/drizzle-adapter": "1.7.14",
+    "@better-auth/mcp": "1.7.14",
+    "@better-auth/oauth-provider": "1.7.14",
     "@chester-hill-solutions/auth": "file:./vendor/@chester-hill-solutions/auth",
     "@chester-hill-solutions/auth-d1": "file:./vendor/@chester-hill-solutions/auth-d1",
     "@chester-hill-solutions/auth-react-router": "file:./vendor/@chester-hill-solutions/auth-react-router",
-    "better-auth": "^1.7.12",
+    "@chester-hill-solutions/validation": "file:../vendor/@chester-hill-solutions/validation",
+    "better-auth": "1.7.14",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
@@ -39,11 +43,7 @@
     "react-router": "^8.5.0",
     "stripe": "^18.0.0",
     "tailwind-merge": "^3.6.0",
-    "@chester-hill-solutions/validation": "file:../vendor/@chester-hill-solutions/validation",
-    "zod": "^4.6.5",
-    "@better-auth/mcp": "^1.7.12",
-    "@better-auth/oauth-provider": "^1.7.12",
-    "@better-auth/cimd": "^1.7.12"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.65.0",
