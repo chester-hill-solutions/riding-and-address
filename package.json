@@ -14,7 +14,7 @@
   },
   "devDependencies": {
     "@better-auth/oauth-provider": "^1.7.14",
-    "@cloudflare/workers-types": "^5.20261030.1",
+    "@cloudflare/workers-types": "^5.20261031.1",
     "@eslint/js": "^10.0.1",
     "@scalar/api-reference": "^1.76.4",
     "@types/jsdom": "^30.0.0",
