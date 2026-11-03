@@ -207,3 +207,56 @@ The suggest index's province-level staleness check (`GET /api/oda/stats` → `st
 - **Province coverage.** NAR includes NL, NU and YT, but lookups are gated on `ODA_PROVINCES` in `wrangler.jsonc`, so importing those provinces also requires adding them to that allowlist.
 - **Growth.** NAR is larger than ODA (Ontario is ~6.3M addresses in the June 2026 release, versus ~4.0M ODA rows). A full national migration grows `oda-addresses` from ~3.47 GB toward ~5–6 GB, within D1's 10 GB per-database limit but worth watching. Converting a city replaces its rows, so only the currently-refreshed city's storage is transiently doubled.
 - **Coordinates.** ~1% of NAR rows have no resolvable WGS84 point and are skipped rather than stored without a location.
+
+## Province-wide postal centroids
+
+The city rotation updates full-code centroids only for refreshed cities. ODA's Ontario
+postal column is mostly empty, so this does not provide province-wide postal-only coverage.
+Build postal centroids directly from the complete NAR province instead, without importing
+millions of civic addresses into D1:
+
+```bash
+# Reuse the archive downloaded by import:nar, or download a NAR vintage first.
+mkdir -p .nar-import
+curl -fL --retry 5 -o .nar-import/202606.zip \
+  https://www150.statcan.gc.ca/n1/pub/46-26-0002/2022001/202606.zip
+npm run build:nar:postal-centroids -- --zip .nar-import/202606.zip --province ON
+cat .nar-import/postal-centroids-report.json
+
+# Review the report and SQL, then import into the existing initialized ODA database.
+npx wrangler d1 execute oda-addresses --remote --file .nar-import/postal-centroids.sql
+```
+
+Create `.nar-import/` before downloading if it does not already exist. The Python 3 builder
+uses only the standard library. It streams every province-matching Addresses/Locations part
+from the ZIP, joins `MAIL_POSTAL_CODE` to coordinates by `LOC_GUID` in temporary on-disk SQLite,
+and prefers a valid blockface coordinate pair over a building pair. Missing or invalid points
+are counted and skipped. Allow disk space for the archive and temporary join database
+(`TMPDIR` can select a larger disk).
+
+The SQL upserts full codes (`L7P 2R5`) and FSA+zone keys (`L7P 2`) into the existing
+`oda_postal_centroids` schema. Both are address-weighted means. NAR wins for matching keys;
+unrelated existing ODA full-code centroids remain. A rebuild clears old zone keys for the
+selected province, and reruns are idempotent. Run again for each new vintage. The city importer
+continues to recompute touched full codes; it leaves the province-wide zone snapshot intact.
+An ODA province/centroid rebuild deletes postal centroids, so run this NAR build afterward.
+No runtime external request or additional Worker binding is needed.
+
+The JSON report includes joined/unresolved postal rows, full/zone centroid counts, and
+full-code and full-or-zone coverage across **all distinct postal codes in the source**,
+including those without resolved coordinates. Confirm `full_or_zone_coverage >= 0.95` on the
+real Ontario archive before rollout. Test fixtures validate the join and coverage calculation;
+they do not establish real-province coverage.
+
+Auto lookup order is full code (confidence 0.85), FSA+zone (0.75), then the existing five-character
+postal-prefix approximation (0.65). Zone results use `geocodeMethod: postal_centroid` and
+`postalMatch: { requestedPostalCode: "L7P 2R5", matchedPrefix: "L7P 2", matchedPostalCodes: [] }`.
+They omit the requested full code from verified mailing components. Explicit
+`geocode_method=postal_centroid` still requires a full-code match. Confidence thresholds and
+geocoding/lookup caches continue to apply. Existing cached results can remain until their TTL
+expires; use fresh queries when verifying the new dataset.
+
+After import and deployment, check `/api/demo/geocode?postal=L7P2R5`, `K1R6P0`, `P7B5E1`, and
+`N0H1G0`. Use the returned Burlington point in the consuming post-office finder to compare its
+nearest four locations against Canada Post. This repository does not contain that finder or
+the Canada Post location dataset; a geocoder fixture cannot validate that external ranking.

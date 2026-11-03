@@ -67,14 +67,20 @@ provider reflects the city a result resolved in, not a global setting.
 |--------|-------------------|-------------|
 | `exact` | 1.0 | Full civic + street + city/province or postal match |
 | `postal_street` | 0.9 | Exact civic + street scoped by postal code, when no municipality is supplied |
-| `postal_centroid` | 0.85 | Centroid of all addresses sharing a postal code |
+| `postal_centroid` | 0.85 full code; 0.75 FSA+zone | Centroid of addresses sharing a postal code or NAR FSA+zone |
 | `postal_prefix` | 0.65 | Address-weighted centroid of loaded postal codes sharing the first five characters |
 | `street_interpolated` | 0.75 | Same street, civic interpolated or nearest civic |
 | `city_centroid` | 0.45 | Centroid of all addresses in a city |
 | `nearest_neighbor` | ≤ 0.7 | Bounded R-tree nearest-neighbor match |
 
-When the full postal code is missing, auto mode tries loaded postal codes sharing its first
-five characters. For example, `M5V2T6` can use `M5V 2T3` and `M5V 2T8`. It does not broaden to
+When the full postal code is missing, auto mode first tries a NAR FSA+zone centroid (four
+postal characters, e.g. `L7P2`, stored as `L7P 2`). This returns `postal_centroid` with confidence
+0.75 and `postalMatch` identifying the requested code, `matchedPrefix: "L7P 2"`, and an empty
+`matchedPostalCodes` list; the zone is an aggregate, not a list of exact matches. Build these
+province-wide using [the NAR centroid pipeline](nar-data-import.md#province-wide-postal-centroids).
+
+If no zone exists, auto mode tries loaded postal codes sharing the first five characters.
+For example, `M5V2T6` can use `M5V 2T3` and `M5V 2T8`. It does not broaden to
 an entire FSA. Sibling centroids must be within 5 km of the estimate (the existing
 `ODA_MAX_POSTAL_CENTROID_DISTANCE_METERS` setting), and the normal confidence floor applies.
 Confidence values are ranking scores, not calibrated probabilities.
