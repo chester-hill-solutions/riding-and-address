@@ -2,7 +2,6 @@ import {
   Env,
   QueryParams,
   OdaAddressComponents,
-  OdaDataSource,
   OdaGeocodeMethod,
   OdaGeocodeMetadata,
 } from './types';
@@ -23,7 +22,7 @@ import {
   parseAddressQuery,
 } from './oda-normalize';
 import { expandCityCandidates } from './oda-city-aliases';
-import { withCitySource } from './oda-source';
+import { sourceForGeocodeMethod, withCitySource } from './oda-source';
 import { metricsSink, ODA_METHOD_METRIC, type MetricsSink } from './metrics';
 import { expandStreetAddress } from './geocode-region';
 import { formatFromOdaRow } from './canada-post-format';
@@ -133,12 +132,12 @@ function buildResult(
       ? Math.min(CONFIDENCE_BY_METHOD.nearest_neighbor, Math.max(0.3, 1 - distanceMeters / 10000))
       : CONFIDENCE_BY_METHOD[method]);
 
-  const dataSource: OdaDataSource = {
+  const dataSource = sourceForGeocodeMethod(method, {
     provider: 'statcan-oda',
     version: config.dataVersion,
     province: row.province,
     canadaPostCertified: false,
-  };
+  });
 
   const components = rowToComponents(row as OdaAddressRow);
 

@@ -97,9 +97,11 @@ describe('NAR province-wide postal centroids', () => {
   ] as const)('resolves %s through full NAR centroids', async (postal, lat, lon) => {
     const data = fixture();
     try {
-      expect(await geocodePostalCentroidWithOda(data.env, { postal })).toMatchObject({
+      const result = await geocodePostalCentroidWithOda(data.env, { postal });
+      expect(result).toMatchObject({
         geocodeMethod: 'postal_centroid', confidence: 0.85, lat, lon,
       });
+      expect(result.dataSource).toBeUndefined();
     } finally { data.close(); }
   });
 
@@ -109,6 +111,7 @@ describe('NAR province-wide postal centroids', () => {
       for (const geocode of [geocodePostalCentroidWithOda, geocodeWithOda]) {
         const result = await geocode(data.env, { postal: 'l7p 2z9' });
         expect(result).toMatchObject({ geocodeMethod: 'postal_centroid', confidence: 0.75, postalMatch: zoneMatch });
+        expect(result.dataSource).toBeUndefined();
         expect(result.lat).toBeCloseTo((43.3 * 2 + 43.4) / 3);
         expect(result.addressComponents?.postal_code).toBeUndefined();
         expect(result.mailingAddress?.postalCode).toBeUndefined();
@@ -134,7 +137,9 @@ describe('NAR province-wide postal centroids', () => {
     try {
       const exact = await fetchLookup(data.env, '/api/demo/geocode?postal=L7P2R5');
       expect(exact.status).toBe(200);
-      expect(await exact.json()).toMatchObject({ geocodeMethod: 'postal_centroid', confidence: 0.85 });
+      const exactBody = await exact.json();
+      expect(exactBody).toMatchObject({ geocodeMethod: 'postal_centroid', confidence: 0.85 });
+      expect(exactBody).not.toHaveProperty('dataSource');
       const first = await fetchLookup(data.env, '/api/demo/geocode?postal=L7P2Z9');
       expect(first.status).toBe(200);
       expect(await first.json()).toMatchObject({ postalMatch: zoneMatch, confidence: 0.75 });
