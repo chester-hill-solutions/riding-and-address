@@ -293,6 +293,7 @@ type PostalResolution = {
   province: string;
   postal_code: string;
   geocodeMethod: 'postal_centroid' | 'postal_prefix';
+  confidence?: number;
   postalMatch?: OdaGeocodeMetadata['postalMatch'];
 };
 
@@ -306,6 +307,19 @@ async function findPostalCentroid(
   const exact = await store.findPostalCentroid({ postal, provinces });
   if (exact) return { ...exact, geocodeMethod: 'postal_centroid' };
   if (!allowPrefix) return null;
+
+  // NAR's province-wide build stores FSA+zone keys alongside full postal codes.
+  // Keep the requested full code out of address components for an approximation.
+  const zoneKey = postal.slice(0, 5);
+  const zone = await store.findPostalCentroid({ postal: zoneKey, provinces });
+  if (zone) return {
+    ...zone, postal_code: '', geocodeMethod: 'postal_centroid', confidence: 0.75,
+    postalMatch: {
+      requestedPostalCode: postal,
+      matchedPrefix: zoneKey,
+      matchedPostalCodes: [],
+    },
+  };
 
   const prefix = postal.slice(0, -1);
   const siblings = await store.findPostalPrefixCentroids({ prefix, provinces });
@@ -732,7 +746,9 @@ async function geocodeWithOdaInner(
             centroid.geocodeMethod,
             config,
             [centroid.geocodeMethod === 'postal_prefix' ? 'postal_prefix' : 'postal'],
-            sink
+            sink,
+            undefined,
+            centroid.confidence
           ), postalMatch: centroid.postalMatch },
           config.minConfidence
         );
@@ -852,7 +868,9 @@ export async function geocodePostalCentroidWithOda(
       centroid.geocodeMethod,
       config,
       [centroid.geocodeMethod === 'postal_prefix' ? 'postal_prefix' : 'postal'],
-      sink
+      sink,
+      undefined,
+      centroid.confidence
     ), postalMatch: centroid.postalMatch },
     config.minConfidence
   );

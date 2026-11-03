@@ -71,8 +71,13 @@ This mode is closest to OpenNorth postal semantics but still uses CanCoder bound
 
 ## Missing full postal codes
 
-Auto mode can estimate from loaded codes that share the first five characters. `M5V2T6`,
-currently absent from the imported full-code table, resolves from `M5V 2T3` and `M5V 2T8`.
+Auto mode first tries a full-code centroid, then a NAR FSA+zone centroid (four postal
+characters, e.g. `L7P2`). Zone estimates use `postal_centroid` with confidence `0.75`;
+`postalMatch.matchedPrefix` identifies the zone and `matchedPostalCodes` is empty.
+The requested full code is not asserted as a verified mailing code.
+
+When no zone has been imported, auto mode can estimate from loaded codes that share the
+first five characters. For example, `M5V2T6` can resolve from `M5V 2T3` and `M5V 2T8`.
 The response labels the estimate `postal_prefix` with confidence `0.65` and identifies the
 matched postal codes in `postalMatch`. Historical comparisons above predate this fallback.
 Explicit `geocode_method=postal_centroid` continues to require a full-code match.
