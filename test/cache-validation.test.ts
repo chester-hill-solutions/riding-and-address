@@ -79,6 +79,30 @@ describe('geocoding cache validation', () => {
     expect(await getCachedGeocoding(env, 'k')).toMatchObject({ lon: -75.69, lat: 45.42 });
   });
 
+  it.each(['postal_centroid', 'postal_prefix'] as const)(
+    'drops unsupported source claims from an older cached %s while preserving its match',
+    async (geocodeMethod) => {
+      const postalMatch = { requestedPostalCode: 'L7P 2Z9', matchedPrefix: 'L7P 2', matchedPostalCodes: [] };
+      const env = { GEOCODING_CACHE: createMemoryKv({ k: geoEntry({
+        geocodeMethod, confidence: 0.75, postalMatch,
+        dataSource: { provider: 'statcan-oda', version: '2021001', province: 'ON', canadaPostCertified: false },
+      }) }) } as unknown as Env;
+      const result = await getCachedGeocoding(env, 'k');
+      expect(result).toMatchObject({ lon: -75.69, lat: 45.42, geocodeMethod, confidence: 0.75, postalMatch });
+      expect(result?.dataSource).toBeUndefined();
+    }
+  );
+
+  it('retains the recorded NAR vintage for a cached civic-address match', async () => {
+    const source = { provider: 'statcan-nar', version: '202606', province: 'ON', canadaPostCertified: false };
+    const env = { GEOCODING_CACHE: createMemoryKv({ k: geoEntry({
+      geocodeMethod: 'exact', confidence: 1, dataSource: source,
+    }) }) } as unknown as Env;
+    expect(await getCachedGeocoding(env, 'k')).toMatchObject({
+      lon: -75.69, lat: 45.42, geocodeMethod: 'exact', confidence: 1, dataSource: source,
+    });
+  });
+
   it('discards coordinates of the wrong type', async () => {
     // A cached coordinate the point-in-polygon would run on: a string here is not usable.
     const env = { GEOCODING_CACHE: createMemoryKv({ k: geoEntry({ lat: '45.42' }) }) } as unknown as Env;

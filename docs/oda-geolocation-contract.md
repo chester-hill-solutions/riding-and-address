@@ -61,6 +61,13 @@ for a city that has been refreshed from the National Address Register, in which 
 `dataSource.version` is the NAR vintage (e.g. `202606`). Address data migrates city by city, so the
 provider reflects the city a result resolved in, not a global setting.
 
+`dataSource` is omitted for `postal_centroid` and `postal_prefix` results. The postal
+aggregate table stores coordinates and counts without provider/vintage fields, and it can
+contain both ODA and NAR rows. A caller's city, province or the aggregate's coordinates cannot
+establish its source. Existing cached postal results also omit that unverified label;
+coordinates, confidence and postal-match metadata are preserved. Returning a positive NAR
+vintage for these aggregates requires stored provenance and an explicitly reviewed backfill.
+
 **Geocode methods:**
 
 | Method | Default confidence | Description |

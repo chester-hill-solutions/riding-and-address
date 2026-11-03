@@ -31,6 +31,7 @@ describe('postal prefix approximation', () => {
       expect(result.lon).toBeCloseTo((-79.404366 * 16 - 79.398984 * 103) / 119, 6);
       expect(result.addressComponents?.postal_code).toBeUndefined();
       expect(result.mailingAddress?.postalCode).toBeUndefined();
+      expect(result.dataSource).toBeUndefined();
     } finally { data.close(); }
   });
 
