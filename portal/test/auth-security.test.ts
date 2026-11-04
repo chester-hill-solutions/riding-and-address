@@ -11,11 +11,12 @@ vi.mock('~/lib/email.server', async (importOriginal) => ({
 
 const origin = 'http://localhost:5173';
 const password = 'AuthSecurityFixture123!';
+type AuthSession = { user: { id: string; email: string }; session: { id: string; expiresAt: string } };
 
 describe('auth security with the portal configuration and migrated database', () => {
   let database: PortalDb;
   beforeEach(() => { database = createPortalDb(); mail.messages.length = 0; });
-  afterEach(() => database.close());
+  afterEach(() => { vi.useRealTimers(); database.close(); });
 
   function request(path: string, body?: unknown, cookie?: string) {
     const usage = {
@@ -32,6 +33,17 @@ describe('auth security with the portal configuration and migrated database', ()
 
   function cookies(response: Response) {
     return response.headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
+  }
+
+  function applyCookies(jar: Map<string, string>, response: Response) {
+    for (const value of response.headers.getSetCookie()) {
+      const pair = value.split(';')[0];
+      const separator = pair.indexOf('=');
+      const name = pair.slice(0, separator);
+      if (/;\s*max-age=0(?:;|$)/i.test(value)) jar.delete(name);
+      else jar.set(name, pair.slice(separator + 1));
+    }
+    return [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
   }
 
   async function signup(email: string) {
@@ -78,6 +90,52 @@ describe('auth security with the portal configuration and migrated database', ()
     expect(await (await request('get-session', undefined, cookie)).json()).toMatchObject({ user: { email: 'logout@example.test' } });
     expect((await request('sign-out', {}, cookie)).status).toBe(200);
     expect(await (await request('get-session', undefined, cookie)).json()).toBeNull();
+  });
+
+  it.each(['sign-in/email', 'sign-up/email'] as const)('refreshes a remembered %s after an earlier non-remembered sign-in in the same browser', async (endpoint) => {
+    const email = 'remembered@example.test';
+    await signup(email);
+    const jar = new Map<string, string>();
+    const temporary = await request('sign-in/email', { email, password, rememberMe: false });
+    expect(temporary.status).toBe(200);
+    let cookie = applyCookies(jar, temporary);
+    expect(jar.has('better-auth.dont_remember')).toBe(true);
+
+    const rememberedEmail = endpoint === 'sign-up/email' ? 'new-remembered@example.test' : email;
+    const remembered = await request(endpoint, { email: rememberedEmail, password, name: 'Remembered fixture' }, cookie);
+    expect(remembered.status).toBe(200);
+    cookie = applyCookies(jar, remembered);
+    const original = await (await request('get-session', undefined, cookie)).json() as AuthSession;
+    expect(original).toMatchObject({ user: { email: rememberedEmail } });
+
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + 24 * 60 * 60 * 1000 + 1000);
+    const refreshed = await request('get-session', undefined, cookie);
+    expect(refreshed.status).toBe(200);
+    const session = await refreshed.json() as AuthSession;
+    expect(session).toMatchObject({ user: { id: original.user.id, email: rememberedEmail }, session: { id: original.session.id } });
+    expect(new Date(session.session.expiresAt).getTime()).toBeGreaterThan(new Date(original.session.expiresAt).getTime());
+    expect(refreshed.headers.getSetCookie().find(value => value.startsWith('better-auth.session_token='))).toContain('Max-Age=');
+    expect(jar.has('better-auth.dont_remember')).toBe(false);
+  });
+
+  it('preserves a non-remembered sign-in when a profile update reissues its cookie', async () => {
+    const email = 'temporary@example.test';
+    await signup(email);
+    const jar = new Map<string, string>();
+    const temporary = await request('sign-in/email', { email, password, rememberMe: false });
+    expect(temporary.status).toBe(200);
+    const cookie = applyCookies(jar, temporary);
+    expect(jar.has('better-auth.dont_remember')).toBe(true);
+
+    const updated = await request('update-user', { name: 'Updated fixture' }, cookie);
+    expect(updated.status).toBe(200);
+    const updatedCookie = applyCookies(jar, updated);
+    expect(jar.has('better-auth.dont_remember')).toBe(true);
+    const sessionCookie = updated.headers.getSetCookie().find(value => value.startsWith('better-auth.session_token='));
+    expect(sessionCookie).toBeDefined();
+    expect(sessionCookie).not.toContain('Max-Age=');
+    expect(await (await request('get-session', undefined, updatedCookie)).json()).toMatchObject({ user: { email, name: 'Updated fixture' } });
   });
 
   it('keeps user-initiated email changes disabled', async () => {
