@@ -13,7 +13,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@better-auth/oauth-provider": "^1.7.14",
+    "@better-auth/oauth-provider": "^1.7.17",
     "@cloudflare/workers-types": "^5.20261031.1",
     "@eslint/js": "^10.0.1",
     "@scalar/api-reference": "^1.76.4",
@@ -22,7 +22,7 @@
     "@typescript-eslint/eslint-plugin": "^8.72.1",
     "@typescript-eslint/parser": "^8.72.1",
     "@vitest/coverage-v8": "^5.0.5",
-    "better-auth": "^1.7.14",
+    "better-auth": "^1.7.17",
     "eslint": "10.14.0",
     "globals": "^17.13.0",
     "husky": "^9.1.7",
