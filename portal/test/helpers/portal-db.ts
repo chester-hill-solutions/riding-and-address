@@ -36,6 +36,7 @@ interface D1ShimStatement {
   first<T = unknown>(columnName: string): Promise<T | null>;
   first<T = unknown>(): Promise<T | null>;
   all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta: Record<string, unknown> }>;
+  raw(): Promise<unknown[]>;
   run(): Promise<{ success: boolean; meta: Record<string, unknown> }>;
 }
 
@@ -61,6 +62,11 @@ export function createD1Shim(sqlite: DatabaseSync): D1Database {
     return {
       bind: (...bound: SqlValue[]) => statement(sql, bound),
       all,
+      raw: async () => {
+        const prepared = sqlite.prepare(sql);
+        prepared.setReturnArrays(true);
+        return prepared.all(...params);
+      },
       first: first as D1ShimStatement['first'],
       run,
     };
