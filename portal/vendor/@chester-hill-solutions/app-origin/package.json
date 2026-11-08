@@ -1,0 +1,34 @@
+{
+  "name": "@chester-hill-solutions/app-origin",
+  "version": "0.2.0",
+  "description": "The public origin of a deployed application, and the origins that a redirect may use",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chester-hill-solutions/chester-hill-solutions.git",
+    "directory": "packages/app-origin"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "files": [
+    "dist",
+    "src",
+    "tests",
+    "README.md",
+    "vitest.config.ts",
+    "tsconfig.build.json",
+    "tsconfig.test.json"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "gitHead": "3dba6c56bc50cb89bca0346e211329c1fb7e1885"
+}

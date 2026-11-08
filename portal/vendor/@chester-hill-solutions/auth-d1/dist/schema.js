@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 export { account, accountRelations, session, sessionRelations, user, userRelations, verification, } from "./auth-schema.js";
 /** Schema object for drizzleAdapter({ schema: authSchema }) */
 export { authSchema } from "./auth-schema.js";
@@ -7,6 +7,7 @@ export { authSchema } from "./auth-schema.js";
 // fails during an authorization rather than at build time.
 export { jwks, oauthAccessToken, oauthClient, oauthClientAssertion, oauthClientResource, oauthConsent, oauthRefreshToken, oauthResource, oauthSchema, } from "./oauth-schema.js";
 export { workspaceRoles, workspaceFeatures, workspaceFeaturePermissions, } from "./workspace-authz-schema.js";
+export { workspaceApiKeys, } from "./api-key-schema.js";
 export { workspaceInvitations, } from "./invitation-schema.js";
 // ── Workspace tenancy ──────────────────────────────────────────────
 /**
@@ -45,4 +46,8 @@ export const workspaceMembers = sqliteTable("workspace_member", {
     createdAt: integer("created_at", { mode: "timestamp_ms" })
         .notNull()
         .$defaultFn(() => new Date()),
-});
+}, (table) => [
+    // One membership row per (workspace_id, user_id). A member's effective role has to be a
+    // fact about the data, not about which of two rows the database happens to return first.
+    uniqueIndex("workspace_member_workspace_user_idx").on(table.workspaceId, table.userId),
+]);

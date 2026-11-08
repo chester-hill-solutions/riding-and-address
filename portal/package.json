@@ -15,6 +15,7 @@
     "db:migrate:remote": "wrangler d1 migrations apply PORTAL_DB --remote",
     "db:migrate:staging": "wrangler d1 migrations apply PORTAL_DB --env staging --remote",
     "test:runtime": "node scripts/test-runtime.mjs",
+    "check:chs-packages": "node scripts/check-chs-packages.mjs",
     "db:status": "wrangler d1 migrations list PORTAL_DB --remote",
     "db:status:staging": "wrangler d1 migrations list PORTAL_DB --env staging --remote",
     "test": "vitest run",
@@ -24,6 +25,7 @@
   "packageManager": "bun@1.4.3",
   "dependencies": {
     "@better-auth/drizzle-adapter": "1.7.14",
+    "@chester-hill-solutions/app-origin": "file:./vendor/@chester-hill-solutions/app-origin",
     "@chester-hill-solutions/auth": "file:./vendor/@chester-hill-solutions/auth",
     "@chester-hill-solutions/auth-d1": "file:./vendor/@chester-hill-solutions/auth-d1",
     "@chester-hill-solutions/auth-react-router": "file:./vendor/@chester-hill-solutions/auth-react-router",

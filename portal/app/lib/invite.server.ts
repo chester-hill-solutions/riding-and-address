@@ -3,6 +3,7 @@ import { createInvitation, redeemInvitation } from '@chester-hill-solutions/auth
 import { eq } from 'drizzle-orm';
 import { getDb } from '~/lib/db.server';
 import { workspaceInvitations, workspaces } from '~/db/schema';
+import { CANCODER_ROLES } from './product-roles';
 
 export type PendingInvite = {
   invitationId: string;
@@ -31,7 +32,7 @@ export async function createWorkspaceInvite(input: {
     email: input.email,
     roleId: 'member',
     invitedByUserId: input.invitedByUserId,
-  });
+  }, { roles: CANCODER_ROLES });
   return {
     inviteUrl: `${input.baseUrl}/signup?invite=${encodeURIComponent(rawToken)}`,
     email: invitation.email,
@@ -96,7 +97,7 @@ export async function redeemInviteForUser(input: {
   verifiedEmail: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    await redeemInvitation(getDb(), input);
+    await redeemInvitation(getDb(), input, { roles: CANCODER_ROLES });
     return { ok: true };
   } catch (error) {
     if (error instanceof InviteError || (error as Error | null)?.name === 'InviteError') {

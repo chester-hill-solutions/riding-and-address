@@ -5,4 +5,4 @@
  * package, so the agreement is asserted here and each dialect calls it.
  */
 export { FOREIGN_ROLE_SET, runAuthDialectConformance, type AuthDialectUnderTest, type DeclaredColumn, } from './auth-conformance.js';
-export { runOAuthSchemaConformance, type DeclaredOAuthColumn, type ExpectedOAuthField, type ExpectedOAuthModel, type OAuthSchemaUnderTest, } from './oauth-conformance.js';
+export { oauthPluginModels, runOAuthSchemaConformance, type DeclaredOAuthColumn, type ExpectedOAuthField, type ExpectedOAuthModel, type OAuthSchemaUnderTest, } from './oauth-conformance.js';

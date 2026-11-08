@@ -6,11 +6,19 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { hashOpaqueToken } from '@chester-hill-solutions/auth';
 
 // Exercise the built Worker with a temporary local database and local KV. No remote data or email.
 const origin = 'http://127.0.0.1:4179';
 const config = 'build/server/wrangler.json';
 const state = await mkdtemp(join(tmpdir(), 'cancoder-runtime-'));
+function localSql(command) {
+  const result = spawnSync(process.execPath, ['node_modules/wrangler/bin/wrangler.js', 'd1', 'execute', 'PORTAL_DB',
+    '--config', config, '--local', '--persist-to', state, '--command', command, '--json'],
+  { encoding: 'utf8', env: { ...process.env, CI: 'true', WRANGLER_SEND_METRICS: 'false' } });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  return JSON.parse(result.stdout).flatMap(batch => batch.results ?? []);
+}
 const migration = spawnSync(process.execPath, [
   'node_modules/wrangler/bin/wrangler.js', 'd1', 'migrations', 'apply', 'PORTAL_DB',
   '--config', config, '--local', '--persist-to', state,
@@ -144,6 +152,64 @@ try {
   });
   assert.equal(invalidInvite.status, 200);
   assert.match(await invalidInvite.text(), /valid email address/);
+  const ownerInvite = await fetch(origin + '/app/invites', {
+    method: 'POST', headers: { Origin: origin, Cookie: cookie },
+    body: new URLSearchParams({ email: 'invited-runtime@example.test' }),
+  });
+  assert.equal(ownerInvite.status, 200);
+  assert.match(await ownerInvite.text(), /Invite sent to/, 'the actual owner route creates an invitation');
+  const [createdInvite] = localSql(`SELECT i.workspace_id, i.role_id, i.status FROM workspace_invitation i
+    JOIN workspace_member m ON m.workspace_id=i.workspace_id AND m.user_id=i.invited_by_user_id
+    JOIN user u ON u.id=m.user_id WHERE u.email='runtime@example.test' AND i.email='invited-runtime@example.test'`);
+  assert.equal(createdInvite.role_id, 'member');
+  assert.equal(createdInvite.status, 'pending');
+  // Replace only this local fixture's token because email delivery is disabled.
+  const inviteToken = 'chs-invitation-local-runtime-only-credential';
+  localSql(`UPDATE workspace_invitation SET token_hash='${hashOpaqueToken(inviteToken)}'
+    WHERE email='invited-runtime@example.test' AND status='pending'`);
+  const invitedSignup = await fetch(origin + '/signup?invite=' + inviteToken, {
+    method: 'POST', redirect: 'manual', headers: { Origin: origin },
+    body: new URLSearchParams({ email: 'invited-runtime@example.test', password: 'LocalRuntimeTest123!',
+      name: 'Invited member', inviteToken, workspaceId: 'forged-customer' }),
+  });
+  assert.equal(invitedSignup.status, 302, await invitedSignup.clone().text());
+  const memberships = localSql(`SELECT m.workspace_id,m.role_id FROM workspace_member m
+    JOIN user u ON u.id=m.user_id WHERE u.email='invited-runtime@example.test'`);
+  assert.deepEqual(memberships, [{ workspace_id: createdInvite.workspace_id, role_id: 'member' }],
+    'redemption grants only the stored Customer and member role, never the submitted workspace');
+  const invitedCookie = invitedSignup.headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
+  const memberInvite = await fetch(origin + '/app/invites', {
+    method: 'POST', headers: { Origin: origin, Cookie: invitedCookie },
+    body: new URLSearchParams({ email: 'forbidden-runtime@example.test' }),
+  });
+  assert.match(await memberInvite.text(), /Only owners\/admins can invite/);
+  assert.equal(localSql("SELECT count(*) AS count FROM workspace_invitation WHERE email='forbidden-runtime@example.test'")[0].count, 0);
+  localSql("UPDATE workspace_member SET role_id='admin' WHERE user_id=(SELECT id FROM user WHERE email='invited-runtime@example.test')");
+  const adminInvite = await fetch(origin + '/app/invites', {
+    method: 'POST', headers: { Origin: origin, Cookie: invitedCookie },
+    body: new URLSearchParams({ email: 'admin-target-runtime@example.test' }),
+  });
+  assert.match(await adminInvite.text(), /Invite sent to/, 'existing admins may still invite members');
+  assert.deepEqual(localSql("SELECT workspace_id,role_id FROM workspace_invitation WHERE email='admin-target-runtime@example.test'"),
+    [{ workspace_id: createdInvite.workspace_id, role_id: 'member' }]);
+  const forgedWrite = await fetch(origin + '/api/auth/update-user', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://attacker.example', Cookie: cookie },
+    body: JSON.stringify({ name: 'Forged account change' }),
+  });
+  assert.equal(forgedWrite.status, 403, 'the actual auth endpoint refuses an untrusted cookie-bearing write');
+  assert.equal(localSql("SELECT name FROM user WHERE email='runtime@example.test'")[0].name, 'Runtime Test');
+  const replay = await fetch(origin + '/signup?invite=' + inviteToken, {
+    method: 'POST', headers: { Origin: origin },
+    body: new URLSearchParams({ email: 'invited-runtime@example.test', password: 'LocalRuntimeTest123!', name: 'Replay', inviteToken }),
+  });
+  assert.match(await replay.text(), /no longer active/);
+  const forgedToken = await fetch(origin + '/signup', {
+    method: 'POST', headers: { Origin: origin },
+    body: new URLSearchParams({ email: 'forged-runtime@example.test', password: 'LocalRuntimeTest123!',
+      name: 'Forged token', inviteToken: 'not-a-real-invitation' }),
+  });
+  assert.match(await forgedToken.text(), /not valid/);
+  assert.equal(localSql("SELECT count(*) AS count FROM user WHERE email='forged-runtime@example.test'")[0].count, 0);
   const login = await fetch(origin + '/login?continue=%2Fapp%2Fkeys', {
     method: 'POST', redirect: 'manual', headers: { Origin: origin },
     body: new URLSearchParams({ email: 'runtime@example.test', password: 'LocalRuntimeTest123!' }),
