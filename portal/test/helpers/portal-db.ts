@@ -87,7 +87,7 @@ export function createPortalDb(): PortalDb {
   const sqlite = new DatabaseSync(':memory:');
   // The foreign keys are the point of using the real migrations, so they must be on.
   sqlite.exec('PRAGMA foreign_keys = ON');
-  for (const file of ['0001_init.sql', '0002_oauth.sql']) {
+  for (const file of ['0001_init.sql', '0002_oauth.sql', '0003_workspace_member_uniqueness.sql']) {
     sqlite.exec(readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8'));
   }
   return { sqlite, db: createD1Shim(sqlite), close: () => sqlite.close() };

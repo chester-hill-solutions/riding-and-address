@@ -102,7 +102,20 @@ export * from "./workspace-access.js";
 export * from "./workspace-feature-access.js";
 export * from "./invitation.js";
 export * from "./product-role-seeds.js";
+// The DDL a deployment provisions for better-auth's own four tables, so it does not have to
+// hand-write the schema from memory. The sibling exports the same thing.
+export { AUTH_DDL } from "./auth-sql.js";
+// The membership join between the consumer's tenancy and this package's users and roles.
+// It references `workspace(id)`, which the consumer owns and must have created first.
+export { WORKSPACE_MEMBER_DDL } from "./workspace-member-sql.js";
 export { WORKSPACE_FEATURE_AUTHZ_DDL } from "./workspace-feature-sql.js";
 export { WORKSPACE_INVITATION_DDL } from "./invitation-sql.js";
 export { OAUTH_DDL } from "./oauth-sql.js";
+// The drizzle tables behind better-auth's own four models, so a consumer can hand them to
+// `drizzleAdapter` without reaching into a subpath for half the schema and the root for the
+// other half. The sibling exports the same set from the same place.
+export { user, session, account, verification, userRelations, sessionRelations, accountRelations, } from "./auth-schema.js";
 export { workspaceInvitations, } from "./invitation-schema.js";
+export * from "./api-key.js";
+export { WORKSPACE_API_KEY_DDL } from "./api-key-sql.js";
+export { workspaceApiKeys, } from "./api-key-schema.js";

@@ -1,0 +1,473 @@
+{
+  "sourceSha": "3dba6c56bc50cb89bca0346e211329c1fb7e1885",
+  "manifestTransforms": [
+    "Remove scripts and devDependencies for directory delivery",
+    "Rewrite internal dependencies to sibling file: references"
+  ],
+  "packages": [
+    {
+      "name": "@chester-hill-solutions/auth",
+      "version": "0.15.0",
+      "directory": "@chester-hill-solutions/auth",
+      "sourceSha": "3dba6c56bc50cb89bca0346e211329c1fb7e1885",
+      "sourceTarball": "chester-hill-solutions-auth-0.15.0.tgz",
+      "sourceSha256": "061a1340166435850e968a17275c60af121a2317e9b878c4a2aa6509ceac5f74",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "f29b1c8c8b50f1e03b44fd3d2400ec602d8cb82d816014379c930dcb9e52742d"
+        },
+        {
+          "path": "dist/capability.d.ts",
+          "sha256": "ca4c2640f016732767a1ac790e1cbacc51de7174945c43d104c9c156a76d1d81"
+        },
+        {
+          "path": "dist/capability.js",
+          "sha256": "c39351971b7bae0810e57413e52206dc844c686f06dc60ef034967f35b6ae7bb"
+        },
+        {
+          "path": "dist/cookies.d.ts",
+          "sha256": "08b153e1af6b2a016aae44de68c28364bca1bd19cba009cc0060cdac398badf0"
+        },
+        {
+          "path": "dist/cookies.js",
+          "sha256": "6d8e1e41b38c96b6d5f309ed662042a070b7404a0bc1d7c200db803f85285978"
+        },
+        {
+          "path": "dist/email.d.ts",
+          "sha256": "18e32c7310310077f98d7d0811f342712d97069d35deefcf1f33c51c6ebce9e1"
+        },
+        {
+          "path": "dist/email.js",
+          "sha256": "fd0b8c5acfe6b4538edc0dc196050391fd1bd817afe0a3a00141cd9ce69cc42e"
+        },
+        {
+          "path": "dist/errors.d.ts",
+          "sha256": "d59ec8891e442a2ef45982ebbe111bb9829d610a250b8eaebde1329e5182940e"
+        },
+        {
+          "path": "dist/errors.js",
+          "sha256": "255263ad3344665dfc661ea6725cf6ccdfcbdff2a397afdc26868663112c85e3"
+        },
+        {
+          "path": "dist/index.d.ts",
+          "sha256": "a82f5f9428b9e0a115381934f28a4fcb8da66010fff15b7fd06a68d52dd61f9b"
+        },
+        {
+          "path": "dist/index.js",
+          "sha256": "58c17b4a9f4cb8de075279a03fbe8ed87110cc1c2891ca69efe888783b5b7ecc"
+        },
+        {
+          "path": "dist/origin.d.ts",
+          "sha256": "d6c420db78eb100e8448f5e4c063e45f0b323582a2f7d329f3148c9c718403ab"
+        },
+        {
+          "path": "dist/origin.js",
+          "sha256": "d6c420db78eb100e8448f5e4c063e45f0b323582a2f7d329f3148c9c718403ab"
+        },
+        {
+          "path": "dist/postgres.d.ts",
+          "sha256": "b4c9ac4f3210e17ec3bfdf96951c8735f13caa047400e0ccbfef3f42fff20d1f"
+        },
+        {
+          "path": "dist/postgres.js",
+          "sha256": "a48bb112bbe81e9ccfde0bbba066c2a17172c3721c0d5ab90e821ae2636322c8"
+        },
+        {
+          "path": "dist/product-roles.d.ts",
+          "sha256": "8adc3fa7779da5bc4ff7e671d81c038431132d9e24906800d96ca570fe250e08"
+        },
+        {
+          "path": "dist/product-roles.js",
+          "sha256": "24b57fa4cc557f6a325bad0789fbea29bb135444aa756b61baee682dfbfab917"
+        },
+        {
+          "path": "dist/redirect.d.ts",
+          "sha256": "7b67c09add8c16afb74463bdd851007e302616b95c250cb9507f646970b56643"
+        },
+        {
+          "path": "dist/redirect.js",
+          "sha256": "f64004ebab772d942b0c5881a850ca6387b818966fae9fdbf652307d31f3fd69"
+        },
+        {
+          "path": "dist/resource.d.ts",
+          "sha256": "af4c62c62ff4dd7a23e207f60eb1ed15c54e7a26f36344db00e0ea996da971d1"
+        },
+        {
+          "path": "dist/resource.js",
+          "sha256": "f2e7393afdbb73dbf6eb5104215c2ba40a57f6280277b8d1281cff5c2d3c41a3"
+        },
+        {
+          "path": "dist/testing/auth-conformance.d.ts",
+          "sha256": "9ecf97e5e0ee88c2343847dc7de2233a4d9b9b92ad2473449c3a8ac8dae823ff"
+        },
+        {
+          "path": "dist/testing/auth-conformance.js",
+          "sha256": "37170ae585c9fc6cedb29439372fcab6d07074a107e9a3100b6032469435a04f"
+        },
+        {
+          "path": "dist/testing/index.d.ts",
+          "sha256": "1bcdb0f6392d5044bbb93bc16b7a42d5e44baa07a60ac390c173995dfe39c61a"
+        },
+        {
+          "path": "dist/testing/index.js",
+          "sha256": "adc1945368b5794644e9a9c1673e4082dd106a515a5585737813827d05f63cf3"
+        },
+        {
+          "path": "dist/testing/oauth-conformance.d.ts",
+          "sha256": "ceb886e02c3379479110b48ffb2027b599a50b55bf83d2aa5552fd4d27ac5d4b"
+        },
+        {
+          "path": "dist/testing/oauth-conformance.js",
+          "sha256": "5e791285c5bc50e3e710d347427546cbc7394010019030999df3aace891a1db1"
+        },
+        {
+          "path": "dist/token.d.ts",
+          "sha256": "5522c6e3bad11b2aaa062f7c1d573347cf9e9af46e253c089c8c983bdf8a863d"
+        },
+        {
+          "path": "dist/token.js",
+          "sha256": "4ce517f3bd01af5d3d7db602d02389e723464436dd0c909c06fed09bd13bab84"
+        },
+        {
+          "path": "dist/types.d.ts",
+          "sha256": "8d4fde1cb67e6acae72653db497030adba4f7fe5cb4876efc096cf6d15da2204"
+        },
+        {
+          "path": "dist/types.js",
+          "sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+        },
+        {
+          "path": "package.json",
+          "sha256": "87451be07a71a5a55f13e32a44380e0d84007081ea494fd1288cd498644f76b4"
+        }
+      ]
+    },
+    {
+      "name": "@chester-hill-solutions/auth-d1",
+      "version": "0.11.1",
+      "directory": "@chester-hill-solutions/auth-d1",
+      "sourceSha": "3dba6c56bc50cb89bca0346e211329c1fb7e1885",
+      "sourceTarball": "chester-hill-solutions-auth-d1-0.11.1.tgz",
+      "sourceSha256": "1ec21348b01c19e7f1b73ccb4248518c544a2f6484f28cfb95182e55864a686e",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "02b259dc1a849a6a99de0729aa6484054644217fa28aea645b6fe2eaadb27a9a"
+        },
+        {
+          "path": "dist/api-key-schema.d.ts",
+          "sha256": "670bf2b0022bece1be5409bf8462e4cd07e23fdd403a98391ce01c763c064c22"
+        },
+        {
+          "path": "dist/api-key-schema.js",
+          "sha256": "c7834b0096fa7284e63f3c0841ada04e76023f0f9625aac4746989c5174e140a"
+        },
+        {
+          "path": "dist/api-key-sql.d.ts",
+          "sha256": "1f2d0473413f15091b9a7411dad2c6bdf3b48048b0bf5c685cea3744260ce341"
+        },
+        {
+          "path": "dist/api-key-sql.js",
+          "sha256": "b14e23adb950d4a7af8f1bfa88a3c342f629bd03d220d2547ebab2b2a6c4bb22"
+        },
+        {
+          "path": "dist/api-key.d.ts",
+          "sha256": "4e1f6f242feab88bc737cd1bfdfd0476aae54822bfe40a1808b9f38c526fb0c6"
+        },
+        {
+          "path": "dist/api-key.js",
+          "sha256": "d7c750ac134d8caae4cb74dbcf651a2a6d2986de71fdb23353049762d76c691f"
+        },
+        {
+          "path": "dist/auth-schema.d.ts",
+          "sha256": "c3eb4cdd18747aef8b132119e24505c8e0ffce249fa1fb87aed0f27c42950fa8"
+        },
+        {
+          "path": "dist/auth-schema.js",
+          "sha256": "582d3e5793704426c7f2385feb5c77a32bafdb3b18ee35b66089d829e7dc1174"
+        },
+        {
+          "path": "dist/auth-sql.d.ts",
+          "sha256": "3425bcb50f9da6dac2cf08a12760d316be44b66e526049bbd22a309629c54f42"
+        },
+        {
+          "path": "dist/auth-sql.js",
+          "sha256": "3e72c988bdc329a151f05fd0307145810f0f72ff787429d6cc3c535f6e6870c5"
+        },
+        {
+          "path": "dist/drizzle-adapter.d.ts",
+          "sha256": "67c14761f83943f21b8c6748b0a51373b5126c97f3aeb1b280b34f90506b4d28"
+        },
+        {
+          "path": "dist/drizzle-adapter.js",
+          "sha256": "67c14761f83943f21b8c6748b0a51373b5126c97f3aeb1b280b34f90506b4d28"
+        },
+        {
+          "path": "dist/index.d.ts",
+          "sha256": "2e01ea8b1462c78dc9e23efd2822f9d13ac5f037e0e0b3056f367d40067d68e9"
+        },
+        {
+          "path": "dist/index.js",
+          "sha256": "3a0a176b3df1e0bfbc3dd0461ddd65d045c50713dbe3546480c5ed649fd85371"
+        },
+        {
+          "path": "dist/invitation-schema.d.ts",
+          "sha256": "fe163baac81148b3423b8dfaf61436ede04d709a16db80a62e48da1239a83c01"
+        },
+        {
+          "path": "dist/invitation-schema.js",
+          "sha256": "228fe86b26c63d7de8a637f59022c3b0e07504b8356abea09e833fc85737dfd9"
+        },
+        {
+          "path": "dist/invitation-sql.d.ts",
+          "sha256": "596f3d75f9400c853633ee4f36ae6656f95a9f92408a0b1a5ab16dd7d96259e1"
+        },
+        {
+          "path": "dist/invitation-sql.js",
+          "sha256": "5cc116083cf2811ff550ca5e5d4cb3a16bc1353c4df05fe012e3aa4865711f70"
+        },
+        {
+          "path": "dist/invitation.d.ts",
+          "sha256": "a8664f54af3edefaca6075447f55301b678e7b76b1f808b5a152950fff89f79d"
+        },
+        {
+          "path": "dist/invitation.js",
+          "sha256": "77d7c87db065f0ddc2d72c8bfb0f5d427f4e2b1a8cfa8f01cfbe19c8569b6336"
+        },
+        {
+          "path": "dist/oauth-schema.d.ts",
+          "sha256": "2a398b52269da7e6cd8a4d4e06672b4d1cbf0caed7a5a89f98a2026dfbd16ab2"
+        },
+        {
+          "path": "dist/oauth-schema.js",
+          "sha256": "a5020a0757235283b95891db5387baa8ea78418a35143ff24763ad3c152207b4"
+        },
+        {
+          "path": "dist/oauth-sql.d.ts",
+          "sha256": "a51a7548b210a1667dde16b44520d1e16fc1317d2e97ed8787199eb76057902e"
+        },
+        {
+          "path": "dist/oauth-sql.js",
+          "sha256": "24263794e9c2839c86bc5b6f49a685b2ba9d4034687f311467d66b3818831469"
+        },
+        {
+          "path": "dist/plugins/cimd.d.ts",
+          "sha256": "56cc4151107aeaa0c23e6a043da8b51c1ce12c4c542bc7bb1dd2eadab8ac670d"
+        },
+        {
+          "path": "dist/plugins/cimd.js",
+          "sha256": "0c9db60b99b3d8b4b39ced81b19c3bed882d15fb5107a932de3aefa4e86e40bb"
+        },
+        {
+          "path": "dist/plugins/index.d.ts",
+          "sha256": "d53f33ec6acfb5327a370870f624b714bdc501ae685a9b0ef7d9085c6210f4d3"
+        },
+        {
+          "path": "dist/plugins/index.js",
+          "sha256": "9c64aff7b7efa0b7adf8a2df23e8fc2c2a99173d837e66019d47696f6a864496"
+        },
+        {
+          "path": "dist/plugins/mcp.d.ts",
+          "sha256": "2b0a527a6a874c829805036770110eac9a8a8a9456842cf1e1a42e969eb331a9"
+        },
+        {
+          "path": "dist/plugins/mcp.js",
+          "sha256": "1dd29c64674edcb98d43a2d99918909e1b4fbfc6db1e74bde31ddb6b8e9e24c3"
+        },
+        {
+          "path": "dist/plugins/oauth-provider.d.ts",
+          "sha256": "ce69d50914f7ff0f27930a8b9fd364f28fa3afb79821e5f56274884a652f4563"
+        },
+        {
+          "path": "dist/plugins/oauth-provider.js",
+          "sha256": "b571c95e840379e824dab84d145b95bb8e9585e5bf4a4e06f46cb66b18e6b8c0"
+        },
+        {
+          "path": "dist/product-role-seeds.d.ts",
+          "sha256": "a66d9582401669d57b069ebc397dd835843ff53019a36d28c2ff6d6be1dbb514"
+        },
+        {
+          "path": "dist/product-role-seeds.js",
+          "sha256": "e5300c87669049fb43538dcc88af95b0ea7e8728abee290c607848d14c7370ba"
+        },
+        {
+          "path": "dist/schema.d.ts",
+          "sha256": "76777a0e795f993be9b2a2d2189ce3dab97d127cf3e1586797198c9c91bde607"
+        },
+        {
+          "path": "dist/schema.js",
+          "sha256": "861488a4942f50c6aacd476265ca98647fc3bb1d5a491fe894629a12009dd51e"
+        },
+        {
+          "path": "dist/testing/db.d.ts",
+          "sha256": "c7c91c7fb438dd90c03d2216dbbf00eba3fbc4f54680ca079802e3676bc13635"
+        },
+        {
+          "path": "dist/testing/db.js",
+          "sha256": "4c1818f2c5aec7830bfcd0cc57676fa868713e7d131023b6f7aa312ff156d16a"
+        },
+        {
+          "path": "dist/testing/index.d.ts",
+          "sha256": "ebd4d4e708a1ff19b086b92e617267c19a96bf7cf74a8dedfe6206fe901624c6"
+        },
+        {
+          "path": "dist/testing/index.js",
+          "sha256": "2908f49d1eb0d2577d301098f8c6e05a062e5b02239ee05d16fdc62bfde328c0"
+        },
+        {
+          "path": "dist/testing/sql.d.ts",
+          "sha256": "8215ef11096fb1c394bddf074a0860b0561584652d5ff7092572b31f7d249fb3"
+        },
+        {
+          "path": "dist/testing/sql.js",
+          "sha256": "5c8d03ad6dd23cdab7d34690633414caec65e253caae221ba4c8a24397114b57"
+        },
+        {
+          "path": "dist/workspace-access.d.ts",
+          "sha256": "4b0a77ef2c36f3760332046b823c9256048a9a8c8078aefb7864c6042b757f5c"
+        },
+        {
+          "path": "dist/workspace-access.js",
+          "sha256": "5f055e513636b1f5c8c2d5fcfc114e525c7d8ce76c17723e159b66ef8ee0e98c"
+        },
+        {
+          "path": "dist/workspace-authz-schema.d.ts",
+          "sha256": "56de2fc6e7a0cd4d0dc7bdac367157436fa56cf4cb552140451998760dcd3393"
+        },
+        {
+          "path": "dist/workspace-authz-schema.js",
+          "sha256": "eefe76ad9b0d58e661837f1f8e03c22f053011423da2cbb4bb8801590267826c"
+        },
+        {
+          "path": "dist/workspace-feature-access.d.ts",
+          "sha256": "c37a03ceddf373896e0c900427a92105c78a742ac39e828f45aebe2cc2ae0263"
+        },
+        {
+          "path": "dist/workspace-feature-access.js",
+          "sha256": "b4d85e03775b8c3701316b17152f189e439839ce2dfaf765ccc7f3ad8b47afde"
+        },
+        {
+          "path": "dist/workspace-feature-sql.d.ts",
+          "sha256": "2a42b8e5ddab08ab5c723f0e8ce50cb0cb66cac817f812c7317295129d0a5716"
+        },
+        {
+          "path": "dist/workspace-feature-sql.js",
+          "sha256": "4e91e37bd1ed0fdd16b725f57ecac008aa1013e274ea0b4cf70010380e56937d"
+        },
+        {
+          "path": "dist/workspace-member-sql.d.ts",
+          "sha256": "4b12be2b4b41e6d5080e95000eaf785f98d6d66b4fb3e26a5bed22fbbfdf9873"
+        },
+        {
+          "path": "dist/workspace-member-sql.js",
+          "sha256": "f128a4cbb66c02ebbb76197ec3849548b947b73dc5d170cd544238fbb2982b7f"
+        },
+        {
+          "path": "package.json",
+          "sha256": "a6309cb7a01f627348d3acb1bc561b4c2c1cea1080e2c01a5d079216bbb688ca"
+        }
+      ]
+    },
+    {
+      "name": "@chester-hill-solutions/auth-react-router",
+      "version": "0.15.0",
+      "directory": "@chester-hill-solutions/auth-react-router",
+      "sourceSha": "3dba6c56bc50cb89bca0346e211329c1fb7e1885",
+      "sourceTarball": "chester-hill-solutions-auth-react-router-0.15.0.tgz",
+      "sourceSha256": "5db0fb540efbed7f9c12aff4e1015672da0edff70a88834546014f54743ef964",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "14de08631e08253196e667aa449a478360e8a82411f649c10cd5b68a4f091bbb"
+        },
+        {
+          "path": "dist/api-key.d.ts",
+          "sha256": "887d7c6786e2702598ad2d43a672b98c3d64ed8ae6c5625fe2cc5c98ab6ab421"
+        },
+        {
+          "path": "dist/api-key.js",
+          "sha256": "407d06a24f63069426c697adc88196414c461553d9fdccdde8d2479e15f7e7b2"
+        },
+        {
+          "path": "dist/capability.d.ts",
+          "sha256": "29da09403485d4e44fcb49c6e18622b3e25ea279f4eb09dddc29e08731a75c52"
+        },
+        {
+          "path": "dist/capability.js",
+          "sha256": "c7d0c5f66fe9793992b8d05db2b55a4ef1a584174781bffe15268250f122ee43"
+        },
+        {
+          "path": "dist/index.d.ts",
+          "sha256": "b74ee1b1f59d75f659e97040c9c78c07a288311127b065a272531adaa03a6a66"
+        },
+        {
+          "path": "dist/index.js",
+          "sha256": "219bc9269a5f7aaa765f08e37d7d4df9e0cb3ccb02663f5dc268449d8cae5217"
+        },
+        {
+          "path": "package.json",
+          "sha256": "7e56de4326784d67a38f23cd41bec19aa4528e5fb818602763f8d3f791661a94"
+        }
+      ]
+    },
+    {
+      "name": "@chester-hill-solutions/app-origin",
+      "version": "0.2.0",
+      "directory": "@chester-hill-solutions/app-origin",
+      "sourceSha": "3dba6c56bc50cb89bca0346e211329c1fb7e1885",
+      "sourceTarball": "chester-hill-solutions-app-origin-0.2.0.tgz",
+      "sourceSha256": "a66dcdc8a72307ae70ca5df48ab8712dc5e7e554071dc965b78ce6cc556a7419",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "1141752de21af86f0fe507435951f8448065cd3f803bd76c6ed0034b6f3e47b7"
+        },
+        {
+          "path": "dist/index.d.ts",
+          "sha256": "3de34c5f6cc2549aec6ae44b17b58d19e24c919d96219f48c0d305364c3f9d5b"
+        },
+        {
+          "path": "dist/index.js",
+          "sha256": "3de34c5f6cc2549aec6ae44b17b58d19e24c919d96219f48c0d305364c3f9d5b"
+        },
+        {
+          "path": "dist/origin.d.ts",
+          "sha256": "fce307e4b80f6280e8a6696d2113c7ce64a07c435f2e7d59260741d367ef648f"
+        },
+        {
+          "path": "dist/origin.js",
+          "sha256": "d427c138fa6c20934df3e796b5f72707b0e99826be84b186d6e4ac98611d8ad9"
+        },
+        {
+          "path": "package.json",
+          "sha256": "25be122f6840d98679a988d0a309381c919e3fccc18d1d4fd8ba4504dac8d375"
+        },
+        {
+          "path": "src/index.ts",
+          "sha256": "19e6c7e80f13e23b30eddab64e61d3bf5f2cf568195868a5559e3b322a6a5a7b"
+        },
+        {
+          "path": "src/origin.ts",
+          "sha256": "ba7b5de0af116797ef5632ecac704a8a6862ed3a41961a2b925a4c2d0c89f889"
+        },
+        {
+          "path": "tests/origin.test.ts",
+          "sha256": "4f5221610e461e65ee5b43b12c587283ae0ddb02b89a55cc955024a9267cf6a9"
+        },
+        {
+          "path": "tsconfig.build.json",
+          "sha256": "46e46ac89574b07d137957a7b099fa501da02438e2f45ca5579446e184c6b0de"
+        },
+        {
+          "path": "tsconfig.test.json",
+          "sha256": "1ff2585768b5be6a84a45dcc297f7a66b6adfb848cdb4b378a3b9fc58bb249b9"
+        },
+        {
+          "path": "vitest.config.ts",
+          "sha256": "cd264091f3753aa1fb90538cc5dc43c771a777f1a4e7b8e960140bb08947060c"
+        }
+      ]
+    }
+  ]
+}

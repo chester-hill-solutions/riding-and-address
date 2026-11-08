@@ -1,9 +1,8 @@
 /**
- * Public app origin for auth baseURL, email CTA links, and redirect validation.
- * On Railway, `RAILWAY_PUBLIC_DOMAIN` is the hostname only (no scheme).
+ * The public origin of the application.
+ *
+ * The `app-origin` package owns these functions, and it holds the behaviour
+ * cases for them. This module keeps the subpath of the auth package, so every
+ * consumer of it keeps working.
  */
-export declare function appPublicOrigin(): string;
-/** Origins auth may redirect to (public origin + `APP_TRUSTED_ORIGINS`). */
-export declare function authTrustedOrigins(fallback?: string): string[];
-/** Same-origin absolute URL for auth callbacks and email redirectTo (must match trusted origins). */
-export declare function absoluteAppUrl(request: Request, pathname: string): string;
+export { absoluteAppUrl, appPublicOrigin, authTrustedOrigins, MissingPublicOriginError, } from "@chester-hill-solutions/app-origin";

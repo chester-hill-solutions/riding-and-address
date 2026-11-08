@@ -1,53 +1,33 @@
-# Vendored `@chester-hill-solutions` packages
+# Vendored CHS auth packages
 
-These packages are vendored so the portal installs in CI and Cloudflare builds without a sibling
-`chester-hill-solutions` checkout or GitHub Packages `write:packages` publish.
+The portal keeps directory delivery so CI and Cloudflare builds need no sibling checkout or private registry credential. Built JavaScript and declarations are committed.
 
-Commit **`dist/`** with each package (the root `.gitignore` only ignores `/dist/` at the
-repo root). CI typecheck fails if only `package.json` is present.
+| Package | Version |
+|---|---|
+| auth | 0.15.0 |
+| auth-d1 | 0.11.1 |
+| auth-react-router | 0.15.0 |
+| app-origin | 0.2.0 |
 
-**Vendored from CHS main at `6c64aeb099de`** — `auth` 0.5.0, `auth-d1` **0.7.1**,
-`auth-react-router` 0.3.0. All three now correspond to that one commit: `diff -rq` reports no
-differing files for `auth` and `auth-react-router`, so only `auth-d1` needed copying.
+Source: CHS commit `3dba6c56bc50cb89bca0346e211329c1fb7e1885`. [chs-packages.json](chs-packages.json) records canonical tarball SHA-256 receipts and each delivered file hash. Only package manifests change for delivery: scripts/devDependencies are removed, and internal dependencies become sibling `file:` references. Never patch generated runtime files here.
 
-`auth-d1` 0.7.1 splits the plugin entry points. `./plugins` is `magicLink` and `jwt` only, with
-`mcp`, `oauthProvider` and `cimd` behind `./plugins/mcp`, `./plugins/oauth-provider` and
-`./plugins/cimd`. That is what `peerDependenciesMeta` always claimed: those three come from
-`@better-auth/*` packages that are optional peers, and re-exporting them from the root entry point
-made them mandatory for every consumer. **The portal import changed with it** — `mcp` now comes from
-`@chester-hill-solutions/auth-d1/plugins/mcp`.
+The prior `6c64aeb099de` auth-D1 refresh's twelve OAuth foreign keys remain present. Every old dist path remains in the new canonical payload; auth-react-router's runtime/declaration files are already byte-identical. OAuth plugin subpaths remain separate, and the app's already-coherent BetterAuth/adapter/MCP/OAuth/CIMD 1.7.14 family is retained.
 
-It also carries the twelve foreign keys in `OAUTH_DDL`, which had been sitting on
-`fix/oauth-ddl-foreign-keys` and **never merged** (CHS #166). That is how the gap was found: a
-refresh taken from main first would have silently reverted them. **Check `grep -c REFERENCES
-dist/oauth-sql.js` returns 12** — the number is the whole point of the file, and nothing in the
-portal's build would notice if it were zero.
+## File-package lock snapshots and runtime closure
 
-That refresh carried more than the OAuth tables: the packages had been four minor versions behind,
-so `auth/testing` (the dialect conformance runners), `auth/product-roles`, and
-`auth-react-router/api-key` arrive with it.
+The portal explicitly installs app-origin at its root as well as declaring auth's internal dependency. Native imports from vendored source and installed SDK contexts must all resolve a complete closure. TypeScript path aliases and a successful bundle alone do not prove that.
 
-The refresh also moved `better-auth` to `^1.7.10` and `@better-auth/drizzle-adapter` to
-`^1.7.10`, because the vendored `auth-d1` peers require it. **`portal/bun.lock` had to be
-regenerated rather than updated**: it still recorded the previous vendored manifest — a
-`better-auth ^1.6.0` peer and devDependencies that no longer exist — so `bun install` kept
-resolving a second, stale `better-auth@1.6.23` nested under the vendored package. Two copies is not
-a warning here: it makes `getAuth`'s inferred type unnameable and the portal typecheck fails with
-TS2742.
+A plain `bun install` can copy refreshed file-package payloads while retaining old dependency metadata. Refresh all four file targets together, then inspect the lock diff:
 
-Source of truth remains the CHS monorepo. To refresh after upstream changes:
-
-```bash
-# from ridingLookup/
-for pkg in auth auth-d1 auth-react-router; do
-  (cd ../chester-hill-solutions/packages/$pkg && bun run build)
-  rm -rf portal/vendor/@chester-hill-solutions/$pkg
-  mkdir -p portal/vendor/@chester-hill-solutions/$pkg
-  cp ../chester-hill-solutions/packages/$pkg/package.json portal/vendor/@chester-hill-solutions/$pkg/
-  cp -R ../chester-hill-solutions/packages/$pkg/dist portal/vendor/@chester-hill-solutions/$pkg/
-done
-# rewrite workspace deps to file:../auth as needed, then bun install in portal/
+```sh
+# From portal/, using the same Bun 1.4.3 as current CI
+bun update @chester-hill-solutions/auth @chester-hill-solutions/auth-d1 @chester-hill-solutions/auth-react-router @chester-hill-solutions/app-origin --ignore-scripts
+bun install --frozen-lockfile --ignore-scripts
+bun run check:chs-packages
 ```
 
-Prefer publishing to GitHub Packages (see `portal/.npmrc`) when `write:packages` is available,
-then switch `portal/package.json` to semver ranges and remove this vendor tree.
+With a populated cache, `--offline` also works. Avoid broad forced updates or deleting the lock: retain unrelated external resolutions. Repeat verification after a clean node_modules install. The gate checks delivered/installed payloads, native compiled-JS imports from every auth consumer, and the existing auth-engine peer family; it rejects missing dependencies or empty shadows. Source packages remain canonical in CHS.
+
+The API's utility vendors remain unchanged: their dist hashes already match the current canonical validation 0.3.0, HTTP 0.1.0 and errors 0.1.0 builds.
+
+See the [host contracts and migration checklist](../../docs/ops/chs-auth-upgrade.md) before rollout.

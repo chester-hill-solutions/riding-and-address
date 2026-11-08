@@ -92,6 +92,10 @@ jobs:
         working-directory: portal
         run: bun audit --audit-level=high
 
+      - name: Check installed CHS provenance and native runtime closures
+        working-directory: portal
+        run: bun run check:chs-packages
+
       - name: Portal typecheck
         working-directory: portal
         run: bun run typecheck

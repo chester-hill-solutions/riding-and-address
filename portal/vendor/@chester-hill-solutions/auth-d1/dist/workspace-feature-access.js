@@ -32,8 +32,16 @@ export async function checkWorkspaceFeaturePermission(db, params) {
     if (rows.length === 0)
         return false;
     const specific = rows.find((row) => row.workspaceId === params.workspaceId);
-    const fallback = specific ?? rows.find((row) => row.workspaceId === null);
-    return fallback?.allowed === true;
+    if (specific)
+        return specific.allowed === true;
+    // Two global rows for the same (role, feature) can coexist, because SQL treats a null
+    // workspace_id as distinct and the unique index cannot arbitrate between them. The tie
+    // resolves to the stricter answer, so a global revoke takes effect instead of depending
+    // on which row the database happens to return first.
+    const global = rows.filter((row) => row.workspaceId === null);
+    if (global.length === 0)
+        return false;
+    return global.every((row) => row.allowed === true);
 }
 export async function canAccessWorkspaceFeature(db, params, options) {
     const roleId = await getWorkspaceMemberRoleId(db, params);

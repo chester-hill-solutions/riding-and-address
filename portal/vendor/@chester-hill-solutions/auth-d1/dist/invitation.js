@@ -1,7 +1,8 @@
 import { and, eq, gt } from "drizzle-orm";
-import { generateOpaqueToken, hashOpaqueToken, InviteError, normalizeEmail, verifyOpaqueToken, } from "@chester-hill-solutions/auth";
+import { assertProductRoles, generateOpaqueToken, hashOpaqueToken, InviteError, invitationalRolesFor, normalizeEmail, verifyOpaqueToken, } from "@chester-hill-solutions/auth";
 import { workspaceMembers } from "./schema.js";
 import { workspaceInvitations } from "./invitation-schema.js";
+import { getWorkspaceMemberRoleId } from "./workspace-access.js";
 const DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 function newId(prefix) {
     return `${prefix}_${crypto.randomUUID()}`;
@@ -12,11 +13,42 @@ async function supersedePendingInvite(db, workspaceId, email) {
         .set({ status: "superseded", updatedAt: new Date() })
         .where(and(eq(workspaceInvitations.workspaceId, workspaceId), eq(workspaceInvitations.email, email), eq(workspaceInvitations.status, "pending")));
 }
-export async function createInvitation(db, input) {
+/**
+ * Refuse an invitation whose role the inviter may not hand out.
+ *
+ * The inviter's role is read from the membership row, never from the caller: an invitation
+ * is a promise about what the workspace will grant, and a promise nobody was entitled to make
+ * is worse than a refused one. A role the inviter does not hold, or a role above the
+ * inviter's own, is refused before the invitation row exists.
+ */
+async function assertDelegableRole(db, params) {
+    const inviterRoleId = await getWorkspaceMemberRoleId(db, {
+        workspaceId: params.workspaceId,
+        userId: params.inviterUserId,
+    });
+    if (!inviterRoleId) {
+        throw new InviteError("Inviter is not a member of this workspace", "INVITE_INVITER_NOT_MEMBER", 403);
+    }
+    const roles = params.options?.roles;
+    if (!roles) {
+        throw new InviteError("The product role vocabulary is required for invitation delegation", "INVITE_ROLE_VOCABULARY_REQUIRED", 403);
+    }
+    assertProductRoles(roles);
+    if (invitationalRolesFor(inviterRoleId, roles).includes(params.roleId))
+        return;
+    throw new InviteError(`Role ${params.roleId} is not delegable by ${inviterRoleId}`, "INVITE_ROLE_NOT_DELEGABLE", 403);
+}
+export async function createInvitation(db, input, options) {
     const email = normalizeEmail(input.email);
     if (!email.includes("@")) {
         throw new InviteError("Invalid invite email", "INVITE_INVALID_EMAIL");
     }
+    await assertDelegableRole(db, {
+        workspaceId: input.workspaceId,
+        inviterUserId: input.invitedByUserId,
+        roleId: input.roleId,
+        options,
+    });
     await supersedePendingInvite(db, input.workspaceId, email);
     const rawToken = generateOpaqueToken();
     const tokenHash = hashOpaqueToken(rawToken);
@@ -42,11 +74,18 @@ export async function createInvitation(db, input) {
     }
     return { invitation, rawToken };
 }
-export async function resendInvitation(db, invitationId, options) {
+/**
+ * Replace a pending invitation's token.
+ *
+ * The workspace is an argument rather than something read back from the row: an id alone
+ * selects any tenant's invitation, and the raw token returned here is the only copy of
+ * that invitation's credential that will ever exist.
+ */
+export async function resendInvitation(db, invitationId, workspaceId, options) {
     const [existing] = await db
         .select()
         .from(workspaceInvitations)
-        .where(eq(workspaceInvitations.id, invitationId))
+        .where(and(eq(workspaceInvitations.id, invitationId), eq(workspaceInvitations.workspaceId, workspaceId)))
         .limit(1);
     if (!existing) {
         throw new InviteError("Invitation not found", "INVITE_NOT_FOUND", 404);
@@ -61,18 +100,18 @@ export async function resendInvitation(db, invitationId, options) {
     const [invitation] = await db
         .update(workspaceInvitations)
         .set({ tokenHash, expiresAt, updatedAt: now })
-        .where(and(eq(workspaceInvitations.id, invitationId), eq(workspaceInvitations.status, "pending")))
+        .where(and(eq(workspaceInvitations.id, invitationId), eq(workspaceInvitations.workspaceId, workspaceId), eq(workspaceInvitations.status, "pending")))
         .returning();
     if (!invitation) {
         throw new InviteError("Invitation not found", "INVITE_NOT_FOUND", 404);
     }
     return { invitation, rawToken };
 }
-export async function cancelInvitation(db, invitationId) {
+export async function cancelInvitation(db, invitationId, workspaceId) {
     const [invitation] = await db
         .update(workspaceInvitations)
         .set({ status: "canceled", updatedAt: new Date() })
-        .where(and(eq(workspaceInvitations.id, invitationId), eq(workspaceInvitations.status, "pending")))
+        .where(and(eq(workspaceInvitations.id, invitationId), eq(workspaceInvitations.workspaceId, workspaceId), eq(workspaceInvitations.status, "pending")))
         .returning();
     if (!invitation) {
         throw new InviteError("Pending invitation not found", "INVITE_NOT_FOUND", 404);
@@ -99,15 +138,27 @@ async function recoverAcceptedMembership(db, invite, input) {
         return { invitation: invite, membershipId: existing.id, alreadyAccepted: true };
     }
     const membershipId = input.membershipId ?? newId("wm");
-    await db.insert(workspaceMembers).values({
+    // One membership row per (workspace_id, user_id), so this insert cannot be the second
+    // row for a principal: a re-invite updates the role the person already holds.
+    const [membership] = await db
+        .insert(workspaceMembers)
+        .values({
         id: membershipId,
         workspaceId: invite.workspaceId,
         userId: input.userId,
         roleId: invite.roleId,
         invitedBy: invite.invitedByUserId,
         createdAt: new Date(),
-    });
-    return { invitation: invite, membershipId, alreadyAccepted: true };
+    })
+        .onConflictDoUpdate({
+        target: [workspaceMembers.workspaceId, workspaceMembers.userId],
+        set: { roleId: invite.roleId, invitedBy: invite.invitedByUserId },
+    })
+        .returning({ id: workspaceMembers.id });
+    if (!membership) {
+        throw new InviteError("Failed to create membership", "INVITE_MEMBERSHIP_FAILED", 500);
+    }
+    return { invitation: invite, membershipId: membership.id, alreadyAccepted: true };
 }
 /**
  * Redeem a pending, unexpired invite when the authenticated verified email matches.
@@ -118,8 +169,12 @@ async function recoverAcceptedMembership(db, invite, input) {
  * `accepted` in one statement (this is the atomicity boundary that resolves
  * concurrent redeem races), then (2) insert the membership row as a sequential
  * follow-up. If step 2 fails, `recoverAcceptedMembership` makes retries safe.
+ *
+ * The delegation rule is applied again here, against the inviter's role as it stands now:
+ * the role this call grants is the role the invitation carries, and an invitation whose
+ * inviter can no longer delegate it grants nothing.
  */
-export async function redeemInvitation(db, input) {
+export async function redeemInvitation(db, input, options) {
     const verifiedEmail = normalizeEmail(input.verifiedEmail);
     const [invite] = await db
         .select()
@@ -135,6 +190,12 @@ export async function redeemInvitation(db, input) {
     if (invite.email !== verifiedEmail) {
         throw new InviteError("Invite email does not match authenticated user", "INVITE_EMAIL_MISMATCH", 403);
     }
+    await assertDelegableRole(db, {
+        workspaceId: invite.workspaceId,
+        inviterUserId: invite.invitedByUserId,
+        roleId: invite.roleId,
+        options,
+    });
     if (invite.status === "accepted" && invite.acceptedByUserId === input.userId) {
         return recoverAcceptedMembership(db, invite, input);
     }
@@ -171,15 +232,29 @@ export async function redeemInvitation(db, input) {
         }
         throw new InviteError("Invitation already consumed", "INVITE_ALREADY_CONSUMED", 409);
     }
-    await db.insert(workspaceMembers).values({
+    // One membership row per (workspace_id, user_id). A second invitation for a person who
+    // already accepted one supersedes the role rather than adding a row beside it: two rows
+    // for the same principal leave the effective role to whichever row the database returns
+    // first, and the earlier, higher role is the one that keeps winning.
+    const [membership] = await db
+        .insert(workspaceMembers)
+        .values({
         id: membershipId,
         workspaceId: cas.workspaceId,
         userId: input.userId,
         roleId: cas.roleId,
         invitedBy: cas.invitedByUserId,
         createdAt: now,
-    });
-    return { invitation: cas, membershipId, alreadyAccepted: false };
+    })
+        .onConflictDoUpdate({
+        target: [workspaceMembers.workspaceId, workspaceMembers.userId],
+        set: { roleId: cas.roleId, invitedBy: cas.invitedByUserId },
+    })
+        .returning({ id: workspaceMembers.id });
+    if (!membership) {
+        throw new InviteError("Failed to create membership", "INVITE_MEMBERSHIP_FAILED", 500);
+    }
+    return { invitation: cas, membershipId: membership.id, alreadyAccepted: false };
 }
 export async function listPendingInvitations(db, workspaceId) {
     return db

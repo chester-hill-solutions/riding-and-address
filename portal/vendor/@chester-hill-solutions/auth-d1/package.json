@@ -1,7 +1,7 @@
 {
   "name": "@chester-hill-solutions/auth-d1",
-  "version": "0.7.1",
-  "description": "Cloudflare D1 (SQLite) auth provider \u2014 auth() factory, session reader, workspace invitations, feature permissions (Better Auth)",
+  "version": "0.11.1",
+  "description": "Cloudflare D1 (SQLite) auth provider — auth() factory, session reader, workspace invitations, feature permissions (Better Auth)",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -78,5 +78,6 @@
     "@better-auth/cimd": {
       "optional": true
     }
-  }
+  },
+  "gitHead": "3dba6c56bc50cb89bca0346e211329c1fb7e1885"
 }

@@ -107,6 +107,8 @@ function buildAuth() {
       },
     },
     advanced: {
+      disableOriginCheck: false,
+      disableCSRFCheck: false,
       database: {
         // The CHS auth schema uses uuid primary keys; better-auth's default
         // nanoid-style ids are rejected by the unique index on `user.email` only
