@@ -25,13 +25,31 @@ function isProduction(): boolean {
   return process.env.NODE_ENV === 'production';
 }
 
+function authOrigin(prod: boolean): string {
+  const configured = [read('BETTER_AUTH_URL'), read('BASE_URL')].filter(Boolean);
+  if (!configured.length) {
+    if (prod) throw new Error('An authentication public origin must be configured');
+    return 'http://localhost:5173';
+  }
+  const origins = configured.map(value => {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password ||
+      url.pathname !== '/' || url.search || url.hash) {
+      throw new Error('Authentication requires an HTTP(S) origin without credentials, path, query or fragment');
+    }
+    return url.origin;
+  });
+  if (new Set(origins).size !== 1) throw new Error('Configured authentication public origins conflict');
+  return origins[0];
+}
+
 export function env() {
   const prod = isProduction();
   return {
     authSecret: read('AUTH_SECRET') || read('SESSION_SECRET'),
     authTrustedOrigins: read('AUTH_TRUSTED_ORIGINS').split(',').map((origin) => origin.trim()).filter(Boolean),
     // localhost fallbacks are dev-only; production must configure these.
-    baseUrl: read('BETTER_AUTH_URL') || read('BASE_URL') || (prod ? '' : 'http://localhost:5173'),
+    baseUrl: authOrigin(prod),
     /** Browser-facing Worker origin for docs links and marketing try-it (same origin — single Worker). */
     publicApiBaseUrl: read('PUBLIC_API_BASE_URL') || read('BASE_URL') || (prod ? '' : 'http://localhost:5173'),
     publicApiHosts: read('PUBLIC_API_HOSTS')

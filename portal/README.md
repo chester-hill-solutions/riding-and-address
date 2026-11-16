@@ -6,8 +6,11 @@ Self-serve Customer portal (signup, org/workspace, invites, Server/Browser keys,
 
 - React Router 8 on Cloudflare Workers (`@cloudflare/vite-plugin`)
 - `@chester-hill-solutions/auth` + `auth-d1` + `auth-react-router`
+
 - D1 (`PORTAL_DB` / `cancoder-portal`) for auth + billing
 - In-process projection into Worker KV for API keys / Customer fuse (`src/projection-handlers.ts`)
+
+Current vendored auth versions, native runtime-closure checks and the membership-index rollout are documented in [vendor/README.md](vendor/README.md) and the [upgrade checklist](../docs/ops/chs-auth-upgrade.md).
 
 Config lives in [`wrangler.jsonc`](./wrangler.jsonc). Root `bun run deploy` builds and deploys from this directory.
 

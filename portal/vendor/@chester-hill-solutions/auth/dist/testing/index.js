@@ -5,4 +5,4 @@
  * package, so the agreement is asserted here and each dialect calls it.
  */
 export { FOREIGN_ROLE_SET, runAuthDialectConformance, } from './auth-conformance.js';
-export { runOAuthSchemaConformance, } from './oauth-conformance.js';
+export { oauthPluginModels, runOAuthSchemaConformance, } from './oauth-conformance.js';

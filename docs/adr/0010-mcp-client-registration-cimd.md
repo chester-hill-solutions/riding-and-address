@@ -57,7 +57,7 @@ Of the four requirements:
 | Requirement | How it is met |
 | --- | --- |
 | reject RFC 6890 special-use addresses | **the platform** — Cloudflare IPs, `localhost` and private network IPs are refused, documented |
-| refuse redirects | **us** — `redirect: 'error'` |
+| refuse redirects | **us** — `redirect: 'manual'` and an explicit 3xx refusal (Workers rejects `error`) |
 | 5 KB read cap | **us** — we stop reading at the cap and refuse the document |
 | HTTPS only | **us** — reject any other scheme before fetching |
 | resolve once, pin the approved address | **not done, and not applicable** |

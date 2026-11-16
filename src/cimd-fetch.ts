@@ -113,7 +113,7 @@ export const fetchClientMetadataResource: ClientMetadataResourceFetch = async (i
     throw new Error('cimd: refusing a special-use address');
   }
 
-  // `redirect: 'error'` is the contract's "refuse redirects". Following one would let a document
+  // Refusing redirects keeps the document at the URL that identifies its client. Following one would let it
   // arrive from somewhere other than the URL that identifies the client — and the URL *is* the
   // client's identity here.
   let response: Response;

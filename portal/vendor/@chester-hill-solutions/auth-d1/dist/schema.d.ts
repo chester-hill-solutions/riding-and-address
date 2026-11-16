@@ -5,6 +5,7 @@ export type { AuthAccountInsert, AuthAccountRow, AuthSessionInsert, AuthSessionR
 export { authSchema } from "./auth-schema.js";
 export { jwks, oauthAccessToken, oauthClient, oauthClientAssertion, oauthClientResource, oauthConsent, oauthRefreshToken, oauthResource, oauthSchema, type OAuthAccessTokenRow, type OAuthClientRow, type OAuthConsentRow, type OAuthJwksRow, type OAuthRefreshTokenRow, type OAuthResourceRow, } from "./oauth-schema.js";
 export { workspaceRoles, workspaceFeatures, workspaceFeaturePermissions, type WorkspaceRoleRow, type WorkspaceFeatureRow, type WorkspaceFeaturePermissionRow, } from "./workspace-authz-schema.js";
+export { workspaceApiKeys, type WorkspaceApiKeyInsert, type WorkspaceApiKeyRow, } from "./api-key-schema.js";
 export { workspaceInvitations, type WorkspaceInvitationInsert, type WorkspaceInvitationRow, } from "./invitation-schema.js";
 /**
  * The workspace table.

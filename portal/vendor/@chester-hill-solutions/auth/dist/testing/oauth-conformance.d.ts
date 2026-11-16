@@ -41,18 +41,43 @@ export type DeclaredOAuthColumn = {
     notNull: boolean;
     unique: boolean;
 };
+/**
+ * The models the installed plugins contribute: what Better Auth resolves with the plugins in
+ * place, less what it resolves without them.
+ *
+ * Better Auth always resolves its own base models — the user, session, account and
+ * verification tables — and the plugins add to that set. The difference is what the plugins
+ * require, and it is measured rather than transcribed, so a plugin that gains a model is seen
+ * instead of being filtered away by the very declaration it should have been checked against.
+ *
+ * `base` is the model set of a resolution with no plugins at all, so it moves with Better Auth
+ * rather than being a list this file has to keep current.
+ */
+export declare function oauthPluginModels(resolved: readonly string[], base: readonly string[]): string[];
 export type OAuthSchemaUnderTest = {
     /** For the failure message, for example `auth-d1`. */
     name: string;
-    /** Derived by the caller from Better Auth's resolved schema. */
+    /**
+     * Derived by the caller from Better Auth's resolved schema, and containing **every** model the
+     * plugins resolve — not only the ones this package happens to declare.
+     *
+     * The runner cannot detect a model that was filtered out before it arrived, so the set must
+     * arrive whole. A caller that passes only the declared models gets a runner that cannot see a
+     * model the declaration is missing, which is the failure this shape exists to prevent.
+     */
     expected: Record<string, ExpectedOAuthModel>;
     /** Read from the package's own declarations, keyed by model then property name. */
     declared: Record<string, Record<string, DeclaredOAuthColumn>>;
 };
 /**
- * Assert that every model Better Auth resolves exists in the declaration, that every field it
+ * Assert that the models the plugins resolve and the models the dialect declares are the same
+ * set, that every model Better Auth resolves exists in the declaration, that every field it
  * expects is declared with the right type, nullability and uniqueness, and that the declaration
  * carries no property Better Auth does not know about.
+ *
+ * The two sets are compared before the fields are, because a model that is missing from the
+ * declaration is a different defect from a field that is: the first is a table the adapter will
+ * query and not find, the second is a column that will be read wrong.
  *
  * `id` is expected on every model and is not listed in Better Auth's `fields`, because the adapter
  * treats it as implicit. It is allowed here for the same reason.

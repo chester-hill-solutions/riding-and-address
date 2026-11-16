@@ -13,6 +13,7 @@ Guides for operating, extending, and integrating with the CanCoder API.
 | [Alerts](ops/alerts.md) | 5xx / circuit-open Observability |
 | [Suggest index staging](ops/suggest-index-staging.md) | Enable `/api/search` safely |
 | [Portal](../portal/README.md) | Self-serve Customer app + marketing (Workers + D1 + CHS auth-d1) |
+| [CHS auth refresh](ops/chs-auth-upgrade.md) | Vendored provenance, product delegation and membership-index rollout |
 
 ## Operations
 

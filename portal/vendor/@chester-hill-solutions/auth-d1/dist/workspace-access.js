@@ -11,12 +11,18 @@ export function hasMinRole(userRole, requiredRole) {
     return userRank >= requiredRank;
 }
 export async function getWorkspaceMemberRoleId(db, params) {
-    const [row] = await db
+    const rows = await db
         .select({ roleId: workspaceMembers.roleId })
         .from(workspaceMembers)
         .where(and(eq(workspaceMembers.workspaceId, params.workspaceId), eq(workspaceMembers.userId, params.userId)))
-        .limit(1);
-    return row?.roleId ?? null;
+        .limit(2);
+    // One membership row per (workspace_id, user_id) is the invariant, and the unique index
+    // enforces it. A database that has not been migrated can still hold two rows for the same
+    // principal, and picking one of them would make the effective role a function of row order
+    // rather than of the data — so deny instead of guessing.
+    if (rows.length !== 1)
+        return null;
+    return rows[0].roleId;
 }
 /** @deprecated Use getWorkspaceMemberRoleId — returns role_id (same as role id for system roles). */
 export async function getWorkspaceMemberRole(db, params) {
