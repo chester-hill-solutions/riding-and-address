@@ -18,6 +18,7 @@ import {
 import { withRetry, withTimeout, TimeoutError } from './retry';
 import { runOrDefer } from './utils';
 import { readTimestampedEntry, writeTimestampedEntry } from './kv-cache';
+import { sourceForGeocodeMethod } from './oda-source';
 import { CircuitBreakerOpenError } from './circuit-breaker';
 import { isPostalOnlyQuery, wantsPostalCentroidOnly } from './geocode-query';
 import {
@@ -157,7 +158,7 @@ export async function getCachedGeocoding(env: Env, cacheKey: string): Promise<Ge
     distanceMeters: cached.distanceMeters,
     matchedFields: cached.matchedFields,
     mailingAddress: cached.mailingAddress,
-    dataSource: cached.dataSource,
+    dataSource: sourceForGeocodeMethod(cached.geocodeMethod, cached.dataSource),
     postalMatch: cached.postalMatch,
   };
 }

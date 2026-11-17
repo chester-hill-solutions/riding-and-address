@@ -194,6 +194,7 @@ export interface OdaGeocodeMetadata {
   distanceMeters?: number;
   matchedFields?: string[];
   mailingAddress?: CanadaPostStyleAddress;
+  /** Omitted for postal aggregates whose stored rows do not record provider/vintage. */
   dataSource?: OdaDataSource;
 }
 

@@ -1,4 +1,4 @@
-import { Env } from './types';
+import { Env, type OdaDataSource, type OdaGeocodeMethod } from './types';
 import type { OdaGeocodeResult } from './oda-geocoding';
 import { buildCityKey } from './oda-normalize';
 
@@ -9,6 +9,20 @@ interface CacheEntry {
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const cache = new Map<string, CacheEntry>();
+
+/**
+ * Postal aggregates have no recorded provider/vintage in oda_postal_centroids. The table
+ * contains both ODA and NAR imports, and prefix results can combine their rows. Neither
+ * the ODA default nor the caller's city proves their origin. Omit the optional source
+ * until aggregate provenance is stored; retain the point, confidence and match metadata.
+ * Apply this on cache reads too, because older entries carry the unsupported ODA label.
+ */
+export function sourceForGeocodeMethod(
+  method: OdaGeocodeMethod | undefined,
+  source: OdaDataSource | undefined
+): OdaDataSource | undefined {
+  return method === 'postal_centroid' || method === 'postal_prefix' ? undefined : source;
+}
 
 /**
  * The NAR vintage for a `city_key`, or undefined when the city is still ODA-sourced.
